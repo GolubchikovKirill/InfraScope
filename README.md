@@ -421,9 +421,7 @@ docker compose up -d --build
 cd /path/to/infrascope
 git status
 git pull
-docker compose build backend worker frontend polling-service discovery-service network-control-service ml-service media-service
-docker compose up -d --no-deps backend worker frontend polling-service discovery-service network-control-service ml-service media-service
-docker compose ps
+./scripts/deploy-compose-prod.sh --no-pull
 ```
 
 Если менялись зависимости или нужно проще пересобрать всё приложение, но не трогать БД:

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.api.routes._service_errors import conflict, not_found
 from app.core.config import settings
 from app.domains.inventory.models import Printer
 from app.domains.inventory.printer_polling import (
@@ -51,7 +52,7 @@ CACHE_TTL = 30
 def _get_printer_or_404(session: SessionDep, printer_id: uuid.UUID) -> Printer:
     printer = session.get(Printer, printer_id)
     if not printer:
-        raise HTTPException(status_code=404, detail="Printer not found")
+        raise not_found("Printer not found")
     return printer
 
 
@@ -62,7 +63,7 @@ def _check_unique_ip(session: SessionDep, ip_address: str, *, excluded_printer_i
     existing = session.exec(select(Printer).where(*filters)).first()
     if existing:
         status_code = 409 if excluded_printer_id is not None else 400
-        raise HTTPException(status_code=status_code, detail="Printer with this IP already exists")
+        raise conflict("Printer with this IP already exists", status_code=status_code)
 
 
 async def _resolve_mac_for_printer(printer: Printer) -> str | None:

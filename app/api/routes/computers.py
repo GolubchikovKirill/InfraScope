@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.api.routes._service_errors import conflict, not_found
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.domains.inventory.models import Computer
@@ -29,6 +30,27 @@ async def _invalidate_cache() -> None:
 
 
 _COMPUTER_PROBE_PORTS = (445, 3389, 135)
+
+
+def _get_computer_or_404(session: SessionDep, computer_id: uuid.UUID) -> Computer:
+    row = session.get(Computer, computer_id)
+    if not row:
+        raise not_found("Computer not found")
+    return row
+
+
+def _ensure_unique_hostname(
+    session: SessionDep,
+    hostname: str,
+    *,
+    excluded_computer_id: uuid.UUID | None = None,
+) -> None:
+    filters = [Computer.hostname == hostname]
+    if excluded_computer_id is not None:
+        filters.append(Computer.id != excluded_computer_id)
+    exists = session.exec(select(Computer).where(*filters)).first()
+    if exists:
+        raise conflict("Computer with this hostname already exists")
 
 
 def _probe_computer(hostname: str) -> tuple[bool, str | None]:
@@ -87,9 +109,7 @@ async def read_computers(
 
 @router.post("/", response_model=ComputerPublic, dependencies=[Depends(get_current_active_superuser)])
 async def create_computer(session: SessionDep, payload: ComputerCreate) -> Computer:
-    exists = session.exec(select(Computer).where(Computer.hostname == payload.hostname)).first()
-    if exists:
-        raise HTTPException(status_code=409, detail="Computer with this hostname already exists")
+    _ensure_unique_hostname(session, payload.hostname)
     row = Computer(**payload.model_dump())
     session.add(row)
     session.commit()
@@ -100,17 +120,11 @@ async def create_computer(session: SessionDep, payload: ComputerCreate) -> Compu
 
 @router.patch("/{computer_id}", response_model=ComputerPublic, dependencies=[Depends(get_current_active_superuser)])
 async def update_computer(session: SessionDep, computer_id: uuid.UUID, payload: ComputerUpdate) -> Computer:
-    row = session.get(Computer, computer_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Computer not found")
+    row = _get_computer_or_404(session, computer_id)
     updates = payload.model_dump(exclude_unset=True)
     new_hostname = updates.get("hostname")
     if new_hostname and new_hostname != row.hostname:
-        conflict = session.exec(
-            select(Computer).where(Computer.hostname == new_hostname, Computer.id != computer_id)
-        ).first()
-        if conflict:
-            raise HTTPException(status_code=409, detail="Computer with this hostname already exists")
+        _ensure_unique_hostname(session, new_hostname, excluded_computer_id=computer_id)
     row.sqlmodel_update(updates)
     row.updated_at = datetime.now(UTC)
     session.add(row)
@@ -122,9 +136,7 @@ async def update_computer(session: SessionDep, computer_id: uuid.UUID, payload: 
 
 @router.delete("/{computer_id}", dependencies=[Depends(get_current_active_superuser)])
 async def delete_computer(session: SessionDep, computer_id: uuid.UUID) -> Message:
-    row = session.get(Computer, computer_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Computer not found")
+    row = _get_computer_or_404(session, computer_id)
     session.delete(row)
     session.commit()
     await _invalidate_cache()
@@ -134,9 +146,7 @@ async def delete_computer(session: SessionDep, computer_id: uuid.UUID) -> Messag
 @router.post("/{computer_id}/poll", response_model=ComputerPublic)
 async def poll_computer(computer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Computer:
     del current_user
-    row = session.get(Computer, computer_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Computer not found")
+    row = _get_computer_or_404(session, computer_id)
     is_online, reason = await asyncio.to_thread(_probe_computer, row.hostname)
     row.is_online = is_online
     row.reachability_reason = reason

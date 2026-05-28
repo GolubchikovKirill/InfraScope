@@ -55,13 +55,13 @@ def test_refresh_rotates_cookie_and_revokes_previous_token(client: TestClient, a
     old_refresh_token = client.cookies.get("refresh_token")
     assert old_refresh_token
 
-    refreshed = client.post("/api/v1/auth/refresh", cookies={"refresh_token": old_refresh_token})
+    refreshed = client.post("/api/v1/auth/refresh", headers={"Cookie": f"refresh_token={old_refresh_token}"})
     assert refreshed.status_code == 200
-    new_refresh_token = client.cookies.get("refresh_token")
+    new_refresh_token = refreshed.cookies.get("refresh_token")
     assert new_refresh_token
     assert new_refresh_token != old_refresh_token
 
-    replay = client.post("/api/v1/auth/refresh", cookies={"refresh_token": old_refresh_token})
+    replay = client.post("/api/v1/auth/refresh", headers={"Cookie": f"refresh_token={old_refresh_token}"})
     assert replay.status_code == 401
 
 
@@ -77,8 +77,7 @@ def test_logout_revokes_access_and_refresh_tokens(client: TestClient, admin_user
 
     logout = client.post(
         "/api/v1/auth/logout",
-        headers={"Authorization": f"Bearer {access_token}"},
-        cookies={"refresh_token": refresh_token},
+        headers={"Authorization": f"Bearer {access_token}", "Cookie": f"refresh_token={refresh_token}"},
     )
     assert logout.status_code == 200
 
@@ -88,7 +87,7 @@ def test_logout_revokes_access_and_refresh_tokens(client: TestClient, admin_user
     )
     assert protected.status_code == 401
 
-    refresh = client.post("/api/v1/auth/refresh", cookies={"refresh_token": refresh_token})
+    refresh = client.post("/api/v1/auth/refresh", headers={"Cookie": f"refresh_token={refresh_token}"})
     assert refresh.status_code == 401
 
 

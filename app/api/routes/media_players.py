@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.api.routes._service_errors import conflict, not_found
 from app.core.config import settings
 from app.domains.inventory.media_polling import (
     MediaPlayerNotFoundError,
@@ -62,6 +63,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["media-players"])
 
 CACHE_TTL = 30
+
+
+def _get_media_player_or_404(session: SessionDep, player_id: uuid.UUID) -> MediaPlayer:
+    player = session.get(MediaPlayer, player_id)
+    if not player:
+        raise not_found("Media player not found")
+    return player
+
+
+def _require_iconbit(player: MediaPlayer) -> None:
+    if player.device_type != "iconbit":
+        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+
+
+def _ensure_unique_media_player_ip(
+    session: SessionDep,
+    ip_address: str,
+    *,
+    excluded_player_id: uuid.UUID | None = None,
+    conflict_status_code: int = 409,
+) -> None:
+    filters = [MediaPlayer.ip_address == ip_address]
+    if excluded_player_id is not None:
+        filters.append(MediaPlayer.id != excluded_player_id)
+    existing = session.exec(select(MediaPlayer).where(*filters)).first()
+    if existing:
+        raise conflict("Device with this IP already exists", status_code=conflict_status_code)
 
 
 async def _run_iconbit_discovery(subnet: str, ports: str, known_players: list[dict]) -> None:
@@ -121,9 +149,7 @@ async def read_media_players(
 
 @router.post("/", response_model=MediaPlayerPublic, dependencies=[Depends(get_current_active_superuser)])
 async def create_media_player(session: SessionDep, player_in: MediaPlayerCreate) -> MediaPlayer:
-    existing = session.exec(select(MediaPlayer).where(MediaPlayer.ip_address == player_in.ip_address)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Device with this IP already exists")
+    _ensure_unique_media_player_ip(session, player_in.ip_address, conflict_status_code=400)
     player = MediaPlayer(**player_in.model_dump())
     if not player.mac_address:
         player.mac_address = await resolve_mac_for_ip_address(player.ip_address, prefer_snmp=player.device_type != "iconbit")
@@ -191,9 +217,7 @@ async def discover_add_iconbit(
     ip = str(payload.get("ip_address", "")).strip()
     if not ip:
         raise HTTPException(status_code=422, detail="ip_address is required")
-    existing = session.exec(select(MediaPlayer).where(MediaPlayer.ip_address == ip)).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Device with this IP already exists")
+    _ensure_unique_media_player_ip(session, ip)
     name = str(payload.get("name") or f"Iconbit {ip}")
     model = str(payload.get("model") or "Iconbit")
     player = MediaPlayer(
@@ -223,16 +247,10 @@ async def discover_update_iconbit_ip(
     new_ip: str = "",
     new_mac: str | None = None,
 ) -> MediaPlayer:
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
+    player = _get_media_player_or_404(session, player_id)
     old_ip = player.ip_address
     if new_ip:
-        conflict = session.exec(
-            select(MediaPlayer).where(MediaPlayer.ip_address == new_ip, MediaPlayer.id != player.id)
-        ).first()
-        if conflict:
-            raise HTTPException(status_code=409, detail="Another device already has this IP")
+        _ensure_unique_media_player_ip(session, new_ip, excluded_player_id=player.id)
         player.ip_address = new_ip
         if old_ip != new_ip:
             write_event_log(
@@ -261,27 +279,15 @@ async def discover_update_iconbit_ip(
 
 @router.get("/{player_id}", response_model=MediaPlayerPublic)
 def read_media_player(player_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> MediaPlayer:
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
-    return player
+    return _get_media_player_or_404(session, player_id)
 
 
 @router.patch("/{player_id}", response_model=MediaPlayerPublic, dependencies=[Depends(get_current_active_superuser)])
 async def update_media_player(session: SessionDep, player_id: uuid.UUID, player_in: MediaPlayerUpdate) -> MediaPlayer:
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
+    player = _get_media_player_or_404(session, player_id)
     update_data = player_in.model_dump(exclude_unset=True)
     if "ip_address" in update_data and update_data["ip_address"] is not None:
-        existing = session.exec(
-            select(MediaPlayer).where(
-                MediaPlayer.ip_address == update_data["ip_address"],
-                MediaPlayer.id != player_id,
-            )
-        ).first()
-        if existing:
-            raise HTTPException(status_code=409, detail="Device with this IP already exists")
+        _ensure_unique_media_player_ip(session, update_data["ip_address"], excluded_player_id=player_id)
     player.updated_at = datetime.now(UTC)
     ip_changed = "ip_address" in update_data and update_data.get("ip_address") != player.ip_address
     explicit_mac = "mac_address" in update_data
@@ -302,9 +308,7 @@ async def update_media_player(session: SessionDep, player_id: uuid.UUID, player_
 
 @router.delete("/{player_id}", dependencies=[Depends(get_current_active_superuser)])
 async def delete_media_player(session: SessionDep, player_id: uuid.UUID) -> Message:
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
+    player = _get_media_player_or_404(session, player_id)
     session.delete(player)
     session.commit()
     await _invalidate_cache()
@@ -365,11 +369,8 @@ async def iconbit_status(player_id: uuid.UUID, session: SessionDep, current_user
             method="GET",
             path=f"/iconbit/{player_id}/status",
         )
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
-    if player.device_type != "iconbit":
-        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    player = _get_media_player_or_404(session, player_id)
+    _require_iconbit(player)
     result = await asyncio.to_thread(iconbit_get_status, player.ip_address)
     media_player_ops_total.labels(operation="iconbit_status", result="success").inc()
     return {
@@ -391,11 +392,8 @@ async def iconbit_play_action(player_id: uuid.UUID, session: SessionDep, current
             method="POST",
             path=f"/iconbit/{player_id}/play",
         )
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
-    if player.device_type != "iconbit":
-        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    player = _get_media_player_or_404(session, player_id)
+    _require_iconbit(player)
     ok = await asyncio.to_thread(iconbit_play, player.ip_address)
     if not ok:
         media_player_ops_total.labels(operation="iconbit_play", result="error").inc()
@@ -412,11 +410,8 @@ async def iconbit_stop_action(player_id: uuid.UUID, session: SessionDep, current
             method="POST",
             path=f"/iconbit/{player_id}/stop",
         )
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
-    if player.device_type != "iconbit":
-        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    player = _get_media_player_or_404(session, player_id)
+    _require_iconbit(player)
     ok = await asyncio.to_thread(iconbit_stop, player.ip_address)
     if not ok:
         media_player_ops_total.labels(operation="iconbit_stop", result="error").inc()
@@ -439,11 +434,8 @@ async def iconbit_play_file_action(
             path=f"/iconbit/{player_id}/play-file",
             json_body={"filename": filename},
         )
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
-    if player.device_type != "iconbit":
-        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    player = _get_media_player_or_404(session, player_id)
+    _require_iconbit(player)
     ok = await asyncio.to_thread(iconbit_play_file, player.ip_address, filename)
     if not ok:
         media_player_ops_total.labels(operation="iconbit_play_file", result="error").inc()
@@ -466,11 +458,8 @@ async def iconbit_delete_file_action(
             path=f"/iconbit/{player_id}/delete-file",
             json_body={"filename": filename},
         )
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
-    if player.device_type != "iconbit":
-        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    player = _get_media_player_or_404(session, player_id)
+    _require_iconbit(player)
     ok = await asyncio.to_thread(iconbit_delete_file, player.ip_address, filename)
     if not ok:
         media_player_ops_total.labels(operation="iconbit_delete_file", result="error").inc()
@@ -494,11 +483,8 @@ async def iconbit_upload_action(
             path=f"/iconbit/{player_id}/upload",
             files={"file": (file.filename or "upload.mp3", content, file.content_type or "application/octet-stream")},
         )
-    player = session.get(MediaPlayer, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Media player not found")
-    if player.device_type != "iconbit":
-        raise HTTPException(status_code=400, detail="Not an Iconbit device")
+    player = _get_media_player_or_404(session, player_id)
+    _require_iconbit(player)
     content = await file.read()
     ok = await asyncio.to_thread(iconbit_upload_file, player.ip_address, file.filename or "upload.mp3", content)
     if not ok:

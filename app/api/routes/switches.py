@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.api.routes._service_errors import conflict, not_found
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.domains.inventory.models import NetworkSwitch
@@ -151,6 +152,28 @@ async def _run_switch_discovery(subnet: str, ports: str, known_switches: list[di
 CACHE_TTL = 30
 
 
+def _get_switch_or_404(session: SessionDep, switch_id: uuid.UUID) -> NetworkSwitch:
+    switch = session.get(NetworkSwitch, switch_id)
+    if not switch:
+        raise not_found("Switch not found")
+    return switch
+
+
+def _ensure_unique_switch_ip(
+    session: SessionDep,
+    ip_address: str,
+    *,
+    excluded_switch_id: uuid.UUID | None = None,
+    conflict_status_code: int = 409,
+) -> None:
+    filters = [NetworkSwitch.ip_address == ip_address]
+    if excluded_switch_id is not None:
+        filters.append(NetworkSwitch.id != excluded_switch_id)
+    existing = session.exec(select(NetworkSwitch).where(*filters)).first()
+    if existing:
+        raise conflict("Switch with this IP already exists", status_code=conflict_status_code)
+
+
 async def _invalidate_cache() -> None:
     await invalidate_entity_cache("switches")
 
@@ -204,9 +227,7 @@ async def read_switches(
 
 @router.post("/", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])
 async def create_switch(session: SessionDep, switch_in: NetworkSwitchCreate) -> NetworkSwitch:
-    existing = session.exec(select(NetworkSwitch).where(NetworkSwitch.ip_address == switch_in.ip_address)).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Switch with this IP already exists")
+    _ensure_unique_switch_ip(session, switch_in.ip_address, conflict_status_code=400)
     switch = NetworkSwitch(**switch_in.model_dump())
     session.add(switch)
     session.commit()
@@ -266,9 +287,7 @@ async def discover_add_switch(session: SessionDep, payload: dict) -> NetworkSwit
     ip = str(payload.get("ip_address", "")).strip()
     if not ip:
         raise HTTPException(status_code=422, detail="ip_address is required")
-    existing = session.exec(select(NetworkSwitch).where(NetworkSwitch.ip_address == ip)).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Switch with this IP already exists")
+    _ensure_unique_switch_ip(session, ip)
     vendor = str(payload.get("vendor") or "generic").strip().lower()
     if vendor not in {"cisco", "dlink", "generic"}:
         vendor = "generic"
@@ -298,16 +317,10 @@ async def discover_update_switch_ip(
     session: SessionDep,
     new_ip: str = "",
 ) -> NetworkSwitch:
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
-        raise HTTPException(status_code=404, detail="Switch not found")
+    switch = _get_switch_or_404(session, switch_id)
     old_ip = switch.ip_address
     if new_ip:
-        conflict = session.exec(
-            select(NetworkSwitch).where(NetworkSwitch.ip_address == new_ip, NetworkSwitch.id != switch.id)
-        ).first()
-        if conflict:
-            raise HTTPException(status_code=409, detail="Another switch already has this IP")
+        _ensure_unique_switch_ip(session, new_ip, excluded_switch_id=switch.id)
         switch.ip_address = new_ip
         if old_ip != new_ip:
             write_event_log(
@@ -330,27 +343,15 @@ async def discover_update_switch_ip(
 
 @router.get("/{switch_id}", response_model=NetworkSwitchPublic)
 def read_switch(switch_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> NetworkSwitch:
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
-        raise HTTPException(status_code=404, detail="Switch not found")
-    return switch
+    return _get_switch_or_404(session, switch_id)
 
 
 @router.patch("/{switch_id}", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])
 async def update_switch(session: SessionDep, switch_id: uuid.UUID, switch_in: NetworkSwitchUpdate) -> NetworkSwitch:
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
-        raise HTTPException(status_code=404, detail="Switch not found")
+    switch = _get_switch_or_404(session, switch_id)
     update_data = switch_in.model_dump(exclude_unset=True)
     if "ip_address" in update_data and update_data["ip_address"] is not None:
-        existing = session.exec(
-            select(NetworkSwitch).where(
-                NetworkSwitch.ip_address == update_data["ip_address"],
-                NetworkSwitch.id != switch_id,
-            )
-        ).first()
-        if existing:
-            raise HTTPException(status_code=409, detail="Switch with this IP already exists")
+        _ensure_unique_switch_ip(session, update_data["ip_address"], excluded_switch_id=switch_id)
     switch.updated_at = datetime.now(UTC)
     switch.sqlmodel_update(update_data)
     session.add(switch)
@@ -362,9 +363,7 @@ async def update_switch(session: SessionDep, switch_id: uuid.UUID, switch_in: Ne
 
 @router.delete("/{switch_id}", dependencies=[Depends(get_current_active_superuser)])
 async def delete_switch(session: SessionDep, switch_id: uuid.UUID) -> Message:
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
-        raise HTTPException(status_code=404, detail="Switch not found")
+    switch = _get_switch_or_404(session, switch_id)
     session.delete(switch)
     session.commit()
     await _invalidate_cache()
@@ -413,9 +412,7 @@ async def get_switch_aps(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> list[AccessPointInfo]:
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
-        raise HTTPException(status_code=404, detail="Switch not found")
+    switch = _get_switch_or_404(session, switch_id)
     if switch.vendor != "cisco":
         raise HTTPException(status_code=400, detail="Access point discovery is available for Cisco switches")
 
@@ -470,9 +467,7 @@ async def reboot_access_point(
         finally:
             await _release_switch_write_lock(lock_key)
     try:
-        switch = session.get(NetworkSwitch, switch_id)
-        if not switch:
-            raise HTTPException(status_code=404, detail="Switch not found")
+        switch = _get_switch_or_404(session, switch_id)
         if switch.vendor != "cisco":
             raise HTTPException(status_code=400, detail="AP reboot is available for Cisco switches")
 
@@ -519,9 +514,7 @@ async def get_switch_ports(
     if cached := await get_cached_model(cache_key, SwitchPortsPublic):
         return cached
 
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
-        raise HTTPException(status_code=404, detail="Switch not found")
+    switch = _get_switch_or_404(session, switch_id)
     provider = resolve_switch_provider(switch)
     operation = "get_ports"
     vendor = switch.vendor
@@ -594,9 +587,7 @@ async def _run_port_write(
 ) -> Message:
     _require_superuser(current_user)
     safe_port = _validate_switch_port(port)
-    switch = session.get(NetworkSwitch, switch_id)
-    if not switch:
-        raise HTTPException(status_code=404, detail="Switch not found")
+    switch = _get_switch_or_404(session, switch_id)
     lock_key = await _acquire_switch_write_lock(switch_id)
     if operation in {"admin_state", "vlan", "poe", "mode"}:
         await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation=operation)

@@ -1,19 +1,19 @@
-# Rollout Policy (Kubernetes-first)
+# Rollout Policy (Compose-first)
 
 ## Progressive rollout
 
-1. Deploy to `dev` overlay and run smoke checks.
-2. Deploy to `staging` overlay and run contract + integration checks.
-3. Manual approval.
-4. Deploy to `prod` with rolling/canary strategy.
+1. Update branch and run local checks (`pytest`, frontend tests, `docker compose config -q`).
+2. Deploy to target server with `./scripts/deploy-compose-prod.sh`.
+3. Validate readiness and smoke checks.
+4. Monitor operational metrics and logs for the watch window.
 
 ## Required gates
 
 - Service descriptor validation (`services/*/service.yaml`)
 - Lint + tests for changed services
-- Image build
-- Security scan (SBOM + vulnerability scan)
-- Smoke checks against health endpoints
+- Successful image build
+- Readiness check: `curl -kfsS https://localhost/ready`
+- Smoke checks: `./scripts/smoke-contract.sh`
 
 ## SLO watch window
 

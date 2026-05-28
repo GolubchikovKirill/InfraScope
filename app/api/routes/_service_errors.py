@@ -29,3 +29,11 @@ def to_http_error(exc: Exception, *, operation: str) -> HTTPException:
     if isinstance(exc, ValueError):
         return HTTPException(status_code=400, detail=str(exc))
     return HTTPException(status_code=502, detail=f"Не удалось {operation}: {exc}")
+
+
+def not_found(detail: str) -> HTTPException:
+    return HTTPException(status_code=404, detail=detail)
+
+
+def conflict(detail: str, *, status_code: int = 409) -> HTTPException:
+    return HTTPException(status_code=status_code, detail=detail)

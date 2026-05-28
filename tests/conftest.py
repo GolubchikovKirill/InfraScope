@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,7 +23,9 @@ from app.core.security import get_password_hash
 from app.main import app
 from app.models import User
 
-TEST_DB_PATH = Path(tempfile.gettempdir()) / "test_infrascope.db"
+TEST_DB_DIR = Path(tempfile.gettempdir()) / f"infrascope-test-db-{uuid4().hex}"
+TEST_DB_DIR.mkdir(parents=True, exist_ok=True)
+TEST_DB_PATH = TEST_DB_DIR / "test_infrascope.db"
 TEST_DB_URL = f"sqlite:///{TEST_DB_PATH}"
 engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
 
@@ -32,6 +36,13 @@ async def _noop_lifespan(_app):
 
 
 app.router.lifespan_context = _noop_lifespan
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_test_db_on_exit():
+    yield
+    engine.dispose()
+    shutil.rmtree(TEST_DB_DIR, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
