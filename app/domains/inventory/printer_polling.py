@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
-from app.core.redis import get_redis
 from app.core.config import settings
+from app.core.redis import get_redis
 from app.domains.inventory.models import Printer
 from app.domains.inventory.schemas import PrintersPublic
 from app.observability.metrics import printer_polls_total, set_device_counts

@@ -458,6 +458,16 @@ Production smoke/contract check:
 ./scripts/smoke-contract.sh
 ```
 
+Local quality gate before push:
+
+```bash
+chmod +x scripts/quality-gate.sh scripts/install-git-hooks.sh
+./scripts/install-git-hooks.sh
+./scripts/quality-gate.sh
+```
+
+After installing hooks, each `git push` runs the same gate automatically and aborts push on any failed check.
+
 ## Логи
 
 ```bash
