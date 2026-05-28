@@ -33,6 +33,27 @@ def _decode_token_payload(raw_token: str, expected_type: str) -> tuple[dict, Tok
     return payload, token_data
 
 
+def _parse_subject_user_id(token_data: TokenPayload) -> uuid.UUID | None:
+    if not token_data.sub:
+        return None
+    try:
+        return uuid.UUID(token_data.sub)
+    except ValueError:
+        return None
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.AUTH_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
 async def _blacklist_payload(payload: dict) -> None:
     jti = payload.get("jti")
     exp = payload.get("exp")
@@ -64,15 +85,7 @@ def login_access_token(
 
     # pyrefly: ignore [bad-argument-type]
     refresh_token = create_refresh_token(user.id)
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=settings.AUTH_COOKIE_SECURE,
-        samesite="lax",
-        path="/",
-        max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    _set_refresh_cookie(response, refresh_token)
 
     return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
 
@@ -94,10 +107,7 @@ async def refresh_access_token(
     jti = payload.get("jti")
     if jti and await is_token_blacklisted(str(jti)):
         raise HTTPException(status_code=401, detail="Refresh token has been revoked")
-    try:
-        user_id = uuid.UUID(token_data.sub) if token_data.sub else None
-    except ValueError:
-        user_id = None
+    user_id = _parse_subject_user_id(token_data)
 
     user = session.get(User, user_id) if user_id else None
     if not user or not user.is_active:
@@ -105,15 +115,7 @@ async def refresh_access_token(
 
     await _blacklist_payload(payload)
     new_refresh_token = create_refresh_token(user.id)
-    response.set_cookie(
-        key="refresh_token",
-        value=new_refresh_token,
-        httponly=True,
-        secure=settings.AUTH_COOKIE_SECURE,
-        samesite="lax",
-        path="/",
-        max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    _set_refresh_cookie(response, new_refresh_token)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
 
