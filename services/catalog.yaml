@@ -1,0 +1,92 @@
+nodes:
+  - id: frontend
+    label: Frontend
+    kind: gateway
+    prometheus_job: ""
+    service_map_enabled: true
+  - id: backend
+    label: API Gateway
+    kind: gateway
+    prometheus_job: backend
+    service_map_enabled: true
+  - id: worker
+    label: Worker
+    kind: worker
+    prometheus_job: worker
+    service_map_enabled: true
+  - id: polling-service
+    label: Polling Service
+    kind: service
+    prometheus_job: polling-service
+    service_map_enabled: true
+  - id: discovery-service
+    label: Discovery Service
+    kind: service
+    prometheus_job: discovery-service
+    service_map_enabled: true
+  - id: network-control-service
+    label: Network Control Service
+    kind: service
+    prometheus_job: network-control-service
+    service_map_enabled: true
+  - id: media-service
+    label: Media Service
+    kind: service
+    prometheus_job: media-service
+    service_map_enabled: true
+  - id: ml-service
+    label: Prediction Service
+    kind: service
+    prometheus_job: ml-service
+    service_map_enabled: true
+  - id: kafka
+    label: Kafka
+    kind: infra
+    prometheus_job: ""
+    service_map_enabled: true
+  - id: jaeger
+    label: Jaeger
+    kind: infra
+    prometheus_job: ""
+    service_map_enabled: true
+edges:
+  - source: frontend
+    target: backend
+    transport: http
+    operation: ui requests
+  - source: backend
+    target: polling-service
+    transport: http
+    operation: internal proxy
+  - source: backend
+    target: discovery-service
+    transport: http
+    operation: internal proxy
+  - source: backend
+    target: network-control-service
+    transport: http
+    operation: internal proxy
+  - source: backend
+    target: media-service
+    transport: http
+    operation: media manifests
+  - source: backend
+    target: ml-service
+    transport: http
+    operation: prediction calls
+  - source: backend
+    target: kafka
+    transport: kafka
+    operation: event publish
+  - source: worker
+    target: polling-service
+    transport: http
+    operation: task dispatch
+  - source: worker
+    target: discovery-service
+    transport: http
+    operation: task dispatch
+  - source: worker
+    target: ml-service
+    transport: http
+    operation: prediction tasks

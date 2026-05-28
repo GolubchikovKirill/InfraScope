@@ -1,0 +1,31 @@
+name: polling-service
+display_name: Polling Service
+kind: service
+owner: platform-team
+compose_service: polling-service
+runtime:
+  language: python
+  module: app.polling_service.main:app
+  port: 8011
+observability:
+  prometheus_job: polling-service
+  health_path: /health
+  metrics_path: /metrics
+  service_map_enabled: true
+dependencies:
+  - target: db
+    transport: db
+    operation: device-state
+  - target: redis
+    transport: redis
+    operation: resilience-state
+k8s:
+  enabled: true
+  replicas: 1
+  resources_profile: medium
+  ingress_enabled: false
+ci:
+  lint_command: uv run ruff check app tests
+  test_command: uv run pytest tests/integration/api/test_printers.py tests/integration/api/test_switches.py -q
+  build_context: .
+  dockerfile: Dockerfile

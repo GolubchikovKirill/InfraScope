@@ -1,0 +1,29 @@
+name: Service CI Reusable
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+      lint_command:
+        required: true
+        type: string
+      test_command:
+        required: true
+        type: string
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Lint service
+        run: ${{ inputs.lint_command }}
+      - name: Test service
+        run: ${{ inputs.test_command }}

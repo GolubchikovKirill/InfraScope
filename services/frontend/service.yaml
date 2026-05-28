@@ -1,0 +1,28 @@
+name: frontend
+display_name: Frontend
+kind: gateway
+owner: platform-team
+compose_service: frontend
+runtime:
+  language: node
+  entrypoint: nginx
+  port: 80
+observability:
+  prometheus_job: ""
+  health_path: /health
+  metrics_path: ""
+  service_map_enabled: true
+dependencies:
+  - target: backend
+    transport: http
+    operation: ui-api
+k8s:
+  enabled: true
+  replicas: 2
+  resources_profile: small
+  ingress_enabled: true
+ci:
+  lint_command: cd frontend && npm run test:run -- App.test.tsx
+  test_command: cd frontend && npm run build
+  build_context: ./frontend
+  dockerfile: frontend/Dockerfile

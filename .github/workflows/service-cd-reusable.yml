@@ -1,0 +1,43 @@
+name: Service CD Reusable
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: ghcr.io/golubchikovkirill/${{ inputs.service_name }}:${{ inputs.image_tag }}
+      - name: Security scan placeholder
+        run: |
+          echo "Run trivy/grype scan here for ${{ inputs.service_name }}"
+
+  staging-smoke:
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    steps:
+      - name: Staging deploy placeholder
+        run: echo "Deploy ${{ inputs.service_name }} to staging and run smoke checks"
+
+  production-release:
+    runs-on: ubuntu-latest
+    needs: staging-smoke
+    environment: production
+    steps:
+      - name: Production rollout placeholder
+        run: echo "Progressive rollout for ${{ inputs.service_name }}"

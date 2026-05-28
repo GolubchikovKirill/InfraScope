@@ -1,0 +1,28 @@
+services:
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c "/app/scripts/prestart.sh &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: development
+      BACKEND_CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000","http://localhost:80"]'
+
+  frontend:
+    ports:
+      - "3000:80"

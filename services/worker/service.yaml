@@ -1,0 +1,31 @@
+name: worker
+display_name: Worker
+kind: worker
+owner: platform-team
+compose_service: worker
+runtime:
+  language: python
+  entrypoint: celery -A app.worker.celery_app.celery_app worker --loglevel=INFO
+  port: 9108
+observability:
+  prometheus_job: worker
+  health_path: /
+  metrics_path: /
+  service_map_enabled: true
+dependencies:
+  - target: backend
+    transport: http
+    operation: task-api
+  - target: redis
+    transport: redis
+    operation: broker-backend
+k8s:
+  enabled: true
+  replicas: 1
+  resources_profile: medium
+  ingress_enabled: false
+ci:
+  lint_command: uv run ruff check app tests
+  test_command: uv run pytest tests/integration/api/test_tasks.py -q
+  build_context: .
+  dockerfile: Dockerfile

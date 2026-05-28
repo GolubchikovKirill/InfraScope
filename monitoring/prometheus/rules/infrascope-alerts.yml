@@ -1,0 +1,230 @@
+groups:
+  - name: infrascope-core-alerts
+    rules:
+      - alert: InfraScopeBackendDown
+        expr: max_over_time(up{job="infrascope-backend"}[2m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "InfraScope backend недоступен"
+          description: "Prometheus не может собрать метрики backend более 2 минут."
+
+      - alert: InfraScopeHighApi5xxRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="infrascope-backend",status=~"5.."}[5m])) /
+            clamp_min(sum(rate(http_requests_total{job="infrascope-backend"}[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая доля 5xx"
+          description: "Доля 5xx ответов API выше 5% за последние 5 минут."
+
+      - alert: InfraScopeHighApiP95Latency
+        expr: |
+          1000 * histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="infrascope-backend"}[5m])) by (le)
+          ) > 1500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая latency API (p95)"
+          description: "p95 latency API выше 1.5s более 10 минут."
+
+      - alert: InfraScopeAuthFailuresSpike
+        expr: sum(increase(infrascope_auth_events_total{result="failure"}[10m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Скачок ошибок аутентификации"
+          description: "Более 30 неудачных auth-событий за 10 минут."
+
+      - alert: InfraScopeScannerFailures
+        expr: increase(infrascope_scanner_runs_total{result="error"}[30m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибка сканера сети"
+          description: "За последние 30 минут был минимум один неуспешный запуск scanner."
+
+      - alert: InfraScopeSnmpErrorsBurst
+        expr: sum(increase(infrascope_snmp_operations_total{result="error"}[15m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Массовые SNMP-ошибки"
+          description: "Более 20 SNMP ошибок за 15 минут."
+
+      - alert: InfraScopeSshErrorsBurst
+        expr: sum(increase(infrascope_ssh_operations_total{result="error"}[15m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Массовые SSH-ошибки"
+          description: "Более 10 SSH ошибок за 15 минут."
+
+      - alert: InfraScopeMediaOperationFailures
+        expr: sum(increase(infrascope_media_player_ops_total{result="error"}[15m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибки операций с медиаплеерами"
+          description: "Более 10 ошибок media operations за 15 минут."
+
+      - alert: InfraScopeHighOfflineDeviceRatio
+        expr: |
+          (
+            1 - (
+              sum(infrascope_devices_online{kind=~"printer|media_player|switch"}) /
+              clamp_min(sum(infrascope_devices_total{kind=~"printer|media_player|switch"}), 1)
+            )
+          ) > 0.2
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Высокая доля offline устройств"
+          description: "Более 20% устройств offline более 10 минут."
+
+      - alert: InfraScopeWorkerDown
+        expr: max_over_time(up{job="infrascope-worker"}[2m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "InfraScope worker недоступен"
+          description: "Prometheus не может собрать метрики worker более 2 минут."
+
+      - alert: InfraScopeWorkerTaskFailuresBurst
+        expr: sum(increase(infrascope_worker_task_executions_total{result="error"}[10m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Скачок ошибок worker задач"
+          description: "Более 5 failed worker tasks за 10 минут."
+
+      - alert: InfraScopeSwitchPortOpsErrorBurst
+        expr: sum(increase(infrascope_switch_port_ops_total{result="error"}[10m])) > 10
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Всплеск ошибок операций с портами"
+          description: "Более 10 неуспешных операций по портам свитчей за 10 минут."
+
+      - alert: InfraScopeSwitchPortWriteFailRateHigh
+        expr: |
+          (
+            sum by (vendor) (increase(infrascope_switch_port_ops_total{operation=~"admin_state|description|vlan|poe",result="error"}[15m])) /
+            clamp_min(sum by (vendor) (increase(infrascope_switch_port_ops_total{operation=~"admin_state|description|vlan|poe"}[15m])), 1)
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Высокий fail-rate write операций по портам"
+          description: "Доля ошибок write-операций по портам выше 30% ({{ $labels.vendor }}) за 15 минут."
+
+      - alert: InfraScopeApiErrorBudgetBurnFast
+        expr: |
+          (
+            sum(rate(http_requests_total{job="infrascope-backend",status=~"5.."}[5m])) /
+            clamp_min(sum(rate(http_requests_total{job="infrascope-backend"}[5m])), 0.001)
+          ) > 0.0144
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Быстрое сжигание error budget (API)"
+          description: "5xx rate превышает fast-burn порог для SLO 99%."
+
+      - alert: InfraScopeApiErrorBudgetBurnSlow
+        expr: |
+          (
+            sum(rate(http_requests_total{job="infrascope-backend",status=~"5.."}[1h])) /
+            clamp_min(sum(rate(http_requests_total{job="infrascope-backend"}[1h])), 0.001)
+          ) > 0.006
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Медленное сжигание error budget (API)"
+          description: "5xx rate превышает slow-burn порог для SLO 99%."
+
+      - alert: InfraScopeDeviceAvailabilitySLOBreach
+        expr: |
+          (
+            sum(infrascope_devices_online{kind=~"printer|media_player|switch"}) /
+            clamp_min(sum(infrascope_devices_total{kind=~"printer|media_player|switch"}), 1)
+          ) < 0.95
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SLO доступности устройств нарушен"
+          description: "Доступность устройств ниже 95% дольше 15 минут."
+
+      - alert: InfraScopeCircuitBreakerOpenBurst
+        expr: sum(increase(infrascope_poll_resilience_events_total{event="circuit_opened"}[10m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Массовое открытие circuit breaker"
+          description: "Более 10 circuit-open событий за 10 минут (проверьте сеть/доступность устройств)."
+
+      - alert: InfraScopeMLServiceDown
+        expr: max_over_time(up{job="infrascope-ml-service"}[2m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "InfraScope ML service недоступен"
+          description: "Prometheus не может собрать метрики ml-service более 2 минут."
+
+      - alert: InfraScopeMLTrainFailures
+        expr: sum(increase(infrascope_ml_train_runs_total{result!~"activated|candidate"}[1h])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибки обучения ML моделей"
+          description: "За последний час обнаружены неуспешные train run в ML контуре."
+
+      - alert: InfraScopePollingServiceDown
+        expr: max_over_time(up{job="infrascope-polling-service"}[2m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "InfraScope polling service недоступен"
+          description: "Prometheus не может собрать метрики polling-service более 2 минут."
+
+      - alert: InfraScopeDiscoveryServiceDown
+        expr: max_over_time(up{job="infrascope-discovery-service"}[2m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "InfraScope discovery service недоступен"
+          description: "Prometheus не может собрать метрики discovery-service более 2 минут."
+
+      - alert: InfraScopeNetworkControlServiceDown
+        expr: max_over_time(up{job="infrascope-network-control-service"}[2m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "InfraScope network-control service недоступен"
+          description: "Prometheus не может собрать метрики network-control-service более 2 минут."

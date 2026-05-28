@@ -1,0 +1,48 @@
+# Production override (Compose-only, safe defaults).
+#
+# This file intentionally keeps overrides minimal:
+# - no host network switches
+# - no service-level URL rewrites
+# - no duplicated env mappings
+#
+# Goal: predictable deployment on Linux server with a single command.
+
+services:
+  db:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  kafka:
+    restart: unless-stopped
+
+  kafka-ui:
+    restart: unless-stopped
+
+  jaeger:
+    restart: unless-stopped
+
+  backend:
+    restart: unless-stopped
+
+  worker:
+    restart: unless-stopped
+
+  ml-service:
+    restart: unless-stopped
+
+  polling-service:
+    restart: unless-stopped
+
+  discovery-service:
+    restart: unless-stopped
+
+  network-control-service:
+    restart: unless-stopped
+
+  media-service:
+    restart: unless-stopped
+
+  frontend:
+    restart: unless-stopped

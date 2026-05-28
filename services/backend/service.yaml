@@ -1,0 +1,34 @@
+name: backend
+display_name: API Gateway
+kind: gateway
+owner: platform-team
+compose_service: backend
+runtime:
+  language: python
+  module: app.main:app
+  port: 8000
+observability:
+  prometheus_job: backend
+  health_path: /health
+  metrics_path: /metrics
+  service_map_enabled: true
+dependencies:
+  - target: db
+    transport: db
+    operation: read-write
+  - target: redis
+    transport: redis
+    operation: cache-broker
+  - target: kafka
+    transport: kafka
+    operation: event-publish
+k8s:
+  enabled: true
+  replicas: 2
+  resources_profile: medium
+  ingress_enabled: true
+ci:
+  lint_command: uv run ruff check app tests
+  test_command: uv run pytest tests -q
+  build_context: .
+  dockerfile: Dockerfile

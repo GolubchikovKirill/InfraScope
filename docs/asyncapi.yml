@@ -1,0 +1,78 @@
+asyncapi: "3.0.0"
+info:
+  title: InfraScope Event Stream
+  version: "1.0.0"
+  description: |
+    Operational events emitted by InfraScope services to Kafka.
+defaultContentType: application/json
+servers:
+  localKafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Internal Docker network Kafka broker
+channels:
+  infrascope.events:
+    address: infrascope.events
+    messages:
+      EventLogMessage:
+        $ref: "#/components/messages/EventLogMessage"
+operations:
+  publishOperationalEvent:
+    action: send
+    channel:
+      $ref: "#/channels/infrascope.events"
+    summary: Backend publishes operational event logs
+    messages:
+      - $ref: "#/channels/infrascope.events/messages/EventLogMessage"
+components:
+  messages:
+    EventLogMessage:
+      name: EventLogMessage
+      title: Operational event log entry
+      payload:
+        $ref: "#/components/schemas/EventLogPayload"
+  schemas:
+    EventLogPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - severity
+        - category
+        - event_type
+        - message
+        - created_at
+      properties:
+        id:
+          type: string
+          description: Event UUID
+        trace_id:
+          type:
+            - string
+            - "null"
+          description: OpenTelemetry trace id for cross-service flow lookup
+          pattern: "^[0-9a-f]{32}$"
+        severity:
+          type: string
+          enum: [info, warning, error, critical]
+        category:
+          type: string
+        event_type:
+          type: string
+        message:
+          type: string
+        device_kind:
+          type:
+            - string
+            - "null"
+        device_name:
+          type:
+            - string
+            - "null"
+        ip_address:
+          type:
+            - string
+            - "null"
+        created_at:
+          type: string
+          format: date-time

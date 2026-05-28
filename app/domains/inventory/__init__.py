@@ -1,0 +1,1 @@
+"""Network inventory domain."""

@@ -1,0 +1,28 @@
+name: network-control-service
+display_name: Network Control Service
+kind: service
+owner: platform-team
+compose_service: network-control-service
+runtime:
+  language: python
+  module: app.network_control_service.main:app
+  port: 8013
+observability:
+  prometheus_job: network-control-service
+  health_path: /health
+  metrics_path: /metrics
+  service_map_enabled: true
+dependencies:
+  - target: db
+    transport: db
+    operation: inventory-read
+k8s:
+  enabled: true
+  replicas: 1
+  resources_profile: medium
+  ingress_enabled: false
+ci:
+  lint_command: uv run ruff check app tests
+  test_command: uv run pytest tests/integration/api/test_media_players.py tests/integration/api/test_switches.py -q
+  build_context: .
+  dockerfile: Dockerfile

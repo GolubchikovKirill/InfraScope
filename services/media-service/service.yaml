@@ -1,0 +1,31 @@
+name: media-service
+display_name: Media Service
+kind: service
+owner: platform-team
+compose_service: media-service
+runtime:
+  language: python
+  module: app.media_service.main:app
+  port: 8014
+observability:
+  prometheus_job: media-service
+  health_path: /health
+  metrics_path: /metrics
+  service_map_enabled: true
+dependencies:
+  - target: db
+    transport: db
+    operation: media-manifest-state
+  - target: redis
+    transport: redis
+    operation: client-cache
+k8s:
+  enabled: true
+  replicas: 1
+  resources_profile: medium
+  ingress_enabled: false
+ci:
+  lint_command: uv run ruff check app tests
+  test_command: uv run pytest tests/integration/api/test_media_center.py -q
+  build_context: .
+  dockerfile: Dockerfile

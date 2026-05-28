@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+build/
+dist/
+wheels/
+*.egg-info
+.venv
+
+# Environment
+.env
+
+# SSL certificates (keep directory, ignore contents)
+certs/*
+!certs/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Local AI assistant tooling
+.claude/
+.continue/
+AGENTS.md
+
+# Local scratch artifacts
+/.tmp_system_ui/
+/log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+/tmp_*.png
+/test_infrascope.db
+
+# Testing / Linting
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
