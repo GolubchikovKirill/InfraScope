@@ -64,7 +64,7 @@ InfraScope — платформа мониторинга инфраструкт�
   - `ONEC_DUTY_*_API_URL` и `ONEC_DUTY_*_API_TOKEN` — HTTP endpoint интеграции 1С (обязателен для фактической выгрузки).
   - `ONEC_DUTY_*_IB_CONNECTION`, `ONEC_DUTY_*_DOMAIN`, `ONEC_DUTY_*_TERMINAL_SERVER` — строка базы 1С/домен/терминальный сервер для эксплуатации и диагностики.
 - Пример строки базы 1С:
-  - `Srvr="vnk-srv-1c02";Ref="trade_rsm_dfree";`
+  - `Srvr="srv-1c-002;Ref="trade_rte_dfree";`
 - Важно: сама строка базы `Srvr/Ref` не заменяет `API_URL`; backend выполняет обмен через HTTP endpoint 1С.
 
 ---
