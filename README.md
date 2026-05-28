@@ -85,7 +85,7 @@ InfraScope — платформа мониторинга инфраструкт�
 ### 1) Подготовка
 
 ```bash
-git clone https://github.com/GolubchikovKirill/SiteGKA.git
+git clone https://github.com/GolubchikovKirill/InfraScope.git
 cd infrascope
 cp .env.example .env
 ```
@@ -243,7 +243,7 @@ curl -kfsS https://localhost/ready
 
 БД при этом не удаляется, пока вы не делаете `docker compose down -v`.
 
-### Миграция старого volume `sitegka_postgres_data`
+### Миграция старого volume `sitegka_postgres_data` (legacy)
 
 Если данные остались в старом volume:
 
