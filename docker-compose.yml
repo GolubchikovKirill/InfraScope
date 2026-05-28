@@ -107,6 +107,8 @@ services:
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     dns:
       - ${DNS_SERVER:-8.8.8.8}
+    dns_search:
+      - ${DNS_SEARCH_DOMAIN:-}
     volumes:
       - media_library:/var/lib/infrascope/media-library
     depends_on:
@@ -225,6 +227,8 @@ services:
       - uvicorn app.polling_service.main:app --host 0.0.0.0 --port 8011
     dns:
       - ${DNS_SERVER:-8.8.8.8}
+    dns_search:
+      - ${DNS_SEARCH_DOMAIN:-}
     depends_on:
       db:
         condition: service_healthy
@@ -261,6 +265,10 @@ services:
       - sh
       - -c
       - uvicorn app.discovery_service.main:app --host 0.0.0.0 --port 8012
+    dns:
+      - ${DNS_SERVER:-8.8.8.8}
+    dns_search:
+      - ${DNS_SEARCH_DOMAIN:-}
     depends_on:
       redis:
         condition: service_healthy

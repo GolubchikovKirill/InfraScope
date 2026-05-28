@@ -12,7 +12,7 @@ from app.api.routes._service_errors import conflict, not_found
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.domains.inventory.models import Computer
-from app.domains.inventory.reachability import probe_host_ports
+from app.domains.inventory.reachability import build_dns_search_suffixes, probe_host_ports
 from app.domains.inventory.schemas import ComputerCreate, ComputerPublic, ComputersPublic, ComputerUpdate
 from app.domains.shared.schemas import Message
 from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
@@ -54,6 +54,7 @@ def _ensure_unique_hostname(
 
 
 def _probe_computer(hostname: str) -> tuple[bool, str | None]:
+    suffixes = build_dns_search_suffixes(settings.DNS_SEARCH_SUFFIXES, settings.DOMAIN)
     result = probe_host_ports(
         hostname,
         ports=_COMPUTER_PROBE_PORTS,
@@ -62,7 +63,7 @@ def _probe_computer(hostname: str) -> tuple[bool, str | None]:
         max_attempts=settings.NETWORK_PROBE_MAX_ATTEMPTS,
         retry_backoff_seconds=settings.NETWORK_PROBE_RETRY_BACKOFF_SECONDS,
         timeout_multiplier=settings.NETWORK_PROBE_TIMEOUT_MULTIPLIER,
-        dns_search_suffixes=settings.DNS_SEARCH_SUFFIXES,
+        dns_search_suffixes=suffixes,
         dns_server=settings.DNS_SERVER,
     )
     return result.is_online, result.reason

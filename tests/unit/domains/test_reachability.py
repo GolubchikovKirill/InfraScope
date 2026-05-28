@@ -23,6 +23,18 @@ def test_resolve_hostname_tries_dns_search_suffix(monkeypatch) -> None:
     assert calls == ["workstation", "workstation.example.local"]
 
 
+def test_build_dns_search_suffixes_prefers_explicit_value() -> None:
+    assert reachability.build_dns_search_suffixes("corp.local,corp.ru", "regstaer.local") == "corp.local,corp.ru"
+
+
+def test_build_dns_search_suffixes_uses_domain_when_no_explicit_suffixes() -> None:
+    assert reachability.build_dns_search_suffixes("", "regstaer.local") == "regstaer.local"
+
+
+def test_build_dns_search_suffixes_ignores_ip_fallback_domain() -> None:
+    assert reachability.build_dns_search_suffixes("", "10.10.98.246") == ""
+
+
 def test_probe_host_ports_returns_online_on_first_open_port(monkeypatch) -> None:
     monkeypatch.setattr(reachability.socket, "gethostbyname", lambda _hostname: "10.10.1.20")
     checked: list[int] = []

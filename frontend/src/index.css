@@ -212,6 +212,44 @@ body {
   color: #64748b;
 }
 
+.app-brand-title {
+  color: #0f172a;
+}
+
+.app-brand-subtitle {
+  color: #475569;
+  font-weight: 500;
+}
+
+.app-account-name {
+  color: #111827;
+}
+
+.app-account-subtitle {
+  color: #475569;
+  font-weight: 500;
+}
+
+.app-session-pill {
+  color: #334155;
+}
+
+.app-sidebar .text-slate-500 {
+  color: #475569;
+}
+
+.app-sidebar .text-slate-700 {
+  color: #1f2937;
+}
+
+.app-topbar .text-slate-500 {
+  color: #475569;
+}
+
+.app-topbar .text-slate-700 {
+  color: #1f2937;
+}
+
 .app-empty {
   border: 1px dashed var(--app-panel-border);
   border-radius: 10px;
@@ -286,6 +324,26 @@ body {
 
 :root[data-theme="dark"] .app-page-subtitle {
   color: #94a3b8;
+}
+
+:root[data-theme="dark"] .app-brand-title {
+  color: #f1f5f9;
+}
+
+:root[data-theme="dark"] .app-brand-subtitle {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .app-account-name {
+  color: #f1f5f9;
+}
+
+:root[data-theme="dark"] .app-account-subtitle {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .app-session-pill {
+  color: #e2e8f0;
 }
 
 .app-compact-scroll {

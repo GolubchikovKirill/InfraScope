@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import socket
 import time
 from collections.abc import Callable
@@ -24,6 +25,20 @@ def resolve_hostname(hostname: str, *, dns_search_suffixes: str = "", dns_server
         dns_search_suffixes=dns_search_suffixes,
         dns_server=dns_server,
     )
+
+
+def build_dns_search_suffixes(dns_search_suffixes: str, fallback_domain: str = "") -> str:
+    explicit = dns_search_suffixes.strip()
+    if explicit:
+        return explicit
+    candidate = fallback_domain.strip().strip(".")
+    if not candidate:
+        return ""
+    try:
+        ipaddress.ip_address(candidate)
+        return ""
+    except ValueError:
+        return candidate if "." in candidate else ""
 
 
 def probe_host_ports(

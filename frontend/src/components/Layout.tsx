@@ -115,8 +115,8 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <Server className="h-5 w-5 text-white" />
               </button>
               <div className="min-w-0">
-                <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">InfraScope</div>
-                <div className="text-xs text-slate-500">Панель инфраструктуры</div>
+                <div className="app-brand-title text-lg font-semibold">InfraScope</div>
+                <div className="app-brand-subtitle text-xs">Панель инфраструктуры</div>
               </div>
             </div>
           </div>
@@ -307,10 +307,10 @@ export default function Layout({ children }: { children: ReactNode }) {
               </div>
               <div className="flex items-center gap-3">
                 <div className="hidden md:flex flex-col items-end leading-tight">
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{displayName}</span>
-                  <span className="text-xs text-slate-500">{buildAccountSubtitle(accountEmail, displayName, isSuperuser)}</span>
+                  <span className="app-account-name text-sm font-semibold">{displayName}</span>
+                  <span className="app-account-subtitle text-xs">{buildAccountSubtitle(accountEmail, displayName, isSuperuser)}</span>
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-[var(--app-panel-border)] bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-600 dark:bg-slate-900/70 dark:text-slate-200">
+                <div className="app-session-pill inline-flex items-center gap-2 rounded-full border border-[var(--app-panel-border)] bg-white/70 px-3 py-1.5 text-xs font-semibold dark:bg-slate-900/70">
                   <span className={`h-2 w-2 rounded-full ${isOnline ? "app-status-dot bg-emerald-500" : "bg-slate-400"}`} />
                   {isOnline ? "Сессия активна" : "Нет сессии"}
                 </div>
