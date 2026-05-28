@@ -85,4 +85,33 @@ describe("PrinterCard", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("CF259A"));
     expect(onCopyToner).toHaveBeenCalledWith("CF259A");
   });
+
+  it("closes additional actions menu on outside click and Escape", async () => {
+    render(
+      <PrinterCard
+        printer={printer}
+        onPoll={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        isPolling={false}
+        isSuperuser={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("Дополнительные действия"));
+    expect(screen.getByText("Редактировать")).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => {
+      expect(screen.queryByText("Редактировать")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle("Дополнительные действия"));
+    expect(screen.getByText("Редактировать")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Редактировать")).not.toBeInTheDocument();
+    });
+  });
 });

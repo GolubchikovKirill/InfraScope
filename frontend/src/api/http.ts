@@ -56,7 +56,7 @@ api.interceptors.response.use(
           .then((token) => {
             originalRequest.headers = originalRequest.headers ?? {};
             originalRequest.headers.Authorization = `Bearer ${token}`;
-            return api(originalRequest);
+            return api.request(originalRequest);
           })
           .catch((err) => Promise.reject(err));
       }
@@ -77,7 +77,7 @@ api.interceptors.response.use(
         originalRequest.headers = originalRequest.headers ?? {};
         originalRequest.headers.Authorization = `Bearer ${token}`;
         processQueue(null, token);
-        return api(originalRequest);
+        return api.request(originalRequest);
       } catch (err) {
         processQueue(err, null);
         localStorage.removeItem("access_token");

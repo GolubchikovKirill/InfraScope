@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Network, Wifi, Clock, Cpu,
@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import type { NetworkSwitch, AccessPoint } from "../client";
 import { getSwitchAPs, rebootAP } from "../client";
+import { useClickOutside } from "../hooks/useClickOutside";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface Props {
   sw: NetworkSwitch;
@@ -86,6 +88,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
 export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, isPolling, isSuperuser }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
 
   const { data: aps, isLoading: loadingAPs } = useQuery({
     queryKey: ["switch-aps", sw.id],
@@ -97,6 +100,9 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
   const polledAt = sw.last_polled_at
     ? new Date(sw.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
+  const closeActions = useCallback(() => setIsActionsOpen(false), []);
+  useClickOutside(actionsRef, isActionsOpen, closeActions);
+  useEscapeKey(isActionsOpen, closeActions);
 
   return (
     <div className={`app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col ${isActionsOpen ? "relative z-30" : ""}`}>
@@ -194,7 +200,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
-          <div className="relative flex items-center gap-1">
+          <div ref={actionsRef} className="relative flex items-center gap-1">
             <button
               onClick={() => onPoll(sw.id)}
               disabled={isPolling}

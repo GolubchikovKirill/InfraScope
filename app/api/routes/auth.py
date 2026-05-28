@@ -73,6 +73,8 @@ def login_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
     """OAuth2 compatible token login, get an access token for future requests."""
+    # `request` is required by the rate limiter decorator context.
+    _ = request
     user: User | None = crud.authenticate(session=session, email=form_data.username, password=form_data.password)
     if not user:
         auth_events_total.labels(result="failure", reason="invalid_credentials").inc()
@@ -83,11 +85,11 @@ def login_access_token(
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     auth_events_total.labels(result="success", reason="login").inc()
 
-    # pyrefly: ignore [bad-argument-type]
-    refresh_token = create_refresh_token(user.id)
+    user_id = str(user.id)
+    refresh_token = create_refresh_token(user_id)
     _set_refresh_cookie(response, refresh_token)
 
-    return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
+    return Token(access_token=create_access_token(user_id, expires_delta=access_token_expires))
 
 
 @router.post("/refresh")
@@ -114,10 +116,11 @@ async def refresh_access_token(
         raise HTTPException(status_code=401, detail="User not found")
 
     await _blacklist_payload(payload)
-    new_refresh_token = create_refresh_token(user.id)
+    user_id_str = str(user.id)
+    new_refresh_token = create_refresh_token(user_id_str)
     _set_refresh_cookie(response, new_refresh_token)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return Token(access_token=create_access_token(user.id, expires_delta=access_token_expires))
+    return Token(access_token=create_access_token(user_id_str, expires_delta=access_token_expires))
 
 
 @router.post("/logout")
@@ -142,7 +145,13 @@ async def logout(request: Request, response: Response, token: TokenDep) -> dict:
     return {"message": "ok"}
 
 
+@router.get("/me", response_model=UserPublic)
+def read_current_user(current_user: CurrentUser) -> UserPublic:
+    """Return the current authenticated user."""
+    return UserPublic.model_validate(current_user)
+
+
 @router.post("/test-token", response_model=UserPublic)
 def test_token(current_user: CurrentUser) -> UserPublic:
-    """Test access token validity."""
-    return current_user
+    """Backward-compatible token validity endpoint."""
+    return UserPublic.model_validate(current_user)

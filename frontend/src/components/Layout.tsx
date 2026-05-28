@@ -22,11 +22,20 @@ import {
 import { readThemeMode, setThemeMode, type ThemeMode } from "../theme";
 import { motion, AnimatePresence } from "framer-motion";
 
+function buildAccountSubtitle(email: string, displayName: string, isSuperuser: boolean): string {
+  if (email && displayName !== email) {
+    return email;
+  }
+  return isSuperuser ? "Администратор" : "Пользователь";
+}
+
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const isSuperuser = user?.is_superuser ?? false;
-  const displayName = user?.full_name?.trim() || user?.email || "Пользователь";
+  const fullName = user?.full_name?.trim() ?? "";
+  const displayName = fullName || user?.email || "Пользователь";
+  const accountEmail = user?.email ?? "";
   const isOnline = Boolean(user);
   const pageTitles: Array<{ match: (path: string) => boolean; title: string; subtitle: string }> = [
     { match: (path) => path === "/", title: "Принтеры", subtitle: "Статусы, тонер и склад картриджей" },
@@ -297,9 +306,9 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <p className="app-page-subtitle truncate text-xs mt-0.5">{currentPage.subtitle}</p>
               </div>
               <div className="flex items-center gap-3">
-                <div className="hidden lg:flex flex-col items-end">
+                <div className="hidden md:flex flex-col items-end leading-tight">
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{displayName}</span>
-                  <span className="text-xs text-slate-500">{isSuperuser ? "Администратор" : "Пользователь"}</span>
+                  <span className="text-xs text-slate-500">{buildAccountSubtitle(accountEmail, displayName, isSuperuser)}</span>
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-[var(--app-panel-border)] bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-600 dark:bg-slate-900/70 dark:text-slate-200">
                   <span className={`h-2 w-2 rounded-full ${isOnline ? "app-status-dot bg-emerald-500" : "bg-slate-400"}`} />

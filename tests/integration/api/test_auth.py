@@ -30,6 +30,15 @@ def test_test_token_endpoint_requires_valid_token(client: TestClient, admin_toke
     assert response.json()["email"] == "admin@example.com"
 
 
+def test_me_endpoint_requires_valid_token(client: TestClient, admin_token: str):
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["email"] == "admin@example.com"
+
+
 def test_refresh_token_cannot_be_used_as_bearer(client: TestClient, admin_user):
     login = client.post(
         "/api/v1/auth/login",

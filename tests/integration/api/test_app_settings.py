@@ -55,3 +55,7 @@ def test_app_settings_patch_rejects_empty_values(client, admin_token: str):
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 422
+    body = response.json()
+    assert body["detail"] == "Validation error"
+    assert isinstance(body["errors"], list)
+    assert body["errors"]

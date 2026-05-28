@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   RefreshCw,
   Pencil,
@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import type { Printer } from "../client";
 import TonerBar from "./TonerBar";
+import { useClickOutside } from "../hooks/useClickOutside";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface Props {
   printer: Printer;
@@ -84,6 +86,7 @@ export default function PrinterCard({
   const [isTonerModelsOpen, setIsTonerModelsOpen] = useState(false);
   const [isMlOpen, setIsMlOpen] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
   const [copiedToner, setCopiedToner] = useState<string | null>(null);
   const polledAt = printer.last_polled_at
     ? new Date(printer.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
@@ -125,6 +128,9 @@ export default function PrinterCard({
       window.setTimeout(() => setCopiedToner((current) => (current === name ? null : current)), 1600);
     }
   };
+  const closeActions = useCallback(() => setIsActionsOpen(false), []);
+  useClickOutside(actionsRef, isActionsOpen, closeActions);
+  useEscapeKey(isActionsOpen, closeActions);
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
@@ -319,7 +325,7 @@ export default function PrinterCard({
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
-          <div className="relative flex items-center gap-1">
+          <div ref={actionsRef} className="relative flex items-center gap-1">
             <button
               onClick={() => onPoll(printer.id)}
               disabled={isPolling}
@@ -349,7 +355,7 @@ export default function PrinterCard({
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
                 {isActionsOpen && (
-                  <div className="absolute right-0 top-8 z-20 app-panel min-w-[140px] p-1.5">
+                  <div className="absolute right-0 top-8 z-50 app-panel min-w-[140px] p-1.5 shadow-xl">
                     <button
                       onClick={() => { setIsActionsOpen(false); onEdit(printer); }}
                       className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-100 transition"

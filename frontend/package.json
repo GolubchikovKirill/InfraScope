@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "test:run": "vitest run --coverage",
+    "test:run": "mkdir -p coverage/.tmp && NODE_OPTIONS='' vitest run --coverage --maxWorkers=1 --no-file-parallelism",
     "lint": "npm run typecheck && npm run test:run",
     "test:e2e": "playwright test"
   },

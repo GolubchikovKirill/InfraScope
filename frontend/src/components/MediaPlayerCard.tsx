@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Monitor, Music, ExternalLink, Clock, Cpu,
@@ -9,6 +9,8 @@ import {
   getIconbitStatus, iconbitPlay, iconbitStop,
   iconbitPlayFile, iconbitDeleteFile, iconbitUpload,
 } from "../client";
+import { useClickOutside } from "../hooks/useClickOutside";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface Props {
   player: MediaPlayer;
@@ -229,6 +231,7 @@ export default function MediaPlayerCard({
   mediaHeartbeat,
 }: Props) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
   const [copiedDeviceId, setCopiedDeviceId] = useState(false);
   const style = DEVICE_STYLES[player.device_type] ?? DEVICE_STYLES.nettop;
   const Icon = style.icon;
@@ -243,6 +246,9 @@ export default function MediaPlayerCard({
   const ports = player.open_ports?.split(",").filter(Boolean) ?? [];
   const netSupportTarget = (player.hostname || "").trim();
   const showMediaStatus = isNettop || Boolean(mediaAssignment);
+  const closeActions = useCallback(() => setIsActionsOpen(false), []);
+  useClickOutside(actionsRef, isActionsOpen, closeActions);
+  useEscapeKey(isActionsOpen, closeActions);
 
   const copyNetSupportTarget = async () => {
     if (!netSupportTarget || !navigator.clipboard) return;
@@ -389,7 +395,7 @@ export default function MediaPlayerCard({
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
-          <div className="relative flex items-center gap-1">
+          <div ref={actionsRef} className="relative flex items-center gap-1">
             <button
               onClick={() => onPoll(player.id)}
               disabled={isPolling}

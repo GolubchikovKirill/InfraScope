@@ -5,17 +5,10 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { login as apiLogin, logout as apiLogout, getMe } from "./client";
-
-interface User {
-  id: string;
-  email: string;
-  full_name: string | null;
-  is_superuser: boolean;
-}
+import { login as apiLogin, logout as apiLogout, getMe, type AuthUser } from "./client";
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -24,7 +17,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
