@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     SWITCH_POLL_MAX_CONCURRENCY: int = 16
     COMPUTER_POLL_CONCURRENCY: int = 48
     CASH_REGISTER_POLL_CONCURRENCY: int = 48
+    NETWORK_PROBE_MAX_ATTEMPTS: int = 2
+    NETWORK_PROBE_RETRY_BACKOFF_SECONDS: float = 0.15
+    NETWORK_PROBE_TIMEOUT_MULTIPLIER: float = 1.25
 
     DOMAIN: str = "infrascope.local"
     DNS_SERVER: str = ""

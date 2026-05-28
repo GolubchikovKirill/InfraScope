@@ -165,6 +165,19 @@ network_discovery_devices_total = Counter(
     ["kind"],
 )
 
+network_probe_attempts_total = Counter(
+    "infrascope_network_probe_attempts_total",
+    "Low-level network probe attempts by scope and result.",
+    ["scope", "result"],
+)
+
+network_probe_duration_seconds = Histogram(
+    "infrascope_network_probe_duration_seconds",
+    "Duration of low-level network probe attempts.",
+    ["scope", "result"],
+    buckets=(0.01, 0.03, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
+)
+
 poll_resilience_events_total = Counter(
     "infrascope_poll_resilience_events_total",
     "Polling resilience state machine and circuit breaker events.",

@@ -28,6 +28,10 @@ def probe_cash_register(hostname: str) -> tuple[bool, str | None]:
         hostname,
         ports=(3389, 445),
         timeout=1.5,
+        probe_scope="cash_registers",
+        max_attempts=settings.NETWORK_PROBE_MAX_ATTEMPTS,
+        retry_backoff_seconds=settings.NETWORK_PROBE_RETRY_BACKOFF_SECONDS,
+        timeout_multiplier=settings.NETWORK_PROBE_TIMEOUT_MULTIPLIER,
         dns_search_suffixes=settings.DNS_SEARCH_SUFFIXES,
         dns_server=settings.DNS_SERVER,
     )

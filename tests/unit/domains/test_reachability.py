@@ -35,6 +35,7 @@ def test_probe_host_ports_returns_online_on_first_open_port(monkeypatch) -> None
         "cash-01",
         ports=(445, 3389),
         timeout=1.5,
+        max_attempts=1,
         port_checker=fake_checker,
     )
 
@@ -69,6 +70,28 @@ def test_probe_host_ports_reports_closed_ports(monkeypatch) -> None:
     assert result.is_online is False
     assert result.reason == "port_closed"
     assert result.resolved_address == "10.10.1.30"
+
+
+def test_probe_host_ports_retries_and_succeeds(monkeypatch) -> None:
+    monkeypatch.setattr(reachability.socket, "gethostbyname", lambda _hostname: "10.10.1.31")
+    attempts = {"count": 0}
+
+    def flaky_checker(_address: str, _port: int, _timeout: float) -> bool:
+        attempts["count"] += 1
+        return attempts["count"] >= 2
+
+    result = reachability.probe_host_ports(
+        "retry-host",
+        ports=(445,),
+        timeout=0.1,
+        max_attempts=3,
+        retry_backoff_seconds=0.0,
+        timeout_multiplier=1.0,
+        port_checker=flaky_checker,
+    )
+
+    assert result.is_online is True
+    assert attempts["count"] == 2
 
 
 def test_resolve_hostname_returns_ip_literal() -> None:

@@ -58,6 +58,10 @@ def _probe_computer(hostname: str) -> tuple[bool, str | None]:
         hostname,
         ports=_COMPUTER_PROBE_PORTS,
         timeout=1.2,
+        probe_scope="computers",
+        max_attempts=settings.NETWORK_PROBE_MAX_ATTEMPTS,
+        retry_backoff_seconds=settings.NETWORK_PROBE_RETRY_BACKOFF_SECONDS,
+        timeout_multiplier=settings.NETWORK_PROBE_TIMEOUT_MULTIPLIER,
         dns_search_suffixes=settings.DNS_SEARCH_SUFFIXES,
         dns_server=settings.DNS_SERVER,
     )
