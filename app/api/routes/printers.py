@@ -48,6 +48,33 @@ router = APIRouter(tags=["printers"])
 CACHE_TTL = 30
 
 
+def _get_printer_or_404(session: SessionDep, printer_id: uuid.UUID) -> Printer:
+    printer = session.get(Printer, printer_id)
+    if not printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+    return printer
+
+
+def _check_unique_ip(session: SessionDep, ip_address: str, *, excluded_printer_id: uuid.UUID | None = None) -> None:
+    filters = [Printer.ip_address == ip_address]
+    if excluded_printer_id is not None:
+        filters.append(Printer.id != excluded_printer_id)
+    existing = session.exec(select(Printer).where(*filters)).first()
+    if existing:
+        status_code = 409 if excluded_printer_id is not None else 400
+        raise HTTPException(status_code=status_code, detail="Printer with this IP already exists")
+
+
+async def _resolve_mac_for_printer(printer: Printer) -> str | None:
+    if not (printer.connection_type == "ip" and printer.ip_address):
+        return None
+    return await resolve_mac_for_ip_address(
+        printer.ip_address,
+        snmp_community=printer.snmp_community,
+        prefer_snmp=printer.printer_type != "label",
+    )
+
+
 @router.get("/cartridges", response_model=CartridgeStocksPublic)
 def read_cartridge_stock(
     session: SessionDep,
@@ -161,16 +188,10 @@ async def read_printers(
 @router.post("/", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
 async def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Printer:
     if printer_in.connection_type == "ip" and printer_in.ip_address:
-        existing = session.exec(select(Printer).where(Printer.ip_address == printer_in.ip_address)).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Printer with this IP already exists")
+        _check_unique_ip(session, printer_in.ip_address)
     printer = Printer(**printer_in.model_dump())
     if printer.connection_type == "ip" and printer.ip_address and not printer.mac_address:
-        printer.mac_address = await resolve_mac_for_ip_address(
-            printer.ip_address,
-            snmp_community=printer.snmp_community,
-            prefer_snmp=printer.printer_type != "label",
-        )
+        printer.mac_address = await _resolve_mac_for_printer(printer)
         printer.mac_status = "verified" if printer.mac_address else None
     session.add(printer)
     session.commit()
@@ -181,27 +202,15 @@ async def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Prin
 
 @router.get("/{printer_id}", response_model=PrinterPublic)
 def read_printer(printer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Printer:
-    printer = session.get(Printer, printer_id)
-    if not printer:
-        raise HTTPException(status_code=404, detail="Printer not found")
-    return printer
+    return _get_printer_or_404(session, printer_id)
 
 
 @router.patch("/{printer_id}", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
 async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in: PrinterUpdate) -> Printer:
-    printer = session.get(Printer, printer_id)
-    if not printer:
-        raise HTTPException(status_code=404, detail="Printer not found")
+    printer = _get_printer_or_404(session, printer_id)
     update_data = printer_in.model_dump(exclude_unset=True)
     if "ip_address" in update_data and update_data["ip_address"] is not None:
-        existing = session.exec(
-            select(Printer).where(
-                Printer.ip_address == update_data["ip_address"],
-                Printer.id != printer_id,
-            )
-        ).first()
-        if existing:
-            raise HTTPException(status_code=409, detail="Printer with this IP already exists")
+        _check_unique_ip(session, update_data["ip_address"], excluded_printer_id=printer_id)
     printer.updated_at = datetime.now(UTC)
     ip_changed = "ip_address" in update_data and update_data.get("ip_address") != printer.ip_address
     explicit_mac = "mac_address" in update_data
@@ -212,11 +221,7 @@ async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in:
         and ip_changed
         and not explicit_mac
     ):
-        resolved_mac = await resolve_mac_for_ip_address(
-            printer.ip_address,
-            snmp_community=printer.snmp_community,
-            prefer_snmp=printer.printer_type != "label",
-        )
+        resolved_mac = await _resolve_mac_for_printer(printer)
         if resolved_mac:
             printer.mac_address = resolved_mac
             printer.mac_status = "verified"
@@ -229,9 +234,7 @@ async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in:
 
 @router.delete("/{printer_id}", dependencies=[Depends(get_current_active_superuser)])
 async def delete_printer(session: SessionDep, printer_id: uuid.UUID) -> Message:
-    printer = session.get(Printer, printer_id)
-    if not printer:
-        raise HTTPException(status_code=404, detail="Printer not found")
+    printer = _get_printer_or_404(session, printer_id)
     session.delete(printer)
     session.commit()
     await invalidate_printer_cache()
