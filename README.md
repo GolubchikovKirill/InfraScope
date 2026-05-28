@@ -243,13 +243,13 @@ curl -kfsS https://localhost/ready
 
 БД при этом не удаляется, пока вы не делаете `docker compose down -v`.
 
-### Миграция старого volume `sitegka_postgres_data` (legacy)
+### Миграция старого PostgreSQL volume (legacy)
 
-Если данные остались в старом volume:
+Если данные остались в старом volume с прошлой инсталляции:
 
 ```bash
 docker volume create infrascope_postgres_data
-docker run --rm -v sitegka_postgres_data:/from -v infrascope_postgres_data:/to alpine sh -c "cd /from && cp -a . /to"
+docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to alpine sh -c "cd /from && cp -a . /to"
 ```
 
 ---
