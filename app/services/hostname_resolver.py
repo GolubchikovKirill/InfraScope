@@ -4,11 +4,15 @@ import ipaddress
 import random
 import socket
 import struct
-import time
 from pathlib import Path
 
+from app.core.bounded_cache import BoundedTTLCache
+
 _RESOLVE_CACHE_TTL_SECONDS = 300.0
-_RESOLVE_CACHE: dict[tuple[str, str, str], tuple[float, str | None]] = {}
+_RESOLVE_CACHE = BoundedTTLCache[tuple[str, str, str], str | None](
+    maxsize=4096,
+    ttl_seconds=_RESOLVE_CACHE_TTL_SECONDS,
+)
 _HOSTS_PATH = Path("/etc/hosts")
 
 
@@ -23,14 +27,13 @@ def resolve_hostname(
         return None
 
     cache_key = (value.lower(), dns_search_suffixes.strip().lower(), dns_server.strip())
-    cached = _RESOLVE_CACHE.get(cache_key)
-    now = time.monotonic()
-    if cached and (now - cached[0] < _RESOLVE_CACHE_TTL_SECONDS):
-        return cached[1]
+    found, cached = _RESOLVE_CACHE.lookup(cache_key)
+    if found:
+        return cached
 
     try:
         ip = str(ipaddress.ip_address(value))
-        _RESOLVE_CACHE[cache_key] = (now, ip)
+        _RESOLVE_CACHE.set(cache_key, ip)
         return ip
     except ValueError:
         pass
@@ -39,23 +42,23 @@ def resolve_hostname(
     for candidate in candidates:
         resolved = _resolve_with_system_dns(candidate)
         if resolved:
-            _RESOLVE_CACHE[cache_key] = (now, resolved)
+            _RESOLVE_CACHE.set(cache_key, resolved)
             return resolved
 
     if dns_server.strip():
         for candidate in candidates:
             resolved = _resolve_with_explicit_dns_server(candidate, dns_server.strip())
             if resolved:
-                _RESOLVE_CACHE[cache_key] = (now, resolved)
+                _RESOLVE_CACHE.set(cache_key, resolved)
                 return resolved
 
     for candidate in candidates:
         resolved = _resolve_from_hosts_file(candidate)
         if resolved:
-            _RESOLVE_CACHE[cache_key] = (now, resolved)
+            _RESOLVE_CACHE.set(cache_key, resolved)
             return resolved
 
-    _RESOLVE_CACHE[cache_key] = (now, None)
+    _RESOLVE_CACHE.set(cache_key, None)
     return None
 
 

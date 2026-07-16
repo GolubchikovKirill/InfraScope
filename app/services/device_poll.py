@@ -31,13 +31,20 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
 )
 from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd  # noqa: E402
 
+from app.core.bounded_cache import BoundedTTLCache  # noqa: E402
 from app.observability.metrics import media_player_ops_total  # noqa: E402
 
 logger = logging.getLogger(__name__)
 _RESOLVE_WARN_COOLDOWN_SECONDS = 300.0
-_RESOLVE_WARN_LAST_SEEN: dict[str, float] = {}
 _RESOLVE_CACHE_SECONDS = 300.0
-_RESOLVE_CACHE: dict[str, tuple[float, str | None]] = {}
+_RESOLVE_WARN_LAST_SEEN = BoundedTTLCache[str, bool](
+    maxsize=4096,
+    ttl_seconds=_RESOLVE_WARN_COOLDOWN_SECONDS,
+)
+_RESOLVE_CACHE = BoundedTTLCache[str, str | None](
+    maxsize=4096,
+    ttl_seconds=_RESOLVE_CACHE_SECONDS,
+)
 
 SNMP_TIMEOUT = 3
 SNMP_RETRIES = 1
@@ -359,15 +366,14 @@ def _resolve_host(address: str) -> str | None:
     if _re.match(r"^(\d{1,3}\.){3}\d{1,3}$", address):
         return address
 
-    cached = _RESOLVE_CACHE.get(address)
-    now = time.monotonic()
-    if cached and now - cached[0] < _RESOLVE_CACHE_SECONDS:
-        return cached[1]
+    found, cached = _RESOLVE_CACHE.lookup(address)
+    if found:
+        return cached
 
     # 1. DNS
     try:
         resolved = socket.gethostbyname(address)
-        _RESOLVE_CACHE[address] = (time.monotonic(), resolved)
+        _RESOLVE_CACHE.set(address, resolved)
         return resolved
     except socket.gaierror:
         pass
@@ -376,7 +382,7 @@ def _resolve_host(address: str) -> str | None:
         for suffix in [".local", ".lan"]:
             try:
                 resolved = socket.gethostbyname(address + suffix)
-                _RESOLVE_CACHE[address] = (time.monotonic(), resolved)
+                _RESOLVE_CACHE.set(address, resolved)
                 return resolved
             except socket.gaierror:
                 pass
@@ -384,14 +390,14 @@ def _resolve_host(address: str) -> str | None:
     # 2. NetBIOS (for Windows hostnames)
     ip = _netbios_resolve(address)
     if ip:
-        _RESOLVE_CACHE[address] = (time.monotonic(), ip)
+        _RESOLVE_CACHE.set(address, ip)
         return ip
 
-    last = _RESOLVE_WARN_LAST_SEEN.get(address, 0.0)
-    if now - last >= _RESOLVE_WARN_COOLDOWN_SECONDS:
-        _RESOLVE_WARN_LAST_SEEN[address] = now
+    warned, _ = _RESOLVE_WARN_LAST_SEEN.lookup(address)
+    if not warned:
+        _RESOLVE_WARN_LAST_SEEN.set(address, True)
         logger.warning("Cannot resolve hostname: %s", address)
-    _RESOLVE_CACHE[address] = (now, None)
+    _RESOLVE_CACHE.set(address, None)
     return None
 
 

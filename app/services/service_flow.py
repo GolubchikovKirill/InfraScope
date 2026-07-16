@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from time import monotonic
 from typing import Any
 
 import httpx
 import yaml
 from sqlmodel import Session, select
 
+from app.core.bounded_cache import BoundedTTLCache
 from app.core.config import settings
 from app.domains.operations.models import EventLog
 from app.domains.operations.schemas import (
@@ -26,7 +26,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SERVICE_CATALOG_PATH = _REPO_ROOT / "services" / "catalog.yaml"
 _PROMETHEUS_QUERY_TTL_SECONDS = 10.0
 _prometheus_client = httpx.Client(timeout=3.0)
-_query_cache: dict[tuple[str, str], tuple[float, Any]] = {}
+_query_cache = BoundedTTLCache[tuple[str, str], Any](
+    maxsize=256,
+    ttl_seconds=_PROMETHEUS_QUERY_TTL_SECONDS,
+)
 
 
 @lru_cache(maxsize=1)
@@ -42,14 +45,11 @@ def _load_service_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
 
 
 def _cached_query(cache_key: tuple[str, str], loader):
-    now = monotonic()
-    cached = _query_cache.get(cache_key)
-    if cached is not None:
-        cached_at, value = cached
-        if now - cached_at < _PROMETHEUS_QUERY_TTL_SECONDS:
-            return value
+    found, value = _query_cache.lookup(cache_key)
+    if found:
+        return value
     value = loader()
-    _query_cache[cache_key] = (now, value)
+    _query_cache.set(cache_key, value)
     return value
 
 

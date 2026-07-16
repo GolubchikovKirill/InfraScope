@@ -12,6 +12,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.redis import get_redis
+from app.core.redis_lock import acquire_redis_lock, release_redis_lock
 from app.observability.metrics import (
     network_bulk_operation_duration_seconds,
     network_discovery_devices_total,
@@ -280,9 +281,9 @@ async def run_discovery_scan(kind: str, subnet: str, ports_str: str, known_devic
         raise ValueError("Unsupported discovery kind")
     r = await get_redis()
     lock_key = _lock_key(kind)
-    if await r.exists(lock_key):
+    lock_owner = await acquire_redis_lock(r, lock_key, ttl_seconds=DISCOVERY_TTL)
+    if lock_owner is None:
         raise RuntimeError("Discovery scan already in progress")
-    await r.setex(lock_key, 300, "1")
     started = perf_counter()
     try:
         all_ips = _parse_subnets(subnet)
@@ -375,7 +376,7 @@ async def run_discovery_scan(kind: str, subnet: str, ports_str: str, known_devic
         network_discovery_runs_total.labels(kind=kind, result="error").inc()
         raise
     finally:
-        await r.delete(lock_key)
+        await release_redis_lock(r, lock_key, lock_owner)
         network_bulk_operation_duration_seconds.labels(operation=f"{kind}_discovery_scan").observe(
             max(perf_counter() - started, 0)
         )

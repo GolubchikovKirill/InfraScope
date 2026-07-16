@@ -18,6 +18,7 @@ from time import perf_counter
 
 from app.core.config import settings
 from app.core.redis import get_redis
+from app.core.redis_lock import acquire_redis_lock, release_redis_lock
 from app.observability.metrics import (
     scanner_devices_found_total,
     scanner_duration_seconds,
@@ -231,10 +232,9 @@ async def scan_subnet(subnet: str, ports_str: str, known_printers: list[dict]) -
     """
     r = await get_redis()
 
-    if await r.exists(SCAN_KEY_LOCK):
+    lock_owner = await acquire_redis_lock(r, SCAN_KEY_LOCK, ttl_seconds=SCAN_TTL)
+    if lock_owner is None:
         raise RuntimeError("Scan already in progress")
-
-    await r.setex(SCAN_KEY_LOCK, 300, "1")
 
     started = perf_counter()
     try:
@@ -334,7 +334,7 @@ async def scan_subnet(subnet: str, ports_str: str, known_printers: list[dict]) -
         raise
     finally:
         scanner_duration_seconds.observe(max(perf_counter() - started, 0))
-        await r.delete(SCAN_KEY_LOCK)
+        await release_redis_lock(r, SCAN_KEY_LOCK, lock_owner)
 
 
 async def get_scan_progress() -> dict:
