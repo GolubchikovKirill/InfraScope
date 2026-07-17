@@ -18,6 +18,13 @@ class Settings(BaseSettings):
 
     SECRET_KEY: str = _PLACEHOLDER
 
+    # Comma-separated Fernet keys for encrypting secrets at rest (e.g. switch
+    # SSH passwords). First key encrypts; all are tried for decryption, so a
+    # new key can be prepended to rotate without breaking existing rows.
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Leave empty to disable (values are stored as plaintext, as before).
+    CREDENTIALS_ENCRYPTION_KEYS: str = ""
+
     @staticmethod
     def _is_weak_bootstrap_password(value: str) -> bool:
         normalized = (value or "").strip()

@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -47,6 +48,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["printers"])
 
 CACHE_TTL = 30
+
+
+def _query_printers_page(
+    session: SessionDep,
+    printer_type: str,
+    store_name: str | None,
+    skip: int,
+    limit: int,
+) -> tuple[list[Printer], int]:
+    statement = select(Printer).where(Printer.printer_type == printer_type)
+    count_stmt = select(func.count()).select_from(Printer).where(Printer.printer_type == printer_type)
+    if store_name:
+        flt = build_ilike_filter(
+            [
+                Printer.store_name,
+                Printer.model,
+                Printer.host_pc,
+                Printer.ip_address,
+                Printer.mac_address,
+            ],
+            store_name,
+        )
+        if flt is not None:
+            statement = statement.where(flt)
+            count_stmt = count_stmt.where(flt)
+    count = session.exec(count_stmt).one()
+    printers = session.exec(statement.offset(skip).limit(limit).order_by(Printer.store_name)).all()
+    return printers, count
 
 
 def _get_printer_or_404(session: SessionDep, printer_id: uuid.UUID) -> Printer:
@@ -161,24 +190,9 @@ async def read_printers(
     if cached := await get_cached_model(cache_key, PrintersPublic):
         return cached
 
-    statement = select(Printer).where(Printer.printer_type == printer_type)
-    count_stmt = select(func.count()).select_from(Printer).where(Printer.printer_type == printer_type)
-    if store_name:
-        flt = build_ilike_filter(
-            [
-                Printer.store_name,
-                Printer.model,
-                Printer.host_pc,
-                Printer.ip_address,
-                Printer.mac_address,
-            ],
-            store_name,
-        )
-        if flt is not None:
-            statement = statement.where(flt)
-            count_stmt = count_stmt.where(flt)
-    count = session.exec(count_stmt).one()
-    printers = session.exec(statement.offset(skip).limit(limit).order_by(Printer.store_name)).all()
+    printers, count = await run_in_threadpool(
+        _query_printers_page, session, printer_type, store_name, skip, limit
+    )
     result = PrintersPublic(data=printers, count=count)
 
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)

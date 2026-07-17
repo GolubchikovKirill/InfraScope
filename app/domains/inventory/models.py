@@ -3,7 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import Column
 from sqlmodel import Field, SQLModel
+
+from app.core.crypto import EncryptedString
 
 
 class Printer(SQLModel, table=True):
@@ -63,8 +66,14 @@ class NetworkSwitch(SQLModel, table=True):
     name: str = Field(max_length=255, index=True)
     ip_address: str = Field(max_length=45, unique=True, index=True)
     ssh_username: str = Field(max_length=128, default="admin")
-    ssh_password: str = Field(max_length=255, default="")
-    enable_password: str = Field(max_length=255, default="")
+    # Stored encrypted at rest (see app.core.crypto); column is wider than the
+    # plaintext max to fit the Fernet token overhead.
+    ssh_password: str = Field(
+        default="", sa_column=Column(EncryptedString(512), nullable=False, server_default="")
+    )
+    enable_password: str = Field(
+        default="", sa_column=Column(EncryptedString(512), nullable=False, server_default="")
+    )
     ssh_port: int = Field(default=22)
     ap_vlan: int = Field(default=20)
     vendor: str = Field(default="cisco", max_length=32, index=True)

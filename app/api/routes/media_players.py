@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -103,19 +104,13 @@ async def _invalidate_cache() -> None:
     await invalidate_media_player_cache()
 
 
-@router.get("/", response_model=MediaPlayersPublic)
-async def read_media_players(
+def _query_media_players_page(
     session: SessionDep,
-    current_user: CurrentUser,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=200, le=500),
-    name: str | None = None,
-    device_type: str | None = None,
-) -> MediaPlayersPublic:
-    cache_key = f"media_players:{device_type or ''}:{name or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, MediaPlayersPublic):
-        return cached
-
+    device_type: str | None,
+    name: str | None,
+    skip: int,
+    limit: int,
+) -> tuple[list[MediaPlayer], int]:
     statement = select(MediaPlayer)
     count_stmt = select(func.count()).select_from(MediaPlayer)
 
@@ -140,6 +135,25 @@ async def read_media_players(
 
     count = session.exec(count_stmt).one()
     players = session.exec(statement.offset(skip).limit(limit).order_by(MediaPlayer.name)).all()
+    return players, count
+
+
+@router.get("/", response_model=MediaPlayersPublic)
+async def read_media_players(
+    session: SessionDep,
+    current_user: CurrentUser,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, le=500),
+    name: str | None = None,
+    device_type: str | None = None,
+) -> MediaPlayersPublic:
+    cache_key = f"media_players:{device_type or ''}:{name or ''}:{skip}:{limit}"
+    if cached := await get_cached_model(cache_key, MediaPlayersPublic):
+        return cached
+
+    players, count = await run_in_threadpool(
+        _query_media_players_page, session, device_type, name, skip, limit
+    )
     result = MediaPlayersPublic(data=players, count=count)
 
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)

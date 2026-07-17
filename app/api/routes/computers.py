@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func
 from sqlmodel import select
 
@@ -80,6 +81,27 @@ async def _probe_computers_bulk(rows: list[Computer]) -> dict[uuid.UUID, tuple[b
     return dict(pairs)
 
 
+def _query_computers_page(
+    session: SessionDep,
+    q: str | None,
+    skip: int,
+    limit: int,
+) -> tuple[list[Computer], int]:
+    statement = select(Computer)
+    count_stmt = select(func.count()).select_from(Computer)
+    if q:
+        flt = build_ilike_filter(
+            [Computer.hostname, Computer.location, Computer.comment],
+            q,
+        )
+        if flt is not None:
+            statement = statement.where(flt)
+            count_stmt = count_stmt.where(flt)
+    rows = session.exec(statement.order_by(Computer.hostname).offset(skip).limit(limit)).all()
+    count = session.exec(count_stmt).one()
+    return rows, count
+
+
 @router.get("/", response_model=ComputersPublic)
 async def read_computers(
     session: SessionDep,
@@ -93,18 +115,7 @@ async def read_computers(
     if cached := await get_cached_model(cache_key, ComputersPublic):
         return cached
 
-    statement = select(Computer)
-    count_stmt = select(func.count()).select_from(Computer)
-    if q:
-        flt = build_ilike_filter(
-            [Computer.hostname, Computer.location, Computer.comment],
-            q,
-        )
-        if flt is not None:
-            statement = statement.where(flt)
-            count_stmt = count_stmt.where(flt)
-    rows = session.exec(statement.order_by(Computer.hostname).offset(skip).limit(limit)).all()
-    count = session.exec(count_stmt).one()
+    rows, count = await run_in_threadpool(_query_computers_page, session, q, skip, limit)
     result = ComputersPublic(data=rows, count=count)
 
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)

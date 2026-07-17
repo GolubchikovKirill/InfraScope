@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from time import monotonic
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -182,18 +183,12 @@ async def _invalidate_ports_cache(switch_id: uuid.UUID) -> None:
     await invalidate_entity_cache(f"switch_ports:{switch_id}")
 
 
-@router.get("/", response_model=NetworkSwitchesPublic)
-async def read_switches(
+def _query_switches_page(
     session: SessionDep,
-    current_user: CurrentUser,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, le=200),
-    name: str | None = None,
-) -> NetworkSwitchesPublic:
-    cache_key = f"switches:{name or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, NetworkSwitchesPublic):
-        return cached
-
+    name: str | None,
+    skip: int,
+    limit: int,
+) -> tuple[list[NetworkSwitch], int]:
     statement = select(NetworkSwitch)
     count_stmt = select(func.count()).select_from(NetworkSwitch)
     if name:
@@ -213,6 +208,22 @@ async def read_switches(
             count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     switches = session.exec(statement.offset(skip).limit(limit).order_by(NetworkSwitch.name)).all()
+    return switches, count
+
+
+@router.get("/", response_model=NetworkSwitchesPublic)
+async def read_switches(
+    session: SessionDep,
+    current_user: CurrentUser,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, le=200),
+    name: str | None = None,
+) -> NetworkSwitchesPublic:
+    cache_key = f"switches:{name or ''}:{skip}:{limit}"
+    if cached := await get_cached_model(cache_key, NetworkSwitchesPublic):
+        return cached
+
+    switches, count = await run_in_threadpool(_query_switches_page, session, name, skip, limit)
     set_device_counts(
         kind="switch",
         total=len(switches),

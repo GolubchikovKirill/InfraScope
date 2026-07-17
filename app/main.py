@@ -14,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlmodel import Session
 
 from app.api.main import api_router
+from app.api.websockets import relay as realtime_relay
 from app.core.config import settings
 from app.core.db import engine, init_db
 from app.core.http import request_context_headers_middleware, security_headers_middleware
@@ -37,7 +38,9 @@ async def lifespan(app: FastAPI):
             init_db(session)
 
     await run_in_threadpool(_init_db_sync)
+    await realtime_relay.start()
     yield
+    await realtime_relay.stop()
     await close_redis()
 
 

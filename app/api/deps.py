@@ -1,10 +1,11 @@
+import logging
 import uuid
 from collections.abc import Generator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
@@ -12,12 +13,17 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.core.db import engine
+from app.core.redis import get_redis
 from app.core.security import ALGORITHM, is_token_blacklisted
 from app.domains.identity.models import User
 from app.domains.identity.schemas import TokenPayload
 from app.observability.metrics import auth_events_total
 
+logger = logging.getLogger(__name__)
+
 reusable_oauth2 = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+
+_LAST_SEEN_THROTTLE_SECONDS = 300
 
 
 def get_db() -> Generator[Session]:
@@ -29,7 +35,17 @@ SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
-async def get_current_user(session: SessionDep, token: TokenDep) -> User:
+def _persist_last_seen(user_id: uuid.UUID, seen_at: datetime) -> None:
+    with Session(engine) as bg_session:
+        user = bg_session.get(User, user_id)
+        if user is None:
+            return
+        user.last_seen_at = seen_at
+        bg_session.add(user)
+        bg_session.commit()
+
+
+async def get_current_user(session: SessionDep, token: TokenDep, background_tasks: BackgroundTasks) -> User:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         token_data = TokenPayload(**payload)
@@ -63,14 +79,21 @@ async def get_current_user(session: SessionDep, token: TokenDep) -> User:
     if not user.is_active:
         auth_events_total.labels(result="failure", reason="inactive_user").inc()
         raise HTTPException(status_code=400, detail="Inactive user")
+
     now = datetime.now(UTC)
-    last_seen = user.last_seen_at
-    if last_seen is not None and last_seen.tzinfo is None:
-        last_seen = last_seen.replace(tzinfo=UTC)
-    if last_seen is None or (now - last_seen) >= timedelta(seconds=60):
-        user.last_seen_at = now
-        session.add(user)
-        session.commit()
+    try:
+        redis = await get_redis()
+        # Only the request that wins this NX-set persists last_seen_at, so
+        # concurrent requests from one user don't all hit the database.
+        should_persist = await redis.set(
+            f"last_seen:{user.id}", "1", ex=_LAST_SEEN_THROTTLE_SECONDS, nx=True
+        )
+    except Exception as exc:
+        should_persist = False
+        logger.debug("last_seen throttle check failed, skipping persist: %s", exc)
+    if should_persist:
+        background_tasks.add_task(_persist_last_seen, user.id, now)
+
     auth_events_total.labels(result="success", reason="token_valid").inc()
     return user
 

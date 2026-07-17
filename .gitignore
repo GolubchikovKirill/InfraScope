@@ -10,6 +10,11 @@ wheels/
 
 # Environment
 .env
+.env.bak*
+
+# Database dumps (may contain PII/secrets; keep backups outside the repo)
+*.sql
+!alembic/**/*.sql
 
 # SSL certificates (keep directory, ignore contents)
 certs/*

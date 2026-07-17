@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from io import StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from sqlmodel import func, select
 
@@ -37,19 +38,12 @@ async def _invalidate_cache() -> None:
 router = APIRouter(tags=["cash-registers"])
 
 
-@router.get("/", response_model=CashRegistersPublic)
-async def read_cash_registers(
+def _query_cash_registers_page(
     session: SessionDep,
-    current_user: CurrentUser,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=200, ge=1, le=500),
-    q: str | None = Query(default=None),
-) -> CashRegistersPublic:
-    cache_key = f"cash_registers:{q or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, CashRegistersPublic):
-        return cached
-
-    del current_user
+    q: str | None,
+    skip: int,
+    limit: int,
+) -> tuple[list[CashRegister], int]:
     statement = select(CashRegister)
     count_stmt = select(func.count()).select_from(CashRegister)
     if q:
@@ -69,6 +63,23 @@ async def read_cash_registers(
             count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     rows = session.exec(statement.order_by(CashRegister.kkm_number).offset(skip).limit(limit)).all()
+    return rows, count
+
+
+@router.get("/", response_model=CashRegistersPublic)
+async def read_cash_registers(
+    session: SessionDep,
+    current_user: CurrentUser,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=500),
+    q: str | None = Query(default=None),
+) -> CashRegistersPublic:
+    cache_key = f"cash_registers:{q or ''}:{skip}:{limit}"
+    if cached := await get_cached_model(cache_key, CashRegistersPublic):
+        return cached
+
+    del current_user
+    rows, count = await run_in_threadpool(_query_cash_registers_page, session, q, skip, limit)
     result = CashRegistersPublic(data=rows, count=count)
 
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)
