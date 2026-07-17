@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.db import engine
+from app.domains.inventory.ap_auto_reboot import run_scheduled_ap_reboot_cycle
 from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
 from app.domains.operations.models import CashRegister
 from app.observability.metrics import (
@@ -373,6 +374,35 @@ def poll_all_cash_registers_task(self) -> dict:
             "total": total_count,
             "online": online_count,
             "finished_at": datetime.now(UTC).isoformat(),
+        }
+        _task_finished(operation, started_at, "success")
+        return payload
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
+    # No autoretry: this reboots live hardware. If a cycle errors partway
+    # through, retrying could double-reboot an AP that already came back up.
+    # A failure is logged (event_log + task result) for manual follow-up
+    # instead of retried automatically.
+    soft_time_limit=1700,
+    time_limit=1800,
+    name="tasks.ap_auto_reboot_cycle",
+)
+def ap_auto_reboot_cycle_task(self) -> dict:
+    operation = "ap_auto_reboot_cycle"
+    started_at = _task_started(operation)
+    try:
+        with Session(engine) as session:
+            result = asyncio.run(run_scheduled_ap_reboot_cycle(session=session))
+        payload = {
+            "task_id": self.request.id,
+            "operation": operation,
+            "finished_at": datetime.now(UTC).isoformat(),
+            **result,
         }
         _task_finished(operation, started_at, "success")
         return payload

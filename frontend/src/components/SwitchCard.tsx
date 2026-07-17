@@ -5,7 +5,7 @@ import {
   ExternalLink, RotateCcw, ChevronDown, ChevronUp, Zap, Radio, MoreHorizontal,
 } from "lucide-react";
 import type { NetworkSwitch, AccessPoint } from "../client";
-import { getSwitchAPs, rebootAP } from "../client";
+import { getSwitchAPs, rebootAP, updateSwitch } from "../client";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
@@ -89,12 +89,18 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
   const [expanded, setExpanded] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: aps, isLoading: loadingAPs } = useQuery({
     queryKey: ["switch-aps", sw.id],
     queryFn: () => getSwitchAPs(sw.id),
     enabled: expanded,
     staleTime: 30_000,
+  });
+
+  const autoRebootMut = useMutation({
+    mutationFn: (patch: Record<string, unknown>) => updateSwitch(sw.id, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["switches"] }),
   });
 
   const polledAt = sw.last_polled_at
@@ -172,6 +178,50 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           <ExternalLink className="h-3.5 w-3.5" />
           Порты свитча
         </button>
+
+        {/* Scheduled AP auto-reboot: pilot feature, VLAN 20 only, superuser-only.
+            The actual store allowlist lives server-side (AUTO_REBOOT_AP_ALLOWED_STORES) -
+            this toggle alone does not guarantee the schedule will act on this switch. */}
+        {isSuperuser && sw.vendor === "cisco" && sw.ap_vlan === 20 && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={sw.auto_reboot_aps_enabled}
+                onClick={() =>
+                  autoRebootMut.mutate({ auto_reboot_aps_enabled: !sw.auto_reboot_aps_enabled })
+                }
+                disabled={autoRebootMut.isPending}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50 ${
+                  sw.auto_reboot_aps_enabled ? "bg-rose-600" : "bg-gray-300"
+                }`}
+                title="Автоперезагрузка Wi-Fi точек на VLAN 20 (07:30 и 19:30 МСК)"
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${
+                    sw.auto_reboot_aps_enabled ? "left-4" : "left-0.5"
+                  }`}
+                />
+              </button>
+              <span className="text-[11px] text-amber-800">
+                Авто-перезагрузка ТД (07:30 / 19:30 МСК)
+              </span>
+            </label>
+            {sw.auto_reboot_aps_enabled && (
+              <select
+                value={sw.auto_reboot_mode}
+                onChange={(e) => autoRebootMut.mutate({ auto_reboot_mode: e.target.value })}
+                disabled={autoRebootMut.isPending}
+                className="text-[11px] rounded border border-amber-300 bg-white px-1.5 py-0.5 text-amber-900"
+                title="Тестовый режим только логирует; боевой реально перезагружает"
+              >
+                <option value="dry_run">Тест (без реальной перезагрузки)</option>
+                <option value="live">Боевой режим</option>
+              </select>
+            )}
+          </div>
+        )}
 
         {/* AP List */}
         {expanded && (

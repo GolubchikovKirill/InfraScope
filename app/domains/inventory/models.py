@@ -89,6 +89,12 @@ class NetworkSwitch(SQLModel, table=True):
     is_online: bool | None = Field(default=None)
     last_polled_at: datetime | None = Field(default=None)
 
+    # Scheduled Wi-Fi AP reboot (VLAN 20 only, see app.domains.inventory.ap_auto_reboot).
+    # Opt-in per switch, and still gated by a global store allowlist so
+    # enabling this toggle on the wrong switch can't reboot APs it shouldn't.
+    auto_reboot_aps_enabled: bool = Field(default=False)
+    auto_reboot_mode: str = Field(default="dry_run", max_length=10)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = Field(default=None)
 

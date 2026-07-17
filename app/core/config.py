@@ -82,6 +82,14 @@ class Settings(BaseSettings):
     # Backend-driven scheduled polling (Celery Beat), staggered per entity type
     # so the frontend no longer needs to trigger real device polls on a timer.
     AUTO_POLL_ENABLED: bool = True
+    # Scheduled Wi-Fi AP reboot (VLAN 20 only, twice daily). Global kill switch
+    # plus a store allowlist: a switch's own auto_reboot_aps_enabled toggle is
+    # necessary but not sufficient - the store name must ALSO be listed here.
+    # This is a live-hardware pilot (A30 first), so both gates default narrow.
+    AUTO_REBOOT_AP_ENABLED: bool = True
+    AUTO_REBOOT_AP_ALLOWED_STORES: str = "A30"
+    AUTO_REBOOT_AP_PAUSE_SECONDS: int = 45
+    AUTO_REBOOT_AP_MAX_PER_SWITCH: int = 20
     DISCOVERY_SERVICE_ENABLED: bool = False
     DISCOVERY_SERVICE_URL: str = "http://discovery-service:8012"
     NETWORK_CONTROL_SERVICE_ENABLED: bool = False

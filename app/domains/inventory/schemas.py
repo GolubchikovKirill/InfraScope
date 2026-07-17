@@ -583,6 +583,8 @@ class NetworkSwitchCreate(BaseModel):
     snmp_version: str = "2c"
     snmp_community_ro: str = "public"
     snmp_community_rw: str | None = None
+    auto_reboot_aps_enabled: bool = False
+    auto_reboot_mode: str = "dry_run"
 
     @field_validator("name")
     @classmethod
@@ -591,6 +593,14 @@ class NetworkSwitchCreate(BaseModel):
         if not v or len(v) > 255:
             raise ValueError("name must be 1-255 characters")
         return v
+
+    @field_validator("auto_reboot_mode")
+    @classmethod
+    def validate_auto_reboot_mode(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"dry_run", "live"}:
+            raise ValueError("auto_reboot_mode must be 'dry_run' or 'live'")
+        return normalized
 
     @field_validator("ip_address")
     @classmethod
@@ -669,6 +679,8 @@ class NetworkSwitchUpdate(BaseModel):
     snmp_version: str | None = None
     snmp_community_ro: str | None = None
     snmp_community_rw: str | None = None
+    auto_reboot_aps_enabled: bool | None = None
+    auto_reboot_mode: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -678,6 +690,16 @@ class NetworkSwitchUpdate(BaseModel):
             if not v or len(v) > 255:
                 raise ValueError("name must be 1-255 characters")
         return v
+
+    @field_validator("auto_reboot_mode")
+    @classmethod
+    def validate_auto_reboot_mode(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if normalized not in {"dry_run", "live"}:
+            raise ValueError("auto_reboot_mode must be 'dry_run' or 'live'")
+        return normalized
 
     @field_validator("ip_address")
     @classmethod
@@ -747,6 +769,8 @@ class NetworkSwitchPublic(BaseModel):
     uptime: str | None = None
     is_online: bool | None = None
     last_polled_at: datetime | None = None
+    auto_reboot_aps_enabled: bool = False
+    auto_reboot_mode: str = "dry_run"
     created_at: datetime
 
 

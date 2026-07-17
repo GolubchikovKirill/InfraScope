@@ -67,6 +67,8 @@ describe("SwitchPortsTable", () => {
             uptime: null,
             is_online: true,
             last_polled_at: null,
+            auto_reboot_aps_enabled: false,
+            auto_reboot_mode: "dry_run",
             created_at: new Date().toISOString(),
           }}
           isSuperuser={true}
