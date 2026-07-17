@@ -13,6 +13,17 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          query: ["@tanstack/react-query"],
+          motion: ["framer-motion"],
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     globals: true,

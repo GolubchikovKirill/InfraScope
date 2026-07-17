@@ -7,9 +7,6 @@ ARG NPM_REGISTRY=https://registry.npmjs.org/
 ARG NPM_REGISTRY_FALLBACK=https://registry.npmmirror.com/
 ARG NPM_STRICT_SSL=false
 ENV npm_config_registry=${NPM_REGISTRY}
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.npm npm --version \
     && npm config set strict-ssl "${NPM_STRICT_SSL}" \
     && npm config set fund false \

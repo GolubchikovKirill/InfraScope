@@ -107,6 +107,16 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         previous = _recent_unhandled_exceptions.get(exception_key)
         if previous is not None and (now - previous) < _UNHANDLED_EXCEPTION_TTL_SECONDS:
             return
+        # Distinct error messages (e.g. containing an IP or id) create distinct
+        # keys, so sweep expired entries on each insert rather than letting the
+        # dict grow for the lifetime of the process.
+        expired = [
+            key
+            for key, seen_at in _recent_unhandled_exceptions.items()
+            if (now - seen_at) >= _UNHANDLED_EXCEPTION_TTL_SECONDS
+        ]
+        for key in expired:
+            del _recent_unhandled_exceptions[key]
         _recent_unhandled_exceptions[exception_key] = now
         try:
             with Session(engine) as session:
