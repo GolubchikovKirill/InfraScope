@@ -90,10 +90,13 @@ export default function MediaPlayersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["media-players"] }),
   });
 
+  // Real device polling now runs on a schedule in the backend (Celery Beat),
+  // so this no longer triggers a real poll from every open tab - it just
+  // refreshes from cache. Realtime updates arrive via WebSocket regardless.
   useEntityAutoPoll({
     enabled: !showForm,
     queryKeyRoot: "media-players",
-    poll: () => pollAllMediaPlayers(deviceTypeParam),
+    poll: () => Promise.resolve(),
   });
 
   const pollOneMut = useMutation({

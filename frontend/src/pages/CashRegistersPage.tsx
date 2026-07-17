@@ -119,10 +119,13 @@ export default function CashRegistersPage() {
     onSuccess: refetchAll,
   });
 
+  // Real device polling now runs on a schedule in the backend (Celery Beat),
+  // so this no longer triggers a real poll from every open tab - it just
+  // refreshes from cache. Realtime updates arrive via WebSocket regardless.
   useEntityAutoPoll({
     enabled: !isModalOpen,
     queryKeyRoot: "cash-registers",
-    poll: pollAllCashRegisters,
+    poll: () => Promise.resolve(),
   });
   const openCreate = () => {
     setEditing(null);

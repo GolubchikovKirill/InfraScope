@@ -12,7 +12,8 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.db import engine
-from app.domains.inventory.models import MediaPlayer, NetworkSwitch, Printer
+from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
+from app.domains.operations.models import CashRegister
 from app.observability.metrics import (
     observe_service_edge,
     worker_task_duration_seconds,
@@ -20,6 +21,8 @@ from app.observability.metrics import (
     worker_tasks_in_progress,
 )
 from app.services.polling_orchestrator import (
+    poll_all_cash_registers_local,
+    poll_all_computers_local,
     poll_all_media_players_local,
     poll_all_printers_local,
     poll_switch_local,
@@ -301,6 +304,74 @@ def poll_all_switches_task(self) -> dict:
             "total": total,
             "online": online,
             "switches": results,
+            "finished_at": datetime.now(UTC).isoformat(),
+        }
+        _task_finished(operation, started_at, "success")
+        return payload
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+    name="tasks.poll_all_computers",
+)
+def poll_all_computers_task(self) -> dict:
+    operation = "poll_all_computers"
+    started_at = _task_started(operation)
+    try:
+        with Session(engine) as session:
+            asyncio.run(poll_all_computers_local(session=session))
+            all_computers = session.exec(select(Computer)).all()
+        payload = {
+            "task_id": self.request.id,
+            "operation": operation,
+            "total": len(all_computers),
+            "online": sum(1 for c in all_computers if c.is_online),
+            "finished_at": datetime.now(UTC).isoformat(),
+        }
+        _task_finished(operation, started_at, "success")
+        return payload
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+    name="tasks.poll_all_cash_registers",
+)
+def poll_all_cash_registers_task(self) -> dict:
+    operation = "poll_all_cash_registers"
+    started_at = _task_started(operation)
+    try:
+        if settings.POLLING_SERVICE_ENABLED:
+            payload_data = _service_json(
+                base_url=settings.POLLING_SERVICE_URL,
+                method="POST",
+                path="/poll/cash-registers",
+            )
+            registers = payload_data.get("data", [])
+            total_count = len(registers)
+            online_count = sum(1 for r in registers if r.get("is_online"))
+        else:
+            with Session(engine) as session:
+                asyncio.run(poll_all_cash_registers_local(session=session))
+                registers = session.exec(select(CashRegister)).all()
+            total_count = len(registers)
+            online_count = sum(1 for r in registers if r.is_online)
+        payload = {
+            "task_id": self.request.id,
+            "operation": operation,
+            "total": total_count,
+            "online": online_count,
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")

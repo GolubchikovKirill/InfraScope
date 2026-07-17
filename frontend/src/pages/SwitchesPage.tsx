@@ -58,10 +58,13 @@ export default function SwitchesPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["switches"] }),
   });
 
+  // Real device polling now runs on a schedule in the backend (Celery Beat),
+  // so this no longer triggers a real poll from every open tab - it just
+  // refreshes from cache. Realtime updates arrive via WebSocket regardless.
   useEntityAutoPoll({
     enabled: !showForm && !portsTarget,
     queryKeyRoot: "switches",
-    poll: pollAllSwitches,
+    poll: () => Promise.resolve(),
   });
 
   const deleteMut = useMutation({

@@ -1,4 +1,5 @@
 from app.api.routes import computers as computer_routes
+from app.domains.inventory import computer_polling
 
 
 class _BusyRedis:
@@ -18,7 +19,7 @@ def test_create_list_search_and_duplicate_computers(client, admin_token: str, mo
     async def _noop_invalidate():
         return None
 
-    monkeypatch.setattr(computer_routes, "_invalidate_cache", _noop_invalidate)
+    monkeypatch.setattr(computer_routes, "invalidate_computer_cache", _noop_invalidate)
 
     created = client.post(
         "/api/v1/computers/",
@@ -64,10 +65,10 @@ def test_update_delete_and_poll_computer(client, admin_token: str, monkeypatch):
     async def _noop_invalidate():
         return None
 
-    monkeypatch.setattr(computer_routes, "_invalidate_cache", _noop_invalidate)
+    monkeypatch.setattr(computer_routes, "invalidate_computer_cache", _noop_invalidate)
     monkeypatch.setattr(
         computer_routes,
-        "_probe_computer",
+        "probe_computer",
         lambda hostname: (hostname == "VNK-MGR-ONLINE", None if hostname == "VNK-MGR-ONLINE" else "port_closed"),
     )
 
@@ -121,12 +122,13 @@ def test_poll_all_computers_updates_rows(client, admin_token: str, monkeypatch):
     async def _noop_invalidate():
         return None
 
-    monkeypatch.setattr(computer_routes, "_invalidate_cache", _noop_invalidate)
+    monkeypatch.setattr(computer_routes, "invalidate_computer_cache", _noop_invalidate)
+    monkeypatch.setattr(computer_polling, "invalidate_computer_cache", _noop_invalidate)
     probe_map = {
         "VNK-MGR-01": (True, None),
         "VNK-MGR-02": (False, "dns_unresolved"),
     }
-    monkeypatch.setattr(computer_routes, "_probe_computer", lambda hostname: probe_map[hostname])
+    monkeypatch.setattr(computer_polling, "probe_computer", lambda hostname: probe_map[hostname])
 
     for hostname in probe_map:
         response = client.post(
@@ -155,11 +157,12 @@ def test_poll_all_computers_skips_duplicate_network_scan(client, admin_token: st
     async def _busy_redis():
         return _BusyRedis()
 
-    monkeypatch.setattr(computer_routes, "_invalidate_cache", _noop_invalidate)
-    monkeypatch.setattr(computer_routes, "get_redis", _busy_redis)
+    monkeypatch.setattr(computer_routes, "invalidate_computer_cache", _noop_invalidate)
+    monkeypatch.setattr(computer_polling, "invalidate_computer_cache", _noop_invalidate)
+    monkeypatch.setattr(computer_polling, "get_redis", _busy_redis)
     monkeypatch.setattr(
-        computer_routes,
-        "_probe_computers_bulk",
+        computer_polling,
+        "probe_computers_bulk",
         lambda _rows: (_ for _ in ()).throw(AssertionError("duplicate poll should not probe network")),
     )
 

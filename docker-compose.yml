@@ -170,6 +170,29 @@ services:
     networks:
       - internal
 
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_SERVER: db
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      # /app isn't writable by the non-root "app" user (only its contents are,
+      # from the build's --chown COPY), so point the schedule file at /tmp.
+      - celery -A app.worker.celery_app.celery_app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
+    networks:
+      - internal
+
   ml-service:
     build:
       context: .

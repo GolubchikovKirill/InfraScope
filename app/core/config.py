@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     ML_SERVICE_URL: str = "http://ml-service:8010"
     POLLING_SERVICE_ENABLED: bool = False
     POLLING_SERVICE_URL: str = "http://polling-service:8011"
+    # Backend-driven scheduled polling (Celery Beat), staggered per entity type
+    # so the frontend no longer needs to trigger real device polls on a timer.
+    AUTO_POLL_ENABLED: bool = True
     DISCOVERY_SERVICE_ENABLED: bool = False
     DISCOVERY_SERVICE_URL: str = "http://discovery-service:8012"
     NETWORK_CONTROL_SERVICE_ENABLED: bool = False

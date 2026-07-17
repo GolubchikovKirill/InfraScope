@@ -3,9 +3,10 @@ from __future__ import annotations
 import uuid
 
 from app.api.deps import SessionDep
+from app.domains.inventory.computer_polling import poll_all_computers_local as poll_all_computers_domain
 from app.domains.inventory.media_polling import poll_all_media_players_local as poll_all_media_players_domain
 from app.domains.inventory.printer_polling import poll_all_printers_local as poll_all_printers_domain
-from app.domains.inventory.schemas import MediaPlayersPublic, NetworkSwitchPublic, PrintersPublic
+from app.domains.inventory.schemas import ComputersPublic, MediaPlayersPublic, NetworkSwitchPublic, PrintersPublic
 from app.domains.inventory.switch_polling import (
     poll_all_switches_local as poll_all_switches_domain,
 )
@@ -45,6 +46,10 @@ async def poll_switch_local(*, session: SessionDep, switch_id: uuid.UUID) -> Net
 
 async def poll_all_cash_registers_local(*, session: SessionDep) -> CashRegistersPublic:
     return await poll_all_cash_registers_domain(session=session)
+
+
+async def poll_all_computers_local(*, session: SessionDep) -> ComputersPublic:
+    return await poll_all_computers_domain(session=session)
 
 
 async def poll_cash_register_local(*, session: SessionDep, cash_id: uuid.UUID) -> CashRegisterPublic:
