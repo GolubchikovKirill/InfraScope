@@ -1,6 +1,11 @@
 from app.api.routes import qr_generator as qr_routes
 
 
+def _configure_qr_credentials(monkeypatch):
+    monkeypatch.setattr(qr_routes.settings, "QR_SQL_LOGIN", "test-user")
+    monkeypatch.setattr(qr_routes.settings, "QR_SQL_PASSWORD", "test-password")
+
+
 def test_qr_generator_requires_auth(client):
     response = client.post("/api/v1/qr-generator/export", json={})
     assert response.status_code == 401
@@ -19,6 +24,7 @@ def test_qr_generator_requires_superuser(client, user_token: str):
 
 
 def test_qr_generator_returns_zip(client, admin_token: str, monkeypatch):
+    _configure_qr_credentials(monkeypatch)
     captured = {}
 
     def _fake_generate(_params):
@@ -45,6 +51,7 @@ def test_qr_generator_returns_zip(client, admin_token: str, monkeypatch):
 
 
 def test_qr_generator_uses_channel_specific_database_for_duty_paid(client, admin_token: str, monkeypatch):
+    _configure_qr_credentials(monkeypatch)
     captured = {}
 
     monkeypatch.setattr(qr_routes.settings, "QR_SQL_DUTY_PAID_SERVER", "paid-sql")
@@ -74,8 +81,9 @@ def test_qr_generator_uses_channel_specific_database_for_duty_paid(client, admin
 def test_qr_generator_returns_504_on_sql_timeout(client, admin_token: str, monkeypatch):
     import time
 
-    original_timeout = qr_routes.settings.QR_SQL_TIMEOUT_SECONDS
-    monkeypatch.setattr(qr_routes.settings, "QR_SQL_TIMEOUT_SECONDS", 0.01)
+    _configure_qr_credentials(monkeypatch)
+    original_timeout = qr_routes.settings.QR_EXPORT_TIMEOUT_SECONDS
+    monkeypatch.setattr(qr_routes.settings, "QR_EXPORT_TIMEOUT_SECONDS", 0.01)
 
     def _slow_generate(_params):
         time.sleep(0.1)
@@ -92,7 +100,22 @@ def test_qr_generator_returns_504_on_sql_timeout(client, admin_token: str, monke
         headers={"Authorization": f"Bearer {admin_token}"},
     )
 
-    monkeypatch.setattr(qr_routes.settings, "QR_SQL_TIMEOUT_SECONDS", original_timeout)
+    monkeypatch.setattr(qr_routes.settings, "QR_EXPORT_TIMEOUT_SECONDS", original_timeout)
 
     assert response.status_code == 504
-    assert "таймаут SQL" in response.json()["detail"]
+    assert "превысило допустимое время" in response.json()["detail"]
+
+
+def test_qr_generator_reports_missing_sql_credentials(client, admin_token: str, monkeypatch):
+    monkeypatch.setattr(qr_routes.settings, "QR_SQL_LOGIN", "")
+    monkeypatch.setattr(qr_routes.settings, "QR_SQL_PASSWORD", "CHANGE_ME")
+
+    response = client.post(
+        "/api/v1/qr-generator/export",
+        json={"db_mode": "duty_free", "airport_code": "4007"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 400
+    assert "QR_SQL_LOGIN" in response.json()["detail"]
+    assert "QR_SQL_PASSWORD" in response.json()["detail"]

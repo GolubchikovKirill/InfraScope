@@ -328,7 +328,8 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `QR_SQL_DUTY_FREE_SERVER`, `QR_SQL_DUTY_FREE_DATABASE`
   - `QR_SQL_DUTY_PAID_SERVER`, `QR_SQL_DUTY_PAID_DATABASE`
   - `QR_SQL_DATABASE` как fallback, если имя базы одинаковое для обоих каналов
-  - `QR_SQL_TIMEOUT_SECONDS` (таймаут SQL-запроса для QR-генерации)
+  - `QR_SQL_TIMEOUT_SECONDS` (таймаут подключения и SQL-запроса)
+  - `QR_EXPORT_TIMEOUT_SECONDS` (общий таймаут формирования Word/ZIP)
 - Проверить, что monitoring/UI-порты не открыты наружу без VPN/reverse proxy:
   - `PROMETHEUS_BIND`, `GRAFANA_BIND`, `KAFKA_UI_BIND`, `JAEGER_BIND`
 - Проверить whitelist CORS (`BACKEND_CORS_ORIGINS`) и удалить лишние origin.

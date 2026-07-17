@@ -124,12 +124,13 @@ class Settings(BaseSettings):
     DNS_SEARCH_SUFFIXES: str = ""
     QR_SQL_LOGIN: str = ""
     QR_SQL_PASSWORD: str = ""
-    QR_SQL_DUTY_FREE_SERVER: str = "DC1-SRV-KC01.regstaer.local"
+    QR_SQL_DUTY_FREE_SERVER: str = "10.10.94.228"
     QR_SQL_DUTY_FREE_DATABASE: str = ""
-    QR_SQL_DUTY_PAID_SERVER: str = "DC1-SRV-KC02.regstaer.local"
+    QR_SQL_DUTY_PAID_SERVER: str = "10.10.94.229"
     QR_SQL_DUTY_PAID_DATABASE: str = ""
     QR_SQL_DATABASE: str = "CashDB51"
     QR_SQL_TIMEOUT_SECONDS: float = 20.0
+    QR_EXPORT_TIMEOUT_SECONDS: float = 180.0
     ONEC_DUTY_FREE_API_URL: str = ""
     ONEC_DUTY_FREE_API_TOKEN: str = ""
     ONEC_DUTY_PAID_API_URL: str = ""

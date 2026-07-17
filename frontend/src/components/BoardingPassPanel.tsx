@@ -90,7 +90,7 @@ export default function BoardingPassPanel() {
     onError: (e: unknown) => {
       setMessage(null);
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail || "Не удалось сформировать boarding pass.");
+      setError(detail || (e instanceof Error ? e.message : "Не удалось сформировать boarding pass."));
     },
   });
 

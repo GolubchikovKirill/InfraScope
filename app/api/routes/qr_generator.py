@@ -18,6 +18,18 @@ router = APIRouter(tags=["qr-generator"])
 qr_export_service = QrExportService()
 
 
+def _validate_qr_sql_config() -> None:
+    missing: list[str] = []
+    if not settings.QR_SQL_LOGIN.strip() or settings.QR_SQL_LOGIN == "CHANGE_ME":
+        missing.append("QR_SQL_LOGIN")
+    if not settings.QR_SQL_PASSWORD.strip() or settings.QR_SQL_PASSWORD == "CHANGE_ME":
+        missing.append("QR_SQL_PASSWORD")
+    if missing:
+        raise ValueError(
+            "На сервере не настроено подключение к кассовой SQL-базе: " + ", ".join(missing)
+        )
+
+
 def _qr_database_for_mode(db_mode: str) -> tuple[str, str]:
     if db_mode == "duty_paid":
         return (
@@ -35,6 +47,7 @@ def export_qr_docs(payload: QRGeneratorRequest) -> StreamingResponse:
     both_databases = payload.db_mode == "both"
     server, database = _qr_database_for_mode(payload.db_mode)
     try:
+        _validate_qr_sql_config()
         params = QRGeneratorParams(
             server=server,
             database=database,
@@ -48,13 +61,13 @@ def export_qr_docs(payload: QRGeneratorRequest) -> StreamingResponse:
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(qr_export_service.generate_zip, params)
         try:
-            zip_bytes = future.result(timeout=settings.QR_SQL_TIMEOUT_SECONDS)
+            zip_bytes = future.result(timeout=settings.QR_EXPORT_TIMEOUT_SECONDS)
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
     except FuturesTimeoutError as exc:
         raise to_http_error(
             ServiceTimeoutError(
-                "Выгрузка QR превысила таймаут SQL. Проверьте доступность MSSQL и уменьшите объем выборки."
+                "Формирование QR-архива превысило допустимое время. Уточните фильтр по фамилиям или проверьте MSSQL."
             ),
             operation="сформировать выгрузку",
         ) from exc

@@ -41,7 +41,7 @@ export default function OneCQrPanel() {
     onError: (e: unknown) => {
       setMessage(null);
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail || "Не удалось сформировать выгрузку.");
+      setError(detail || (e instanceof Error ? e.message : "Не удалось сформировать выгрузку."));
     },
   });
 
@@ -66,8 +66,8 @@ export default function OneCQrPanel() {
             value={form.db_mode}
             onChange={(e) => setForm((s) => ({ ...s, db_mode: e.target.value as DatabaseMode }))}
           >
-            <option value="duty_free">Duty Free (DC1-SRV-KC01.regstaer.local)</option>
-            <option value="duty_paid">Duty Paid (DC1-SRV-KC02.regstaer.local)</option>
+            <option value="duty_free">Duty Free (10.10.94.228 / CashDB51)</option>
+            <option value="duty_paid">Duty Paid (10.10.94.229 / CashDB51)</option>
             <option value="both">Обе базы (Duty Free + Duty Paid)</option>
           </select>
         </label>

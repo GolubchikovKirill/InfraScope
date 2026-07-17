@@ -75,4 +75,19 @@ describe("OneCQrPanel", () => {
     expect(screen.getByPlaceholderText("Иванов, Петров")).toHaveValue("");
     expect(screen.getByLabelText("Добавлять логин/ID мелким текстом")).not.toBeChecked();
   });
+
+  it("shows a detailed backend error", async () => {
+    api.exportQrGenerator.mockRejectedValue(
+      new Error("На сервере не настроено подключение к кассовой SQL-базе: QR_SQL_LOGIN"),
+    );
+
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Сформировать и скачать ZIP" }));
+
+    expect(
+      await screen.findByText(
+        "На сервере не настроено подключение к кассовой SQL-базе: QR_SQL_LOGIN",
+      ),
+    ).toBeInTheDocument();
+  });
 });
