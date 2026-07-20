@@ -50,11 +50,20 @@ def _query_cash_registers_page(
         flt = build_ilike_filter(
             [
                 CashRegister.kkm_number,
+                CashRegister.location_zone,
                 CashRegister.store_number,
                 CashRegister.hostname,
+                CashRegister.netsupport_target,
                 CashRegister.store_code,
+                CashRegister.sber_store_code,
                 CashRegister.serial_number,
                 CashRegister.inventory_number,
+                CashRegister.terminal_id_rs,
+                CashRegister.terminal_id_sber,
+                CashRegister.rosenzweig_number,
+                CashRegister.piot_status,
+                CashRegister.cash_drawer,
+                CashRegister.comment,
             ],
             q,
         )
@@ -62,7 +71,16 @@ def _query_cash_registers_page(
             statement = statement.where(flt)
             count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
-    rows = session.exec(statement.order_by(CashRegister.kkm_number).offset(skip).limit(limit)).all()
+    rows = session.exec(
+        statement.order_by(
+            CashRegister.location_zone,
+            CashRegister.store_number,
+            CashRegister.source_order,
+            CashRegister.kkm_number,
+        )
+        .offset(skip)
+        .limit(limit)
+    ).all()
     return rows, count
 
 
@@ -162,16 +180,30 @@ def export_cash_registers_csv(
     q: str | None = Query(default=None),
 ) -> Response:
     del current_user
-    statement = select(CashRegister).order_by(CashRegister.kkm_number)
+    statement = select(CashRegister).order_by(
+        CashRegister.location_zone,
+        CashRegister.store_number,
+        CashRegister.source_order,
+        CashRegister.kkm_number,
+    )
     if q:
         flt = build_ilike_filter(
             [
                 CashRegister.kkm_number,
+                CashRegister.location_zone,
                 CashRegister.store_number,
                 CashRegister.hostname,
+                CashRegister.netsupport_target,
                 CashRegister.store_code,
+                CashRegister.sber_store_code,
                 CashRegister.serial_number,
                 CashRegister.inventory_number,
+                CashRegister.terminal_id_rs,
+                CashRegister.terminal_id_sber,
+                CashRegister.rosenzweig_number,
+                CashRegister.piot_status,
+                CashRegister.cash_drawer,
+                CashRegister.comment,
             ],
             q,
         )
@@ -183,17 +215,26 @@ def export_cash_registers_csv(
     writer = csv.writer(output, delimiter=";")
     writer.writerow(
         [
+            "Порядок в источнике",
+            "Зона",
             "№ ККМ",
             "Номер магазина",
-            "Код ТТ",
+            "Код ТТ Русский Стандарт",
+            "Код ТТ Сбер",
             "Серийный номер",
             "Инвентаризационный №",
             "ID терминала РС",
             "ID терминала Сбер",
             "Версия Windows",
             "Тип ККМ",
+            "Номер по Розенцвайгу",
             "Номер кассы",
             "Hostname",
+            "NetSupport",
+            "Второй экран",
+            "ПИОТ",
+            "Денежный ящик",
+            "Статус терминала",
             "Комментарий",
             "Online",
             "Причина оффлайна",
@@ -203,19 +244,28 @@ def export_cash_registers_csv(
     for row in rows:
         writer.writerow(
             [
+                row.source_order or "",
+                row.location_zone or "",
                 row.kkm_number,
                 row.store_number or "",
                 row.store_code or "",
+                row.sber_store_code or "",
                 row.serial_number or "",
                 row.inventory_number or "",
                 row.terminal_id_rs or "",
                 row.terminal_id_sber or "",
                 row.windows_version or "",
                 "РИТЕЙЛ" if row.kkm_type == "retail" else "ШТРИХ",
+                row.rosenzweig_number or "",
                 row.cash_number or "",
                 row.hostname,
+                row.netsupport_target or "",
+                row.second_screen or "",
+                row.piot_status or "",
+                row.cash_drawer or "",
+                row.terminal_status or "",
                 row.comment or "",
-                "online" if row.is_online else "offline",
+                "online" if row.is_online is True else "offline" if row.is_online is False else "unknown",
                 cash_register_offline_reason_ru(row.reachability_reason) if row.is_online is False else "",
                 row.last_polled_at.isoformat() if row.last_polled_at else "",
             ]

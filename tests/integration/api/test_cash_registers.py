@@ -12,10 +12,20 @@ class _BusyRedis:
 
 def test_create_cash_register(client, admin_token: str):
     payload = {
+        "source_order": 1,
+        "location_zone": "df",
         "kkm_number": "001",
+        "store_number": "A1(101)",
         "store_code": "A1",
+        "sber_store_code": "S-A1",
         "kkm_type": "retail",
         "hostname": "cash-a1",
+        "netsupport_target": "cash-a1.office.local",
+        "rosenzweig_number": "001",
+        "second_screen": "Есть",
+        "piot_status": "Да",
+        "cash_drawer": "Установлен",
+        "terminal_status": "Работает",
     }
     response = client.post(
         "/api/v1/cash-registers/",
@@ -23,7 +33,12 @@ def test_create_cash_register(client, admin_token: str):
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 200
-    assert response.json()["kkm_number"] == "001"
+    body = response.json()
+    assert body["kkm_number"] == "001"
+    assert body["location_zone"] == "DF"
+    assert body["sber_store_code"] == "S-A1"
+    assert body["netsupport_target"] == "cash-a1.office.local"
+    assert body["cash_drawer"] == "Установлен"
 
 
 def test_poll_all_cash_registers_uses_polling_service_when_enabled(client, admin_token: str, monkeypatch):

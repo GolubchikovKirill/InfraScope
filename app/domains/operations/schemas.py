@@ -26,17 +26,26 @@ class EventLogsPublic(BaseModel):
 
 
 class CashRegisterCreate(BaseModel):
+    source_order: int | None = None
+    location_zone: str | None = None
     kkm_number: str
     store_number: str | None = None
     store_code: str | None = None
+    sber_store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None
     terminal_id_rs: str | None = None
     terminal_id_sber: str | None = None
     windows_version: str | None = None
     kkm_type: str = "retail"
+    rosenzweig_number: str | None = None
     cash_number: str | None = None
     hostname: str
+    netsupport_target: str | None = None
+    second_screen: str | None = None
+    piot_status: str | None = None
+    cash_drawer: str | None = None
+    terminal_status: str | None = None
     comment: str | None = None
 
     @field_validator("kkm_number", "hostname")
@@ -55,15 +64,33 @@ class CashRegisterCreate(BaseModel):
             raise ValueError("kkm_type must be 'retail' or 'shtrih'")
         return value
 
+    @field_validator("location_zone")
+    @classmethod
+    def validate_location_zone(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip().upper()
+        if value not in {"DF", "DP"}:
+            raise ValueError("location_zone must be 'DF' or 'DP'")
+        return value
+
     @field_validator(
         "store_number",
+        "location_zone",
         "store_code",
+        "sber_store_code",
         "serial_number",
         "inventory_number",
         "terminal_id_rs",
         "terminal_id_sber",
         "windows_version",
+        "rosenzweig_number",
         "cash_number",
+        "netsupport_target",
+        "second_screen",
+        "piot_status",
+        "cash_drawer",
+        "terminal_status",
         "comment",
     )
     @classmethod
@@ -79,17 +106,26 @@ class CashRegisterCreate(BaseModel):
 
 
 class CashRegisterUpdate(BaseModel):
+    source_order: int | None = None
+    location_zone: str | None = None
     kkm_number: str | None = None
     store_number: str | None = None
     store_code: str | None = None
+    sber_store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None
     terminal_id_rs: str | None = None
     terminal_id_sber: str | None = None
     windows_version: str | None = None
     kkm_type: str | None = None
+    rosenzweig_number: str | None = None
     cash_number: str | None = None
     hostname: str | None = None
+    netsupport_target: str | None = None
+    second_screen: str | None = None
+    piot_status: str | None = None
+    cash_drawer: str | None = None
+    terminal_status: str | None = None
     comment: str | None = None
 
     @field_validator("kkm_number", "hostname")
@@ -112,15 +148,33 @@ class CashRegisterUpdate(BaseModel):
             raise ValueError("kkm_type must be 'retail' or 'shtrih'")
         return value
 
+    @field_validator("location_zone")
+    @classmethod
+    def validate_location_zone(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        value = v.strip().upper()
+        if value not in {"DF", "DP"}:
+            raise ValueError("location_zone must be 'DF' or 'DP'")
+        return value
+
     @field_validator(
         "store_number",
+        "location_zone",
         "store_code",
+        "sber_store_code",
         "serial_number",
         "inventory_number",
         "terminal_id_rs",
         "terminal_id_sber",
         "windows_version",
+        "rosenzweig_number",
         "cash_number",
+        "netsupport_target",
+        "second_screen",
+        "piot_status",
+        "cash_drawer",
+        "terminal_status",
         "comment",
     )
     @classmethod
@@ -139,17 +193,26 @@ class CashRegisterPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    source_order: int | None = None
+    location_zone: str | None = None
     kkm_number: str
     store_number: str | None = None
     store_code: str | None = None
+    sber_store_code: str | None = None
     serial_number: str | None = None
     inventory_number: str | None = None
     terminal_id_rs: str | None = None
     terminal_id_sber: str | None = None
     windows_version: str | None = None
     kkm_type: str
+    rosenzweig_number: str | None = None
     cash_number: str | None = None
     hostname: str
+    netsupport_target: str | None = None
+    second_screen: str | None = None
+    piot_status: str | None = None
+    cash_drawer: str | None = None
+    terminal_status: str | None = None
     comment: str | None = None
     is_online: bool | None = None
     reachability_reason: str | None = None
