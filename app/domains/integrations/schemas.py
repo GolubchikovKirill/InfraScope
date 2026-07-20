@@ -165,3 +165,37 @@ class OneCExchangeByBarcodeResponse(BaseModel):
     request_id: str | None = None
     payload: dict | None = None
     error_kind: Literal["validation", "integration", "timeout", "config", "unknown"] | None = None
+
+
+class HonestSignTargetPublic(BaseModel):
+    host: str
+    label: str
+
+
+class HonestSignTargetsPublic(BaseModel):
+    data: list[HonestSignTargetPublic]
+    count: int
+    status_configured: bool
+    initialization_configured: bool
+
+
+class HonestSignStatusPublic(HonestSignTargetPublic):
+    reachable: bool
+    status: str
+    version: str | None = None
+    ready: bool
+    message: str = ""
+    checked_at: str
+
+
+class HonestSignStatusesPublic(BaseModel):
+    data: list[HonestSignStatusPublic]
+    count: int
+
+
+class HonestSignInitializePublic(HonestSignTargetPublic):
+    initial_status: str
+    final_status: str
+    result: str
+    message: str
+    checked_at: str

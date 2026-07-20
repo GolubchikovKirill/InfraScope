@@ -20,9 +20,10 @@ vi.mock("./pages/MediaPlayersPage", () => ({ default: () => <div>MediaPlayersPag
 vi.mock("./pages/SwitchesPage", () => ({ default: () => <div>SwitchesPage</div> }));
 vi.mock("./pages/Users", () => ({ default: () => <div>UsersPage</div> }));
 vi.mock("./pages/Login", () => ({ default: () => <div>LoginPage</div> }));
+vi.mock("./pages/HonestSignPage", () => ({ default: () => <div>HonestSignPage</div> }));
 
 const authState = {
-  user: null as null | { is_superuser: boolean },
+  user: null as null | { email: string; is_superuser: boolean },
   isLoading: false,
 };
 vi.mock("./auth", () => ({
@@ -58,19 +59,19 @@ describe("App routes", () => {
   });
 
   it("shows dashboard for authenticated user", async () => {
-    authState.user = { is_superuser: true };
+    authState.user = { email: "admin@example.com", is_superuser: true };
     renderWithProviders("/");
     expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
   });
 
   it("shows 404 page for unknown route", async () => {
-    authState.user = { is_superuser: true };
+    authState.user = { email: "admin@example.com", is_superuser: true };
     renderWithProviders("/unknown-page");
     expect(await screen.findByText("Страница не найдена")).toBeInTheDocument();
   });
 
   it("does not run legacy global background poller", async () => {
-    authState.user = { is_superuser: true };
+    authState.user = { email: "admin@example.com", is_superuser: true };
     renderWithProviders("/");
     expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
 
@@ -80,5 +81,17 @@ describe("App routes", () => {
     expect(api.pollAllCashRegisters).not.toHaveBeenCalled();
     expect(api.pollAllComputers).not.toHaveBeenCalled();
   });
-});
 
+  it("allows only the configured account to open Honest Sign", async () => {
+    authState.user = { email: "golubchikovka@regstaer.ru", is_superuser: true };
+    renderWithProviders("/honest-sign");
+    expect(await screen.findByText("HonestSignPage")).toBeInTheDocument();
+  });
+
+  it("redirects another administrator away from Honest Sign", async () => {
+    authState.user = { email: "admin@example.com", is_superuser: true };
+    renderWithProviders("/honest-sign");
+    expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
+    expect(screen.queryByText("HonestSignPage")).not.toBeInTheDocument();
+  });
+});

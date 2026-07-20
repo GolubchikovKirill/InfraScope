@@ -162,6 +162,15 @@ class Settings(BaseSettings):
     ONEC_EXCHANGE_API_URL: str = ""
     ONEC_EXCHANGE_API_TOKEN: str = ""
     ONEC_EXCHANGE_TIMEOUT_SECONDS: float = 20.0
+    HONEST_SIGN_ALLOWED_EMAILS: str = "golubchikovka@regstaer.ru"
+    HONEST_SIGN_TARGETS: str = ""
+    HONEST_SIGN_API_LOGIN: str = ""
+    HONEST_SIGN_API_PASSWORD: str = ""
+    HONEST_SIGN_TOKEN: str = ""
+    HONEST_SIGN_PORT: int = 5995
+    HONEST_SIGN_TIMEOUT_SECONDS: float = 10.0
+    HONEST_SIGN_STATUS_WAIT_SECONDS: float = 15.0
+    HONEST_SIGN_MAX_CONCURRENCY: int = 8
     SWITCH_WRITE_LOCK_SECONDS: int = 20
     SWITCH_SAFETY_COOLDOWN_SECONDS: int = 8
 

@@ -85,4 +85,22 @@ describe("Layout account block", () => {
     expect(localStorage.getItem("infrascope:theme-mode")).toBe("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
+
+  it("shows Honest Sign only to the assigned account", () => {
+    authState.user = {
+      email: "golubchikovka@regstaer.ru",
+      full_name: "Кирилл Голубчиков",
+      is_superuser: true,
+    };
+    const { rerender } = renderLayout("/");
+    expect(screen.getAllByRole("link", { name: "Честный знак" })).toHaveLength(2);
+
+    authState.user = {
+      email: "admin@infrascope.dev",
+      full_name: "Другой администратор",
+      is_superuser: true,
+    };
+    rerender(<MemoryRouter initialEntries={["/"]}><Layout><div>Page content</div></Layout></MemoryRouter>);
+    expect(screen.queryAllByRole("link", { name: "Честный знак" })).toHaveLength(0);
+  });
 });

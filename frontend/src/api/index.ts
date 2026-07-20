@@ -14,3 +14,4 @@ export * from "./scanner";
 export * from "./mediaPlayers";
 export * from "./mediaCenter";
 export * from "./switches";
+export * from "./honestSign";

@@ -4,6 +4,7 @@ import { useAuth } from "./auth";
 import { useRealtime } from "./hooks/useRealtime";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
+import { canAccessHonestSign } from "./access";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const MediaPlayersPage = lazy(() => import("./pages/MediaPlayersPage"));
@@ -16,6 +17,7 @@ const OneCPage = lazy(() => import("./pages/OneCPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const UsersPage = lazy(() => import("./pages/Users"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
+const HonestSignPage = lazy(() => import("./pages/HonestSignPage"));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -39,6 +41,12 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function HonestSignRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (!canAccessHonestSign(user)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 function RouteLoader() {
   return (
     <div className="flex h-[45vh] items-center justify-center">
@@ -57,6 +65,7 @@ function AnimatedRoutes() {
           <Route path="/media-players" element={<MediaPlayersPage />} />
           <Route path="/switches" element={<SwitchesPage />} />
           <Route path="/cash-registers" element={<CashRegistersPage />} />
+          <Route path="/honest-sign" element={<HonestSignRoute><HonestSignPage /></HonestSignRoute>} />
           <Route path="/computers" element={<ComputersPage />} />
           <Route path="/network-search" element={<NetworkSearchPage />} />
           <Route path="/onec" element={<OneCPage />} />
