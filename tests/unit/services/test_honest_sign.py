@@ -17,12 +17,13 @@ def _configure(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_configured_targets_normalizes_ipv4_and_labels() -> None:
     targets = honest_sign.configured_targets(
-        "172.23.8.21|Первая, 172.23.8.21|Дубликат,invalid,172.23.8.36"
+        "172.23.8.21|Первая|VNK-KKM-1501, "
+        "172.23.8.21|Дубликат,invalid,172.23.8.36|Вторая|invalid_hostname!"
     )
 
-    assert [(target.host, target.label) for target in targets] == [
-        ("172.23.8.21", "Первая"),
-        ("172.23.8.36", "Касса"),
+    assert [(target.host, target.label, target.hostname) for target in targets] == [
+        ("172.23.8.21", "Первая", "VNK-KKM-1501"),
+        ("172.23.8.36", "Вторая", None),
     ]
 
 

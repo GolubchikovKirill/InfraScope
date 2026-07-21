@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -16,6 +17,7 @@ from app.domains.integrations.schemas import HonestSignInitializePublic, HonestS
 class HonestSignTarget:
     host: str
     label: str
+    hostname: str | None = None
 
 
 class HonestSignConfigurationError(RuntimeError):
@@ -43,7 +45,8 @@ def configured_targets(raw: str | None = None) -> list[HonestSignTarget]:
         entry = item.strip()
         if not entry:
             continue
-        host_text, separator, label_text = entry.partition("|")
+        parts = [part.strip() for part in entry.split("|", 2)]
+        host_text = parts[0]
         try:
             host = str(ipaddress.IPv4Address(host_text.strip()))
         except ipaddress.AddressValueError:
@@ -51,9 +54,25 @@ def configured_targets(raw: str | None = None) -> list[HonestSignTarget]:
         if host in seen:
             continue
         seen.add(host)
-        label = label_text.strip() if separator and label_text.strip() else "Касса"
-        targets.append(HonestSignTarget(host=host, label=label[:128]))
+        label = parts[1] if len(parts) > 1 and parts[1] else "Касса"
+        hostname = _normalize_hostname(parts[2]) if len(parts) > 2 else None
+        targets.append(HonestSignTarget(host=host, label=label[:128], hostname=hostname))
     return targets
+
+
+def _normalize_hostname(raw: str) -> str | None:
+    value = raw.strip().rstrip(".")
+    if not value or len(value) > 255:
+        return None
+    labels = value.split(".")
+    if any(
+        not label
+        or len(label) > 63
+        or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", label)
+        for label in labels
+    ):
+        return None
+    return value
 
 
 def get_configured_target(host: str) -> HonestSignTarget:
@@ -120,6 +139,7 @@ async def _check_target(client: httpx.AsyncClient, target: HonestSignTarget) -> 
             return HonestSignStatusPublic(
                 host=target.host,
                 label=target.label,
+                hostname=target.hostname,
                 reachable=True,
                 status=f"HTTP_{response.status_code}",
                 ready=False,
@@ -132,6 +152,7 @@ async def _check_target(client: httpx.AsyncClient, target: HonestSignTarget) -> 
             return HonestSignStatusPublic(
                 host=target.host,
                 label=target.label,
+                hostname=target.hostname,
                 reachable=True,
                 status="INVALID_RESPONSE",
                 ready=False,
@@ -144,6 +165,7 @@ async def _check_target(client: httpx.AsyncClient, target: HonestSignTarget) -> 
         return HonestSignStatusPublic(
             host=target.host,
             label=target.label,
+            hostname=target.hostname,
             reachable=True,
             status=status,
             version=version,
@@ -157,6 +179,7 @@ async def _check_target(client: httpx.AsyncClient, target: HonestSignTarget) -> 
     return HonestSignStatusPublic(
         host=target.host,
         label=target.label,
+        hostname=target.hostname,
         reachable=False,
         status="ERROR",
         ready=False,
@@ -191,6 +214,7 @@ async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignI
             return HonestSignInitializePublic(
                 host=target.host,
                 label=target.label,
+                hostname=target.hostname,
                 initial_status=initial.status,
                 final_status=initial.status,
                 result="ERROR",
@@ -201,6 +225,7 @@ async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignI
             return HonestSignInitializePublic(
                 host=target.host,
                 label=target.label,
+                hostname=target.hostname,
                 initial_status=initial.status,
                 final_status=initial.status,
                 result="ALREADY_READY",
@@ -238,6 +263,7 @@ async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignI
                 return HonestSignInitializePublic(
                     host=target.host,
                     label=target.label,
+                    hostname=target.hostname,
                     initial_status=initial.status,
                     final_status=final.status,
                     result=result,
@@ -247,6 +273,7 @@ async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignI
         return HonestSignInitializePublic(
             host=target.host,
             label=target.label,
+            hostname=target.hostname,
             initial_status=initial.status,
             final_status=initial.status,
             result=result,

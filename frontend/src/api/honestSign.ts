@@ -3,6 +3,7 @@ import api from "./http";
 export interface HonestSignTarget {
   host: string;
   label: string;
+  hostname: string | null;
 }
 
 export interface HonestSignTargetsResponse {

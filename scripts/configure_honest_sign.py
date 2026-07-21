@@ -4,6 +4,7 @@ import argparse
 import ipaddress
 import json
 import os
+import re
 import tempfile
 import uuid
 from pathlib import Path
@@ -24,7 +25,35 @@ def read_configuration(path: Path) -> dict[str, str]:
     return values
 
 
-def read_targets(path: Path) -> list[str]:
+def read_hostname_map(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        host_text, separator, hostname_text = line.partition("|")
+        if not separator:
+            raise ValueError(f"Invalid hostname map line {line_number}")
+        host = str(ipaddress.IPv4Address(host_text.strip()))
+        hostname = hostname_text.strip().rstrip(".")
+        labels = hostname.split(".")
+        if (
+            not hostname
+            or len(hostname) > 255
+            or any(
+                not label
+                or len(label) > 63
+                or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", label)
+                for label in labels
+            )
+        ):
+            raise ValueError(f"Invalid hostname on line {line_number}")
+        result[host] = hostname
+    return result
+
+
+def read_targets(path: Path, hostnames: dict[str, str] | None = None) -> list[str]:
+    hostname_map = hostnames or {}
     result: list[str] = []
     seen: set[str] = set()
     label = "Касса"
@@ -40,7 +69,8 @@ def read_targets(path: Path) -> list[str]:
         if host in seen:
             continue
         seen.add(host)
-        result.append(f"{host}|{label}")
+        suffix = f"|{hostname_map[host]}" if host in hostname_map else ""
+        result.append(f"{host}|{label}{suffix}")
     if not result:
         raise ValueError("Computer list is empty")
     return result
@@ -82,12 +112,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Configure Honest Sign Local Module integration")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--computers", type=Path, required=True)
+    parser.add_argument("--hostname-map", type=Path)
     parser.add_argument("--env", type=Path, required=True)
     parser.add_argument("--allowed-email", default="golubchikovka@regstaer.ru")
+    parser.add_argument("--max-concurrency", type=int, default=32)
     args = parser.parse_args()
 
+    if not 1 <= args.max_concurrency <= 32:
+        parser.error("--max-concurrency must be between 1 and 32")
+
     config = read_configuration(args.config)
-    targets = read_targets(args.computers)
+    hostnames = read_hostname_map(args.hostname_map) if args.hostname_map else {}
+    targets = read_targets(args.computers, hostnames)
     update_env(
         args.env,
         {
@@ -96,9 +132,14 @@ def main() -> int:
             "HONEST_SIGN_API_LOGIN": config["login"],
             "HONEST_SIGN_API_PASSWORD": config["password"],
             "HONEST_SIGN_TOKEN": config["token"],
+            "HONEST_SIGN_MAX_CONCURRENCY": str(args.max_concurrency),
         },
     )
-    print(f"configured_targets={len(targets)} allowed_accounts=1")
+    matched_hostnames = sum(1 for target in targets if target.count("|") == 2)
+    print(
+        f"configured_targets={len(targets)} matched_hostnames={matched_hostnames} "
+        "allowed_accounts=1"
+    )
     return 0
 
 

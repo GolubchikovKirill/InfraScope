@@ -170,6 +170,7 @@ class OneCExchangeByBarcodeResponse(BaseModel):
 class HonestSignTargetPublic(BaseModel):
     host: str
     label: str
+    hostname: str | None = None
 
 
 class HonestSignTargetsPublic(BaseModel):

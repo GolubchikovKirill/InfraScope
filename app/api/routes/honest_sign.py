@@ -52,7 +52,10 @@ def _configuration_error(exc: HonestSignConfigurationError) -> HTTPException:
 @router.get("/targets", response_model=HonestSignTargetsPublic)
 def read_targets(operator: HonestSignOperator) -> HonestSignTargetsPublic:
     del operator
-    rows = [HonestSignTargetPublic(host=target.host, label=target.label) for target in configured_targets()]
+    rows = [
+        HonestSignTargetPublic(host=target.host, label=target.label, hostname=target.hostname)
+        for target in configured_targets()
+    ]
     return HonestSignTargetsPublic(
         data=rows,
         count=len(rows),

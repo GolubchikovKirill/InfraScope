@@ -22,18 +22,19 @@ describe("HonestSignPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.getHonestSignTargets.mockResolvedValue({
-      data: [{ host: "172.23.8.21", label: "Касса" }],
+      data: [{ host: "172.23.8.21", label: "A15", hostname: "VNK-KKM-1501" }],
       count: 1,
       status_configured: true,
       initialization_configured: true,
     });
     api.checkAllHonestSignTargets.mockResolvedValue({
-      data: [{ host: "172.23.8.21", label: "Касса", reachable: true, status: "not_initialized", version: "2.5.1", ready: false, message: "", checked_at: "2026-07-20T10:00:00Z" }],
+      data: [{ host: "172.23.8.21", label: "A15", hostname: "VNK-KKM-1501", reachable: true, status: "not_initialized", version: "2.5.1", ready: false, message: "", checked_at: "2026-07-20T10:00:00Z" }],
       count: 1,
     });
     api.initializeHonestSignTarget.mockResolvedValue({
       host: "172.23.8.21",
-      label: "Касса",
+      label: "A15",
+      hostname: "VNK-KKM-1501",
       initial_status: "not_initialized",
       final_status: "ready",
       result: "READY",
@@ -45,6 +46,7 @@ describe("HonestSignPage", () => {
   it("requires explicit confirmation before initialization", async () => {
     renderPage();
     expect(await screen.findByText("172.23.8.21")).toBeInTheDocument();
+    expect(screen.getByText("VNK-KKM-1501")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Активировать" }));
     expect(screen.getByText("Инициализировать Local Module?")).toBeInTheDocument();

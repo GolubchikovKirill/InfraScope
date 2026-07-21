@@ -7,6 +7,7 @@ import {
   Loader2,
   PlayCircle,
   RefreshCw,
+  Search,
   ServerCog,
   ShieldCheck,
   TriangleAlert,
@@ -28,6 +29,8 @@ export default function HonestSignPage() {
   const queryClient = useQueryClient();
   const [targetToInitialize, setTargetToInitialize] = useState<HonestSignTarget | null>(null);
   const [lastResult, setLastResult] = useState<HonestSignInitializeResult | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
 
   const targetsQuery = useQuery({
     queryKey: ["honest-sign", "targets"],
@@ -63,7 +66,21 @@ export default function HonestSignPage() {
 
   const targets = targetsQuery.data?.data ?? [];
   const statuses = statusesQuery.data?.data ?? [];
+  const locations = useMemo(
+    () => [...new Set(targets.map((target) => target.label))].sort((a, b) => a.localeCompare(b, "ru", { numeric: true })),
+    [targets],
+  );
+  const visibleTargets = useMemo(() => {
+    const needle = searchQuery.trim().toLocaleLowerCase("ru-RU");
+    return targets.filter((target) => {
+      if (locationFilter && target.label !== locationFilter) return false;
+      if (!needle) return true;
+      return [target.host, target.label, target.hostname || ""]
+        .some((value) => value.toLocaleLowerCase("ru-RU").includes(needle));
+    });
+  }, [locationFilter, searchQuery, targets]);
   const byHost = useMemo(() => new Map(statuses.map((status) => [status.host, status])), [statuses]);
+  const hostnameCount = targets.filter((target) => target.hostname).length;
   const readyCount = statuses.filter((status) => status.ready).length;
   const initializingCount = statuses.filter((status) => status.status.toLocaleLowerCase("ru-RU") === "initialization").length;
   const errorCount = statuses.filter((status) => !status.reachable || status.status.startsWith("HTTP_")).length;
@@ -105,8 +122,9 @@ export default function HonestSignPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-5">
           <StatCard label="Касс в списке" value={targets.length} />
+          <StatCard label="Hostname найден" value={hostnameCount} tone="sky" />
           <StatCard label="Готовы" value={readyCount} tone="green" />
           <StatCard label="Инициализация" value={initializingCount} tone="sky" />
           <StatCard label="Недоступны" value={errorCount} tone="red" />
@@ -124,8 +142,34 @@ export default function HonestSignPage() {
         <div className="app-panel p-5 text-sm text-rose-600">Не удалось выполнить проверку. Проверьте доступность сети сервера и настройки интеграции.</div>
       )}
 
+      <div className="app-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <label className="relative min-w-0 flex-1">
+          <span className="sr-only">Поиск кассы</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="IP, hostname или магазин"
+            className="app-input w-full py-2 pl-9 pr-3 text-sm"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-500">
+          <span>Магазин</span>
+          <select
+            value={locationFilter}
+            onChange={(event) => setLocationFilter(event.target.value)}
+            className="app-input min-w-32 px-3 py-2 text-sm text-slate-700"
+          >
+            <option value="">Все</option>
+            {locations.map((location) => <option key={location} value={location}>{location}</option>)}
+          </select>
+        </label>
+        <div className="text-xs text-slate-500">Показано: {visibleTargets.length} из {targets.length}</div>
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-2">
-        {targets.map((target) => {
+        {visibleTargets.map((target) => {
           const status = byHost.get(target.host);
           const checkingThis = checkOneMutation.isPending && checkOneMutation.variables === target.host;
           const initializingThis = initializeMutation.isPending && initializeMutation.variables === target.host;
@@ -137,6 +181,7 @@ export default function HonestSignPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold text-slate-900">{target.host}</h3><StatusBadge status={status} /></div>
                     <p className="mt-1 text-sm text-slate-500">{target.label}</p>
+                    {target.hostname && <p className="mt-1 font-mono text-xs font-medium text-slate-700">{target.hostname}</p>}
                     <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
                       <Field label="Версия" value={status?.version || "—"} />
                       <Field label="API" value="v2 :5995" />
@@ -174,6 +219,7 @@ export default function HonestSignPage() {
       </div>
 
       {targets.length === 0 && <div className="app-empty p-10 text-center text-slate-500">Список касс для Честного знака пуст.</div>}
+      {targets.length > 0 && visibleTargets.length === 0 && <div className="app-empty p-10 text-center text-slate-500">По заданным условиям кассы не найдены.</div>}
 
       {targetToInitialize && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
