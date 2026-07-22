@@ -22,7 +22,8 @@ k8s:
   resources_profile: small
   ingress_enabled: true
 ci:
-  lint_command: cd frontend && npm run test:run -- App.test.tsx
-  test_command: cd frontend && npm run build
+  working_directory: frontend
+  lint_command: npm run test:run -- App.test.tsx
+  test_command: npm run build
   build_context: ./frontend
   dockerfile: frontend/Dockerfile

@@ -6,6 +6,12 @@ on:
       service_name:
         required: true
         type: string
+      runtime:
+        required: true
+        type: string
+      working_directory:
+        required: true
+        type: string
       lint_command:
         required: true
         type: string
@@ -19,11 +25,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        if: inputs.runtime == 'python'
         with:
           version: "latest"
-      - name: Install dependencies
+      - uses: actions/setup-node@v4
+        if: inputs.runtime == 'node'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ${{ inputs.working_directory }}/package-lock.json
+      - name: Install Python dependencies
+        if: inputs.runtime == 'python'
         run: uv sync --frozen
+        working-directory: ${{ inputs.working_directory }}
+      - name: Install Node dependencies
+        if: inputs.runtime == 'node'
+        run: npm ci
+        working-directory: ${{ inputs.working_directory }}
       - name: Lint service
         run: ${{ inputs.lint_command }}
+        working-directory: ${{ inputs.working_directory }}
       - name: Test service
         run: ${{ inputs.test_command }}
+        working-directory: ${{ inputs.working_directory }}

@@ -64,6 +64,8 @@ jobs:
     uses: ./.github/workflows/service-ci-reusable.yml
     with:
       service_name: ${{ matrix.name }}
+      runtime: ${{ matrix.runtime }}
+      working_directory: ${{ matrix.working_directory }}
       lint_command: ${{ matrix.lint }}
       test_command: ${{ matrix.test }}
 
