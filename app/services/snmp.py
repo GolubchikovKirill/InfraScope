@@ -28,13 +28,8 @@ import socket
 import ssl as _ssl
 import urllib.error
 import urllib.request
-import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-
-from app.observability.metrics import snmp_operations_total
-
-warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
 
 from pysnmp.hlapi.asyncio import (  # noqa: E402
     CommunityData,
@@ -44,7 +39,14 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
     SnmpEngine,
     UdpTransportTarget,
 )
-from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd  # noqa: E402
+from pysnmp.hlapi.asyncio import (
+    get_cmd as get_cmd,
+)
+from pysnmp.hlapi.asyncio import (
+    walk_cmd as walk_cmd,
+)
+
+from app.observability.metrics import snmp_operations_total
 
 logger = logging.getLogger(__name__)
 
@@ -294,7 +296,7 @@ async def _snmp_get(
     community: CommunityData,
     oid: str,
 ) -> str | None:
-    error_indication, error_status, _error_index, var_binds = await getCmd(
+    error_indication, error_status, _error_index, var_binds = await get_cmd(
         engine,
         community,
         target,
@@ -315,7 +317,7 @@ async def _snmp_walk(
     oid: str,
 ) -> list[tuple[str, str]]:
     results: list[tuple[str, str]] = []
-    async for error_indication, error_status, _error_index, var_binds in walkCmd(
+    async for error_indication, error_status, _error_index, var_binds in walk_cmd(
         engine,
         community,
         target,
@@ -815,7 +817,7 @@ def _tcp_reachable(ip: str) -> bool:
 async def _poll_printer_async(ip_address: str, community: str = "public") -> PrinterStatus:
     engine = SnmpEngine()
     try:
-        target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+        target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception as e:
         logger.debug("Cannot create SNMP target for %s: %s", ip_address, e)
         return PrinterStatus(is_online=False, status="unreachable")
@@ -952,13 +954,13 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
     """Query ifPhysAddress via SNMP to get MAC address."""
     engine = SnmpEngine()
     try:
-        target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+        target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception:
         return None
 
     comm = CommunityData(community)
     try:
-        async for err, _, _, vb in walkCmd(
+        async for err, _, _, vb in walk_cmd(
             engine,
             comm,
             target,

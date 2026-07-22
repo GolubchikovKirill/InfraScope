@@ -88,10 +88,6 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
     Sequential execution is intentional: pysnmp's UDP transport
     has global state that causes failures under concurrency.
     """
-    import warnings
-
-    warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
-
     OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
     OID_IF_PHYS_ADDR = "1.3.6.1.2.1.2.2.1.6"
 
@@ -104,16 +100,21 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
             SnmpEngine,
             UdpTransportTarget,
         )
-        from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd
+        from pysnmp.hlapi.asyncio import (
+            get_cmd as get_cmd,
+        )
+        from pysnmp.hlapi.asyncio import (
+            walk_cmd as walk_cmd,
+        )
 
         info = SnmpInfo()
         engine = SnmpEngine()
-        target = UdpTransportTarget((ip, 161), timeout=2, retries=0)
+        target = await UdpTransportTarget.create((ip, 161), timeout=2, retries=0)
         comm = CommunityData("public")
         ctx = ContextData()
 
         # sysDescr
-        result = await getCmd(
+        result = await get_cmd(
             engine,
             comm,
             target,
@@ -128,7 +129,7 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
 
         # ifPhysAddress (walk to find first non-empty 6-byte MAC)
         try:
-            async for err, _, _, vb in walkCmd(
+            async for err, _, _, vb in walk_cmd(
                 engine,
                 comm,
                 target,

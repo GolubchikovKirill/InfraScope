@@ -181,11 +181,13 @@ async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[s
             SnmpEngine,
             UdpTransportTarget,
         )
-        from pysnmp.hlapi.asyncio.cmdgen import getCmd
+        from pysnmp.hlapi.asyncio import (
+            get_cmd as get_cmd,
+        )
     except Exception:
         return {}
     try:
-        target = UdpTransportTarget((ip, 161), timeout=2, retries=0)
+        target = await UdpTransportTarget.create((ip, 161), timeout=2, retries=0)
     except Exception:
         return {}
     engine = SnmpEngine()
@@ -193,7 +195,7 @@ async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[s
     oid_sys_name = "1.3.6.1.2.1.1.5.0"
     oid_sys_object_id = "1.3.6.1.2.1.1.2.0"
     try:
-        err_indication, err_status, _, var_binds = await getCmd(
+        err_indication, err_status, _, var_binds = await get_cmd(
             engine,
             CommunityData(community, mpModel=1),
             target,
