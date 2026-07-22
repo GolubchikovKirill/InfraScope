@@ -1464,11 +1464,11 @@ wheels = [
 
 [[package]]
 name = "pyasn1"
-version = "0.6.0"
+version = "0.6.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/4a/a3/d2157f333900747f20984553aca98008b6dc843eb62f3a36030140ccec0d/pyasn1-0.6.0.tar.gz", hash = "sha256:3a35ab2c4b5ef98e17dfdec8ab074046fbda76e281c5a706ccd82328cfc8f64c", size = 148088, upload-time = "2024-03-26T20:07:35.376Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/9a/23310166d960def5897e91fe20e5b724601b02a22e84ba1f94232c0b7f67/pyasn1-0.6.4.tar.gz", hash = "sha256:9c447d8431c947fe4c8febc4ed9e760bc29011a5b01e5c74b67025bd9fb8ce81", size = 151262, upload-time = "2026-07-09T01:12:33.988Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/7e/5f50d07d5e70a2addbccd90ac2950f81d1edd0783630651d9268d7f1db49/pyasn1-0.6.0-py2.py3-none-any.whl", hash = "sha256:cca4bb0f2df5504f02f6f8a775b6e416ff9b0b3b16f7ee80b5a3153d9b804473", size = 85313, upload-time = "2024-03-26T20:07:32.491Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/3b/6163796d69c3977d1e4287bea4a6979161cbbdd170ebb430511e8e1999ce/pyasn1-0.6.4-py3-none-any.whl", hash = "sha256:deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b", size = 84410, upload-time = "2026-07-09T01:12:32.92Z" },
 ]
 
 [[package]]
@@ -1663,7 +1663,7 @@ wheels = [
 
 [[package]]
 name = "pysnmp-lextudio"
-version = "6.3.0"
+version = "6.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyasn1" },
@@ -1671,9 +1671,9 @@ dependencies = [
     { name = "pysnmpcrypto" },
     { name = "pytest-cov" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/ba/597643ca6ef99e2924aa5f0a51eb5754f537b0d96fa432b7a60a4b0480b8/pysnmp_lextudio-6.3.0.tar.gz", hash = "sha256:e946c9a80b48af4cfe3c8281eecb396be48cfa47c14107696aff6d10d7fa5be1", size = 412030, upload-time = "2024-10-06T21:27:06.969Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/b8/01e548f4a98538596d56bef8120c0a3db52597c9a3f1eba5ab6bd25572c3/pysnmp_lextudio-6.2.1.tar.gz", hash = "sha256:e54e0ec93ff0b68e511502f9fa5f3704e07fc89e6f7bed489973bde8378b2557", size = 416019, upload-time = "2024-07-14T20:17:23.177Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/88/71fc592ce93e6f919ccac395a28279f393cbce9a76a06e48fe7960388b23/pysnmp_lextudio-6.3.0-py3-none-any.whl", hash = "sha256:f0675cfecfb5672a554dada0ec0de1a28d5d6a86fc28586ddb2f90565b078a76", size = 270267, upload-time = "2024-10-06T21:27:05.021Z" },
+    { url = "https://files.pythonhosted.org/packages/51/d3/3c46842fc57eca29d6b4494122a0ca6fbd7e1a817cee2c81c925e92e709d/pysnmp_lextudio-6.2.1-py3-none-any.whl", hash = "sha256:69a8f8650e7f0cdf76e9cdee8d464787fa6e5df79f0d6f004fa8b935f0767a45", size = 272526, upload-time = "2024-07-14T20:17:21.177Z" },
 ]
 
 [[package]]
