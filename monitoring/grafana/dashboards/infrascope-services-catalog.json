@@ -94,7 +94,7 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "ML Service up",
+      "title": "Prediction Service up",
       "gridPos": {
         "h": 4,
         "w": 6,
