@@ -15,7 +15,6 @@ import platform
 import re as _re
 import socket
 import struct
-import time
 import warnings
 from dataclasses import dataclass, field
 

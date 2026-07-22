@@ -15,9 +15,12 @@ def test_safe_db_name_rejects_unsupported_characters():
 def test_generate_qr_docs_zip_skips_empty_datasets_and_builds_both_databases(monkeypatch):
     calls: list[tuple[str, str]] = []
 
+    monkeypatch.setattr(qr_generator.settings, "QR_SQL_DUTY_FREE_SERVER", "free-sql")
+    monkeypatch.setattr(qr_generator.settings, "QR_SQL_DUTY_PAID_SERVER", "paid-sql")
+
     def _fake_query_rows(*, server, database, sql_login, sql_password, airport_code, surnames):
         calls.append((server, database))
-        if "KC01" in server:
+        if server == "free-sql":
             return [{"LOGIN": "4007001", "NAME": "Иванов Иван", "NameExt": "QR-DATA-1"}]
         return []
 
@@ -47,8 +50,8 @@ def test_generate_qr_docs_zip_skips_empty_datasets_and_builds_both_databases(mon
     )
 
     assert calls == [
-        ("DC1-SRV-KC01.regstaer.local", "CashDB51"),
-        ("DC1-SRV-KC02.regstaer.local", "CashDB51"),
+        ("free-sql", "CashDB51"),
+        ("paid-sql", "CashDB51"),
     ]
 
     archive = zipfile.ZipFile(io.BytesIO(payload))
@@ -91,8 +94,11 @@ def test_generate_qr_docs_zip_uses_channel_specific_databases(monkeypatch):
 
 
 def test_generate_qr_docs_zip_keeps_partial_export_with_error_report(monkeypatch):
+    monkeypatch.setattr(qr_generator.settings, "QR_SQL_DUTY_FREE_SERVER", "free-sql")
+    monkeypatch.setattr(qr_generator.settings, "QR_SQL_DUTY_PAID_SERVER", "paid-sql")
+
     def _fake_query_rows(*, server, database, sql_login, sql_password, airport_code, surnames):
-        if "KC02" in server:
+        if server == "paid-sql":
             raise RuntimeError("login failed")
         return [{"LOGIN": "4007001", "NAME": "Иванов Иван", "NameExt": "QR-DATA-1"}]
 

@@ -4,13 +4,9 @@ from collections import OrderedDict
 from collections.abc import Callable
 from threading import Lock
 from time import monotonic
-from typing import Generic, TypeVar
-
-TKey = TypeVar("TKey")
-TValue = TypeVar("TValue")
 
 
-class BoundedTTLCache(Generic[TKey, TValue]):
+class BoundedTTLCache[TKey, TValue]:
     """Small thread-safe TTL/LRU cache for process-local best-effort data."""
 
     def __init__(
