@@ -49,6 +49,21 @@ class APInfo:
     poe_status: str | None = None
 
 
+@dataclass
+class CameraPortInfo:
+    """A port on a camera VLAN. Cameras don't announce themselves via CDP/LLDP
+    the way autonomous APs do, so unlike APInfo this is identified purely by
+    VLAN membership plus link/PoE state - it's every port on a camera VLAN
+    that's currently up, not a positively-identified camera."""
+
+    port: str
+    vlan: int
+    oper_status: str
+    description: str | None = None
+    poe_power: str | None = None
+    poe_status: str | None = None
+
+
 class CiscoSSH:
     """Manages an SSH session to a Cisco IOS device."""
 
@@ -342,6 +357,99 @@ def get_access_points(
         return None
     finally:
         ssh.close()
+
+
+def get_camera_ports(
+    ip: str, username: str, password: str, enable_password: str, port: int, camera_vlans: set[int]
+) -> list[CameraPortInfo] | None:
+    """Ports whose access VLAN is one of camera_vlans, for manual identification
+    and PoE-cycling of a dropped camera. Returns None if the switch could not
+    be scanned at all (SSH failure), distinct from an empty list, for the same
+    reason get_access_points does: a failed scan must not look like "no camera
+    ports exist" to a caller.
+    """
+    ssh = CiscoSSH(ip, username, password, enable_password, port)
+    if not ssh.connect():
+        switch_ops_total.labels(operation="camera_ports", result="error").inc()
+        return None
+
+    try:
+        try:
+            status_output = ssh.execute("show interfaces status")
+        except Exception as e:
+            logger.warning("Failed to get interface status from %s: %s", ip, e)
+            switch_ops_total.labels(operation="camera_ports", result="error").inc()
+            return None
+
+        ports = _parse_ports_on_vlans(status_output, camera_vlans)
+
+        try:
+            poe_output = ssh.execute("show power inline")
+            _enrich_camera_poe(ports, poe_output)
+        except Exception as e:
+            logger.warning("PoE enrichment failed for %s: %s", ip, e)
+
+        switch_ops_total.labels(operation="camera_ports", result="success").inc()
+        return ports
+    except Exception as e:
+        logger.warning("Failed to get camera ports from %s: %s", ip, e)
+        switch_ops_total.labels(operation="camera_ports", result="error").inc()
+        return None
+    finally:
+        ssh.close()
+
+
+_INTERFACE_STATUS_RE = re.compile(
+    r"^(\S+)\s{2,}(\S.*?)?\s{2,}(connected|notconnect|disabled|err-disabled|monitor|inactive)\s+(\S+)"
+)
+
+
+def _parse_ports_on_vlans(status_output: str, vlans: set[int]) -> list[CameraPortInfo]:
+    """Parse 'show interfaces status'.
+
+    Uses double-space-delimited columns rather than splitting on whitespace:
+    the Name column is fixed-width but often empty, so plain split() gives a
+    different token count for a port with no description vs. one with a
+    description - counting fields from the end (as cisco_provider.py's own
+    parser does) silently drops every undescribed port, which in practice is
+    most of them.
+    """
+    ports: list[CameraPortInfo] = []
+    for line in status_output.splitlines():
+        line = line.rstrip()
+        if not line or line.lower().startswith("port ") or line.startswith("---"):
+            continue
+        m = _INTERFACE_STATUS_RE.match(line)
+        if not m:
+            continue
+        port_name, name_text, status_text, vlan_text = m.groups()
+        name_text = (name_text or "").strip()
+        if not vlan_text.isdigit() or int(vlan_text) not in vlans:
+            continue
+        ports.append(
+            CameraPortInfo(
+                port=port_name,
+                vlan=int(vlan_text),
+                oper_status=status_text,
+                description=name_text if name_text and name_text != "--" else None,
+            )
+        )
+    return ports
+
+
+def _enrich_camera_poe(ports: list[CameraPortInfo], poe_output: str) -> None:
+    poe_by_port: dict[str, dict] = {}
+    for line in poe_output.split("\n"):
+        m = re.match(r"\s*(\S+)\s+\S+\s+(\S+)\s+([\d.]+)\s+", line)
+        if m:
+            port_key = _normalize_port(m.group(1))
+            poe_by_port[port_key] = {"status": m.group(2), "power": m.group(3) + "W"}
+
+    for cam in ports:
+        port_key = _normalize_port(cam.port)
+        if port_key in poe_by_port:
+            cam.poe_status = poe_by_port[port_key].get("status")
+            cam.poe_power = poe_by_port[port_key].get("power")
 
 
 def reboot_ap(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> bool:

@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS: int = 240
     AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS: int = 20
     AUTO_REBOOT_AP_MAX_PER_SWITCH: int = 20
+    # VLANs used for camera/video-surveillance subnets. Cameras don't announce
+    # themselves via CDP/LLDP, so identifying "camera ports" for a switch is
+    # purely VLAN membership + link/PoE state, not device discovery - this is
+    # manual-only (view ports, PoE-cycle one by hand), no scheduled auto-reboot.
+    CAMERA_VLANS: str = "241,242,243,244,247"
     DISCOVERY_SERVICE_ENABLED: bool = False
     DISCOVERY_SERVICE_URL: str = "http://discovery-service:8012"
     NETWORK_CONTROL_SERVICE_ENABLED: bool = False

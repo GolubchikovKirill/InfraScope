@@ -46,6 +46,15 @@ export interface AccessPoint {
   exclude_from_auto_reboot: boolean;
 }
 
+export interface CameraPort {
+  port: string;
+  vlan: number;
+  oper_status: string;
+  description: string | null;
+  poe_power: string | null;
+  poe_status: string | null;
+}
+
 export interface SwitchPort {
   port: string;
   if_index: number;
@@ -119,6 +128,11 @@ export async function pollAllSwitches() {
 
 export async function getSwitchAPs(id: string) {
   const { data } = await api.get<AccessPoint[]>(`/switches/${id}/access-points`);
+  return data;
+}
+
+export async function getSwitchCameraPorts(id: string) {
+  const { data } = await api.get<CameraPort[]>(`/switches/${id}/camera-ports`);
   return data;
 }
 

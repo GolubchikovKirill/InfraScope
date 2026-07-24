@@ -810,6 +810,15 @@ class AccessPointInfo(BaseModel):
     exclude_from_auto_reboot: bool = False
 
 
+class CameraPortInfo(BaseModel):
+    port: str
+    vlan: int
+    oper_status: str
+    description: str | None = None
+    poe_power: str | None = None
+    poe_status: str | None = None
+
+
 class SetApExcludedRequest(BaseModel):
     excluded: bool
 

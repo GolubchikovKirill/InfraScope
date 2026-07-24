@@ -28,6 +28,7 @@ from app.domains.inventory.ap_registry import (
 from app.domains.inventory.models import NetworkSwitch
 from app.domains.inventory.schemas import (
     AccessPointInfo,
+    CameraPortInfo,
     DiscoveryResults,
     NetworkSwitchCreate,
     NetworkSwitchesPublic,
@@ -58,7 +59,7 @@ from app.observability.metrics import (
     switch_port_ops_total,
 )
 from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
-from app.services.cisco_ssh import get_access_points, poe_cycle_ap, reboot_ap
+from app.services.cisco_ssh import get_access_points, get_camera_ports, poe_cycle_ap, reboot_ap
 from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
 from app.services.event_log import write_event_log
 from app.services.internal_services import _proxy_request
@@ -477,6 +478,45 @@ async def get_switch_aps(
             exclude_from_auto_reboot=ap.exclude_from_auto_reboot,
         )
         for ap in merged
+    ]
+
+
+@router.get("/{switch_id}/camera-ports", response_model=list[CameraPortInfo])
+async def get_switch_camera_ports(
+    switch_id: uuid.UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> list[CameraPortInfo]:
+    switch = _get_switch_or_404(session, switch_id)
+    if switch.vendor != "cisco":
+        raise HTTPException(status_code=400, detail="Camera port lookup is available for Cisco switches")
+
+    camera_vlans = {int(v) for v in settings.CAMERA_VLANS.split(",") if v.strip().isdigit()}
+    if not camera_vlans:
+        return []
+
+    ports = await asyncio.to_thread(
+        get_camera_ports,
+        switch.ip_address,
+        switch.ssh_username,
+        switch.ssh_password,
+        switch.enable_password,
+        switch.ssh_port,
+        camera_vlans,
+    )
+    if ports is None:
+        raise HTTPException(status_code=503, detail="Could not reach switch via SSH")
+
+    return [
+        CameraPortInfo(
+            port=p.port,
+            vlan=p.vlan,
+            oper_status=p.oper_status,
+            description=p.description,
+            poe_power=p.poe_power,
+            poe_status=p.poe_status,
+        )
+        for p in ports
     ]
 
 
