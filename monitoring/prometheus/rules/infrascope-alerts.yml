@@ -184,6 +184,19 @@ groups:
           summary: "Массовое открытие circuit breaker"
           description: "Более 10 circuit-open событий за 10 минут (проверьте сеть/доступность устройств)."
 
+      - alert: InfraScopePollCycleApproachingTimeLimit
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(infrascope_worker_task_duration_seconds_bucket{operation=~"poll_all_.*"}[30m])) by (le, operation)
+          ) > 250
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Цикл опроса {{ $labels.operation }} приближается к лимиту времени"
+          description: "p95 длительности цикла опроса за последние 30 минут превышает 250 секунд, это близко к мягкому лимиту Celery-задачи (300 секунд). Цикл рискует быть прерван по таймауту или задержать следующий запланированный запуск (каждые 15 минут)."
+
       - alert: InfraScopeMLServiceDown
         expr: max_over_time(up{job="infrascope-ml-service"}[2m]) == 0
         for: 2m

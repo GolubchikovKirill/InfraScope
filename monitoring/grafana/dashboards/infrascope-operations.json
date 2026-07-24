@@ -315,6 +315,48 @@
       ],
       "title": "Discovery Device Yield",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 50 },
+      "id": 13,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (kind, event) (increase(infrascope_poll_resilience_events_total{event=~\"circuit_skip|circuit_opened\"}[15m]))",
+          "legendFormat": "{{kind}} {{event}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Circuit Breaker Skips / Opens (15m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 50 },
+      "id": 14,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (kind, event) (increase(infrascope_poll_resilience_events_total{event=~\"offline_confirmed|offline_pending_confirmation|recovered\"}[15m]))",
+          "legendFormat": "{{kind}} {{event}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Poll Resilience State Transitions (15m)",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -327,6 +369,6 @@
   "timezone": "",
   "title": "InfraScope Operations & Reliability",
   "uid": "infrascope-ops-reliability",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }
