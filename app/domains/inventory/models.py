@@ -99,6 +99,29 @@ class NetworkSwitch(SQLModel, table=True):
     updated_at: datetime | None = Field(default=None)
 
 
+class SwitchAccessPoint(SQLModel, table=True):
+    """A Wi-Fi AP ever seen on a switch's ap_vlan via CDP.
+
+    CDP-based discovery only sees APs that are currently responding, so a
+    hung AP is invisible to a live scan - exactly the one that most needs a
+    reboot. This table remembers APs seen before so the auto-reboot cycle
+    can also act on ones that have since gone quiet, instead of only ever
+    reaching APs healthy enough to still announce themselves.
+    """
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    switch_id: uuid.UUID = Field(index=True, foreign_key="networkswitch.id")
+    mac_address: str = Field(max_length=17, index=True)
+    port: str = Field(max_length=64)
+    cdp_name: str | None = Field(default=None, max_length=255)
+    last_seen_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    is_active: bool = Field(default=True)
+    exclude_from_auto_reboot: bool = Field(default=False)
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = Field(default=None)
+
+
 class MediaPlayer(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     device_type: str = Field(max_length=20, index=True)

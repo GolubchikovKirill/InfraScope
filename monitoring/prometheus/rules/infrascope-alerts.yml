@@ -228,3 +228,12 @@ groups:
         annotations:
           summary: "InfraScope network-control service недоступен"
           description: "Prometheus не может собрать метрики network-control-service более 2 минут."
+
+      - alert: InfraScopeApAutoRebootFailed
+        expr: sum(increase(infrascope_ap_auto_reboot_total{result=~"failed|command_failed"}[12h])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Точка доступа не вернулась после автоперезагрузки"
+          description: "За последние 12 часов минимум одна точка доступа не поднялась после планового PoE-цикла. Смотрите event_log (event_type=ap_auto_reboot_failed) для деталей по свитчу и порту."

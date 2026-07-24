@@ -52,6 +52,12 @@ switch_ops_total = Counter(
     ["operation", "result"],
 )
 
+ap_auto_reboot_total = Counter(
+    "infrascope_ap_auto_reboot_total",
+    "Scheduled Wi-Fi AP reboot outcomes.",
+    ["switch", "result"],
+)
+
 switch_port_ops_total = Counter(
     "infrascope_switch_port_ops_total",
     "Switch port operation outcomes.",

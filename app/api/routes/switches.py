@@ -13,6 +13,12 @@ from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import conflict, not_found
 from app.core.config import settings
 from app.core.redis import get_redis
+from app.domains.inventory.ap_auto_reboot import (
+    parse_allowed_stores,
+    run_ap_reboot_for_switch,
+    switch_eligible_for_auto_reboot,
+)
+from app.domains.inventory.ap_registry import get_known_aps, merge_live_and_known, record_seen_aps, set_ap_excluded
 from app.domains.inventory.models import NetworkSwitch
 from app.domains.inventory.schemas import (
     AccessPointInfo,
@@ -23,6 +29,7 @@ from app.domains.inventory.schemas import (
     NetworkSwitchUpdate,
     ScanProgress,
     ScanRequest,
+    SetApExcludedRequest,
     SwitchPortAdminStateUpdate,
     SwitchPortDescriptionUpdate,
     SwitchPortInfo,
@@ -36,6 +43,7 @@ from app.domains.inventory.switch_polling import (
     poll_all_switches_local,
     poll_single_switch_local,
 )
+from app.domains.operations.models import EventLog
 from app.domains.shared.schemas import Message
 from app.observability.metrics import (
     set_device_counts,
@@ -427,7 +435,7 @@ async def get_switch_aps(
     if switch.vendor != "cisco":
         raise HTTPException(status_code=400, detail="Access point discovery is available for Cisco switches")
 
-    aps = await asyncio.to_thread(
+    live_aps = await asyncio.to_thread(
         get_access_points,
         switch.ip_address,
         switch.ssh_username,
@@ -437,6 +445,11 @@ async def get_switch_aps(
         switch.ap_vlan,
     )
     switch_ops_total.labels(operation="access_points", result="success").inc()
+
+    live_aps = [ap for ap in live_aps if ap.mac_address and ap.port]
+    record_seen_aps(session, switch_id=switch.id, live_aps=live_aps)
+    known_rows = get_known_aps(session, switch_id=switch.id)
+    merged = merge_live_and_known(live_aps, known_rows, vlan=switch.ap_vlan)
 
     return [
         AccessPointInfo(
@@ -448,8 +461,74 @@ async def get_switch_aps(
             cdp_platform=ap.cdp_platform,
             poe_power=ap.poe_power,
             poe_status=ap.poe_status,
+            is_responding=ap.is_responding,
+            last_seen_at=ap.last_seen_at,
+            exclude_from_auto_reboot=ap.exclude_from_auto_reboot,
         )
-        for ap in aps
+        for ap in merged
+    ]
+
+
+@router.patch("/{switch_id}/access-points/{mac_address}/exclude", dependencies=[Depends(get_current_active_superuser)])
+async def set_switch_ap_excluded(
+    switch_id: uuid.UUID,
+    mac_address: str,
+    payload: SetApExcludedRequest,
+    session: SessionDep,
+) -> Message:
+    _get_switch_or_404(session, switch_id)
+    found = set_ap_excluded(session, switch_id=switch_id, mac_address=mac_address, excluded=payload.excluded)
+    if not found:
+        raise not_found("Access point not found in registry for this switch")
+    return Message(
+        message="Excluded from auto-reboot" if payload.excluded else "Included in auto-reboot"
+    )
+
+
+@router.post("/{switch_id}/auto-reboot/run", dependencies=[Depends(get_current_active_superuser)])
+async def run_switch_auto_reboot_now(switch_id: uuid.UUID, session: SessionDep) -> dict:
+    switch = _get_switch_or_404(session, switch_id)
+    if not settings.AUTO_REBOOT_AP_ENABLED:
+        raise HTTPException(status_code=400, detail="Auto-reboot is disabled globally (AUTO_REBOOT_AP_ENABLED)")
+
+    allowed_stores = parse_allowed_stores(settings.AUTO_REBOOT_AP_ALLOWED_STORES)
+    eligible, skip_reason = switch_eligible_for_auto_reboot(switch, allowed_stores)
+    if not eligible:
+        raise HTTPException(status_code=400, detail=f"Switch not eligible for auto-reboot: {skip_reason}")
+
+    lock_key = await _acquire_switch_write_lock(switch_id)
+    await _enforce_switch_cooldown(switch_id=switch_id, port="*", operation="auto_reboot_manual_run")
+    try:
+        return await run_ap_reboot_for_switch(session, switch)
+    finally:
+        await _release_switch_write_lock(lock_key)
+
+
+@router.get("/{switch_id}/auto-reboot/history")
+async def get_switch_auto_reboot_history(
+    switch_id: uuid.UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[dict]:
+    switch = _get_switch_or_404(session, switch_id)
+    rows = session.exec(
+        select(EventLog)
+        .where(
+            EventLog.device_name == switch.name,
+            EventLog.event_type.like("ap_auto_reboot%"),
+        )
+        .order_by(EventLog.created_at.desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "created_at": row.created_at,
+            "severity": row.severity,
+            "event_type": row.event_type,
+            "message": row.message,
+        }
+        for row in rows
     ]
 
 

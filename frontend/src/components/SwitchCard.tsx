@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Network, Wifi, Clock, Cpu,
   ExternalLink, RotateCcw, ChevronDown, ChevronUp, Zap, Radio, MoreHorizontal,
+  AlertTriangle, History, Play, EyeOff,
 } from "lucide-react";
 import type { NetworkSwitch, AccessPoint } from "../client";
-import { getSwitchAPs, rebootAP, updateSwitch } from "../client";
+import { getSwitchAPs, rebootAP, updateSwitch, setApExcluded, runAutoRebootNow, getAutoRebootHistory } from "../client";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
@@ -32,13 +33,21 @@ function statusBadge(sw: NetworkSwitch) {
 function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: string; isSuperuser: boolean }) {
   const queryClient = useQueryClient();
   const [rebooting, setRebooting] = useState(false);
+  const isHung = !ap.is_responding;
+
+  const invalidateAps = () => queryClient.invalidateQueries({ queryKey: ["switch-aps", switchId] });
 
   const rebootMut = useMutation({
     mutationFn: () => rebootAP(switchId, ap.port),
     onSettled: () => {
       setRebooting(false);
-      queryClient.invalidateQueries({ queryKey: ["switch-aps", switchId] });
+      invalidateAps();
     },
+  });
+
+  const excludeMut = useMutation({
+    mutationFn: (excluded: boolean) => setApExcluded(switchId, ap.mac_address, excluded),
+    onSuccess: invalidateAps,
   });
 
   const handleReboot = () => {
@@ -48,16 +57,34 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
     }
   };
 
+  const lastSeen = ap.last_seen_at
+    ? new Date(ap.last_seen_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
+    : null;
+
   return (
-    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-gray-50 group text-xs">
-      <Radio className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+    <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group text-xs ${isHung ? "bg-red-50" : "hover:bg-gray-50"}`}>
+      {isHung ? (
+        <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+      ) : (
+        <Radio className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-800">
+          <span className={`font-medium ${isHung ? "text-red-700" : "text-gray-800"}`}>
             {ap.cdp_name || ap.mac_address}
           </span>
+          {isHung && (
+            <span className="text-[10px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium" title={lastSeen ? `Последний раз отвечала: ${lastSeen}` : undefined}>
+              не отвечает
+            </span>
+          )}
           {ap.cdp_platform && (
             <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{ap.cdp_platform}</span>
+          )}
+          {ap.exclude_from_auto_reboot && (
+            <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
+              <EyeOff className="h-2.5 w-2.5" />искл. из автоперезагрузки
+            </span>
           )}
         </div>
         <div className="flex items-center gap-3 text-gray-500 mt-0.5">
@@ -72,14 +99,24 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
         </div>
       </div>
       {isSuperuser && (
-        <button
-          onClick={handleReboot}
-          disabled={rebooting}
-          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-400 hover:text-red-600 transition disabled:opacity-40"
-          title="Перезагрузить ТД (PoE cycle)"
-        >
-          <RotateCcw className={`h-3.5 w-3.5 ${rebooting ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+          <button
+            onClick={() => excludeMut.mutate(!ap.exclude_from_auto_reboot)}
+            disabled={excludeMut.isPending}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 disabled:opacity-40"
+            title={ap.exclude_from_auto_reboot ? "Вернуть в автоперезагрузку" : "Исключить из автоперезагрузки"}
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={handleReboot}
+            disabled={rebooting}
+            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition disabled:opacity-40"
+            title="Перезагрузить ТД (PoE cycle)"
+          >
+            <RotateCcw className={`h-3.5 w-3.5 ${rebooting ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       )}
     </div>
   );
@@ -87,6 +124,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
 
 export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, isPolling, isSuperuser }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const queryClient = useQueryClient();
@@ -98,10 +136,34 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
     staleTime: 30_000,
   });
 
+  const { data: history, isLoading: loadingHistory } = useQuery({
+    queryKey: ["switch-auto-reboot-history", sw.id],
+    queryFn: () => getAutoRebootHistory(sw.id),
+    enabled: historyExpanded,
+    staleTime: 30_000,
+  });
+
   const autoRebootMut = useMutation({
     mutationFn: (patch: Record<string, unknown>) => updateSwitch(sw.id, patch),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["switches"] }),
   });
+
+  const runNowMut = useMutation({
+    mutationFn: () => runAutoRebootNow(sw.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["switch-aps", sw.id] });
+      queryClient.invalidateQueries({ queryKey: ["switch-auto-reboot-history", sw.id] });
+    },
+  });
+
+  const handleRunNow = () => {
+    const modeWarning = sw.auto_reboot_mode === "live"
+      ? "Боевой режим: точки будут реально перезагружены."
+      : "Тестовый режим: реальной перезагрузки не будет, только запись в лог.";
+    if (confirm(`Запустить цикл автоперезагрузки точек доступа для ${sw.name} сейчас?\n\n${modeWarning}`)) {
+      runNowMut.mutate();
+    }
+  };
 
   const polledAt = sw.last_polled_at
     ? new Date(sw.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
@@ -208,18 +270,28 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
                 Авто-перезагрузка ТД (07:30 / 19:30 МСК)
               </span>
             </label>
-            {sw.auto_reboot_aps_enabled && (
-              <select
-                value={sw.auto_reboot_mode}
-                onChange={(e) => autoRebootMut.mutate({ auto_reboot_mode: e.target.value })}
-                disabled={autoRebootMut.isPending}
-                className="text-[11px] rounded border border-amber-300 bg-white px-1.5 py-0.5 text-amber-900"
-                title="Тестовый режим только логирует; боевой реально перезагружает"
+            <div className="flex items-center gap-1.5">
+              {sw.auto_reboot_aps_enabled && (
+                <select
+                  value={sw.auto_reboot_mode}
+                  onChange={(e) => autoRebootMut.mutate({ auto_reboot_mode: e.target.value })}
+                  disabled={autoRebootMut.isPending}
+                  className="text-[11px] rounded border border-amber-300 bg-white px-1.5 py-0.5 text-amber-900"
+                  title="Тестовый режим только логирует; боевой реально перезагружает"
+                >
+                  <option value="dry_run">Тест (без реальной перезагрузки)</option>
+                  <option value="live">Боевой режим</option>
+                </select>
+              )}
+              <button
+                onClick={handleRunNow}
+                disabled={runNowMut.isPending}
+                className="p-1.5 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 transition disabled:opacity-40"
+                title="Запустить цикл автоперезагрузки сейчас (не дожидаясь 07:30/19:30)"
               >
-                <option value="dry_run">Тест (без реальной перезагрузки)</option>
-                <option value="live">Боевой режим</option>
-              </select>
-            )}
+                <Play className={`h-3.5 w-3.5 ${runNowMut.isPending ? "animate-pulse" : ""}`} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -241,6 +313,41 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
               <div className="text-xs text-gray-400 text-center py-3">
                 Нет устройств на VLAN {sw.ap_vlan}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* Auto-reboot history */}
+        {isSuperuser && sw.vendor === "cisco" && sw.ap_vlan === 20 && (
+          <button
+            onClick={() => setHistoryExpanded(!historyExpanded)}
+            className="flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 transition"
+          >
+            <History className="h-3.5 w-3.5" />
+            История автоперезагрузок
+            {historyExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+        )}
+        {historyExpanded && (
+          <div className="border-t border-gray-100 pt-2 -mx-2">
+            {loadingHistory ? (
+              <div className="flex items-center justify-center py-4">
+                <RefreshCw className="h-4 w-4 animate-spin text-rose-500" />
+                <span className="ml-2 text-xs text-gray-400">Загрузка...</span>
+              </div>
+            ) : history && history.length > 0 ? (
+              <div className="space-y-0.5 max-h-64 overflow-y-auto">
+                {history.map((entry, i) => (
+                  <div key={i} className={`flex items-start gap-2 py-1.5 px-3 rounded-lg text-[11px] ${entry.severity === "error" ? "text-red-700" : "text-gray-600"}`}>
+                    <span className="font-mono text-gray-400 shrink-0">
+                      {new Date(entry.created_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
+                    </span>
+                    <span>{entry.message}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-400 text-center py-3">Событий пока нет</div>
             )}
           </div>
         )}

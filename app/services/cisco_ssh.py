@@ -371,6 +371,32 @@ def poe_cycle_ap(ip: str, username: str, password: str, enable_password: str, po
         ssh.close()
 
 
+def get_port_poe_power(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> float | None:
+    """Return the PoE draw (watts) on a single port, or None if it's not
+    currently powering anything (or the switch couldn't be reached).
+
+    Used before auto-rebooting a *hung* AP (one known from a past scan but
+    absent from the current CDP scan) to confirm something is actually
+    plugged in and powered before cycling the port - a port with nothing
+    drawing power isn't a hung AP, it's an empty port.
+    """
+    ssh = CiscoSSH(ip, username, password, enable_password, port)
+    if not ssh.connect():
+        return None
+    try:
+        output = ssh.execute(f"show power inline {interface}")
+        for line in output.split("\n"):
+            m = re.match(r"\s*(\S+)\s+\S+\s+(\S+)\s+([\d.]+)\s+", line)
+            if m and _normalize_port(m.group(1)) == _normalize_port(interface):
+                return float(m.group(3))
+        return None
+    except Exception as e:
+        logger.warning("PoE status check failed on %s port %s: %s", ip, interface, e)
+        return None
+    finally:
+        ssh.close()
+
+
 _AP_PLATFORM_PATTERNS = re.compile(
     r"AIR-|[Aa]ironet|[Cc]9120|[Cc]9130|[Cc]9115|[Cc]9105|[Cc]1560"
     r"|[Cc]isco\s+AP|[Ww]ireless|Trans-Bridge",

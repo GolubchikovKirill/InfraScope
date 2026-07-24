@@ -37,6 +37,11 @@ export interface AccessPoint {
   cdp_platform: string | null;
   poe_power: string | null;
   poe_status: string | null;
+  // From the persistent AP registry: false means known from a past scan but
+  // silent on this scan - a hang signal a live-only scan can't show.
+  is_responding: boolean;
+  last_seen_at: string | null;
+  exclude_from_auto_reboot: boolean;
 }
 
 export interface SwitchPort {
@@ -117,6 +122,31 @@ export async function getSwitchAPs(id: string) {
 
 export async function rebootAP(switchId: string, iface: string, method: string = "poe") {
   const { data } = await api.post(`/switches/${switchId}/reboot-ap`, { interface: iface, method });
+  return data;
+}
+
+export async function setApExcluded(switchId: string, macAddress: string, excluded: boolean) {
+  const encoded = encodeURIComponent(macAddress);
+  const { data } = await api.patch(`/switches/${switchId}/access-points/${encoded}/exclude`, { excluded });
+  return data as { message: string };
+}
+
+export async function runAutoRebootNow(switchId: string) {
+  const { data } = await api.post(`/switches/${switchId}/auto-reboot/run`);
+  return data;
+}
+
+export interface AutoRebootHistoryEntry {
+  created_at: string;
+  severity: string;
+  event_type: string;
+  message: string;
+}
+
+export async function getAutoRebootHistory(switchId: string, limit = 50) {
+  const { data } = await api.get<AutoRebootHistoryEntry[]>(`/switches/${switchId}/auto-reboot/history`, {
+    params: { limit },
+  });
   return data;
 }
 

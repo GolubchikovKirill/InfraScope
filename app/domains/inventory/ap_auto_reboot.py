@@ -12,6 +12,13 @@ them, so a whole store's Wi-Fi never drops at once. `auto_reboot_mode`
 defaults to "dry_run": it discovers and logs what it would do without
 touching the hardware, so the schedule/discovery can be verified for a few
 days before a store is switched to "live".
+
+A live CDP scan only sees APs healthy enough to still announce themselves,
+so a hung AP - the one most in need of a reboot - would otherwise never be
+reached. app.domains.inventory.ap_registry remembers every AP a switch has
+ever reported; on each cycle we reboot the ones missing from the live scan
+(hung) first, after confirming something is actually drawing PoE on that
+port, then the ones that responded normally.
 """
 
 from __future__ import annotations
@@ -22,8 +29,15 @@ import logging
 from sqlmodel import Session, select
 
 from app.core.config import settings
+from app.domains.inventory.ap_registry import (
+    MergedAccessPoint,
+    get_known_aps,
+    merge_live_and_known,
+    record_seen_aps,
+)
 from app.domains.inventory.models import NetworkSwitch
-from app.services.cisco_ssh import APInfo, get_access_points, poe_cycle_ap
+from app.observability.metrics import ap_auto_reboot_total
+from app.services.cisco_ssh import get_access_points, get_port_poe_power, poe_cycle_ap
 from app.services.event_log import write_event_log
 
 logger = logging.getLogger(__name__)
@@ -31,7 +45,7 @@ logger = logging.getLogger(__name__)
 REQUIRED_AP_VLAN = 20
 
 
-def _parse_allowed_stores(raw: str) -> set[str]:
+def parse_allowed_stores(raw: str) -> set[str]:
     return {_normalize_store_name(s) for s in raw.split(",") if s.strip()}
 
 
@@ -43,7 +57,18 @@ def _normalize_store_name(name: str) -> str:
     return name.strip().upper().translate(cyrillic_to_latin)
 
 
-async def _verify_ap_back_online(switch: NetworkSwitch, ap: APInfo) -> bool:
+def switch_eligible_for_auto_reboot(switch: NetworkSwitch, allowed_stores: set[str]) -> tuple[bool, str | None]:
+    """Shared gate for both the scheduled cycle and the manual "run now" trigger."""
+    if switch.vendor != "cisco":
+        return False, f"vendor {switch.vendor} not supported"
+    if switch.ap_vlan != REQUIRED_AP_VLAN:
+        return False, f"ap_vlan={switch.ap_vlan} (only VLAN {REQUIRED_AP_VLAN} is allowed)"
+    if _normalize_store_name(switch.name) not in allowed_stores:
+        return False, "store not in AUTO_REBOOT_AP_ALLOWED_STORES allowlist"
+    return True, None
+
+
+async def _verify_ap_back_online(switch: NetworkSwitch, mac_address: str) -> bool:
     """Poll for the AP to reappear via CDP instead of checking once.
 
     A single fixed pause was too short for real hardware: APs commonly take
@@ -66,16 +91,16 @@ async def _verify_ap_back_online(switch: NetworkSwitch, ap: APInfo) -> bool:
             switch.ssh_port,
             switch.ap_vlan,
         )
-        if any(candidate.mac_address == ap.mac_address for candidate in aps):
+        if any(candidate.mac_address == mac_address for candidate in aps):
             return True
     return False
 
 
-async def _reboot_switch_aps(session: Session, switch: NetworkSwitch) -> dict:
+async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> dict:
     is_dry_run = switch.auto_reboot_mode != "live"
     mode_label = "dry_run" if is_dry_run else "live"
 
-    aps = await asyncio.to_thread(
+    live_aps = await asyncio.to_thread(
         get_access_points,
         switch.ip_address,
         switch.ssh_username,
@@ -84,9 +109,19 @@ async def _reboot_switch_aps(session: Session, switch: NetworkSwitch) -> dict:
         switch.ssh_port,
         switch.ap_vlan,
     )
-    aps = [ap for ap in aps if ap.port][: settings.AUTO_REBOOT_AP_MAX_PER_SWITCH]
+    live_aps = [ap for ap in live_aps if ap.port and ap.mac_address]
 
-    if not aps:
+    record_seen_aps(session, switch_id=switch.id, live_aps=live_aps)
+    known_rows = get_known_aps(session, switch_id=switch.id)
+    merged = merge_live_and_known(live_aps, known_rows, vlan=switch.ap_vlan)
+
+    # Hung (known but not responding) first - that's the AP that actually
+    # needs the reboot. Excluded ones are dropped entirely.
+    targets = [ap for ap in merged if not ap.exclude_from_auto_reboot]
+    targets.sort(key=lambda ap: ap.is_responding)
+    targets = targets[: settings.AUTO_REBOOT_AP_MAX_PER_SWITCH]
+
+    if not targets:
         write_event_log(
             session,
             severity="info",
@@ -101,26 +136,46 @@ async def _reboot_switch_aps(session: Session, switch: NetworkSwitch) -> dict:
         return {"switch": switch.name, "mode": mode_label, "aps_found": 0, "results": []}
 
     results: list[dict] = []
-    for ap in aps:
-        if is_dry_run:
-            write_event_log(
-                session,
-                severity="info",
-                category="network",
-                event_type="ap_auto_reboot_dry_run",
-                device_kind="switch",
-                device_name=switch.name,
-                ip_address=switch.ip_address,
-                message=(
-                    f"[DRY RUN] Would PoE-cycle AP {ap.mac_address} (port {ap.port}) "
-                    f"on {switch.name}, VLAN {switch.ap_vlan}"
-                ),
-            )
-            results.append({"port": ap.port, "mac_address": ap.mac_address, "action": "dry_run"})
-            continue
+    for ap in targets:
+        result = await _handle_one_ap(session, switch, ap, is_dry_run=is_dry_run, mode_label=mode_label)
+        results.append(result)
 
-        ok = await asyncio.to_thread(
-            poe_cycle_ap,
+        # Space this switch's AP reboots out over time instead of running
+        # them back-to-back, so the store never loses every AP in one burst.
+        if ap is not targets[-1]:
+            await asyncio.sleep(settings.AUTO_REBOOT_AP_PAUSE_SECONDS)
+
+    return {"switch": switch.name, "mode": mode_label, "aps_found": len(targets), "results": results}
+
+
+async def _handle_one_ap(
+    session: Session, switch: NetworkSwitch, ap: MergedAccessPoint, *, is_dry_run: bool, mode_label: str
+) -> dict:
+    hung_prefix = "" if ap.is_responding else "[HUNG] "
+
+    if is_dry_run:
+        write_event_log(
+            session,
+            severity="info",
+            category="network",
+            event_type="ap_auto_reboot_dry_run",
+            device_kind="switch",
+            device_name=switch.name,
+            ip_address=switch.ip_address,
+            message=(
+                f"[DRY RUN] {hung_prefix}Would PoE-cycle AP {ap.mac_address} (port {ap.port}) "
+                f"on {switch.name}, VLAN {switch.vlan}"
+            ),
+        )
+        ap_auto_reboot_total.labels(switch=switch.name, result="dry_run").inc()
+        return {"port": ap.port, "mac_address": ap.mac_address, "hung": not ap.is_responding, "action": "dry_run"}
+
+    if not ap.is_responding:
+        # A hung AP known only from the registry might just be an empty port
+        # now (device removed, cabling changed) - confirm something is
+        # actually drawing power before cycling it.
+        power = await asyncio.to_thread(
+            get_port_poe_power,
             switch.ip_address,
             switch.ssh_username,
             switch.ssh_password,
@@ -128,54 +183,87 @@ async def _reboot_switch_aps(session: Session, switch: NetworkSwitch) -> dict:
             switch.ssh_port,
             ap.port,
         )
-        write_event_log(
-            session,
-            severity="info" if ok else "error",
-            category="network",
-            event_type="ap_auto_reboot",
-            device_kind="switch",
-            device_name=switch.name,
-            ip_address=switch.ip_address,
-            message=(
-                f"Auto-reboot: PoE-cycled AP {ap.mac_address} (port {ap.port}) on {switch.name}: "
-                f"{'ok' if ok else 'command failed'}"
-            ),
-        )
-        session.commit()
+        if not power:
+            write_event_log(
+                session,
+                severity="info",
+                category="network",
+                event_type="ap_auto_reboot_skipped",
+                device_kind="switch",
+                device_name=switch.name,
+                ip_address=switch.ip_address,
+                message=(
+                    f"Known AP {ap.mac_address} (port {ap.port}) on {switch.name} is silent and port has no "
+                    "PoE draw - skipping (likely unplugged, not hung)"
+                ),
+            )
+            session.commit()
+            ap_auto_reboot_total.labels(switch=switch.name, result="skipped_no_power").inc()
+            return {"port": ap.port, "mac_address": ap.mac_address, "hung": True, "action": "skipped_no_power"}
 
-        came_back = False
-        if ok:
-            # Polls repeatedly rather than a single fixed-delay check - see
-            # _verify_ap_back_online for why (real APs take well over a
-            # minute to reappear in CDP after a PoE cycle).
-            came_back = await _verify_ap_back_online(switch, ap)
-            if not came_back:
-                write_event_log(
-                    session,
-                    severity="error",
-                    category="network",
-                    event_type="ap_auto_reboot_failed",
-                    device_kind="switch",
-                    device_name=switch.name,
-                    ip_address=switch.ip_address,
-                    message=(
-                        f"AP {ap.mac_address} (port {ap.port}) on {switch.name} did not reappear "
-                        f"on VLAN {switch.ap_vlan} within {settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS}s "
-                        "after reboot"
-                    ),
-                )
-                session.commit()
+    ok = await asyncio.to_thread(
+        poe_cycle_ap,
+        switch.ip_address,
+        switch.ssh_username,
+        switch.ssh_password,
+        switch.enable_password,
+        switch.ssh_port,
+        ap.port,
+    )
+    write_event_log(
+        session,
+        severity="info" if ok else "error",
+        category="network",
+        event_type="ap_auto_reboot_recovering_hung" if not ap.is_responding else "ap_auto_reboot",
+        device_kind="switch",
+        device_name=switch.name,
+        ip_address=switch.ip_address,
+        message=(
+            f"Auto-reboot: {hung_prefix}PoE-cycled AP {ap.mac_address} (port {ap.port}) on {switch.name}: "
+            f"{'ok' if ok else 'command failed'}"
+        ),
+    )
+    session.commit()
 
-        results.append(
-            {"port": ap.port, "mac_address": ap.mac_address, "action": "rebooted", "ok": ok, "back_online": came_back}
-        )
+    came_back = False
+    if ok:
+        # Polls repeatedly rather than a single fixed-delay check - see
+        # _verify_ap_back_online for why (real APs take well over a minute
+        # to reappear in CDP after a PoE cycle).
+        came_back = await _verify_ap_back_online(switch, ap.mac_address)
+        if not came_back:
+            write_event_log(
+                session,
+                severity="error",
+                category="network",
+                event_type="ap_auto_reboot_failed",
+                device_kind="switch",
+                device_name=switch.name,
+                ip_address=switch.ip_address,
+                message=(
+                    f"AP {ap.mac_address} (port {ap.port}) on {switch.name} did not reappear "
+                    f"on VLAN {switch.vlan} within {settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS}s "
+                    "after reboot"
+                ),
+            )
+            session.commit()
 
-        # Space this switch's AP reboots out over time instead of running
-        # them back-to-back, so the store never loses every AP in one burst.
-        if ap is not aps[-1]:
-            await asyncio.sleep(settings.AUTO_REBOOT_AP_PAUSE_SECONDS)
+    if not ok:
+        metric_result = "command_failed"
+    elif came_back:
+        metric_result = "hung_recovered" if not ap.is_responding else "ok"
+    else:
+        metric_result = "failed"
+    ap_auto_reboot_total.labels(switch=switch.name, result=metric_result).inc()
 
-    return {"switch": switch.name, "mode": mode_label, "aps_found": len(aps), "results": results}
+    return {
+        "port": ap.port,
+        "mac_address": ap.mac_address,
+        "hung": not ap.is_responding,
+        "action": "rebooted",
+        "ok": ok,
+        "back_online": came_back,
+    }
 
 
 async def run_scheduled_ap_reboot_cycle(*, session: Session) -> dict:
@@ -183,7 +271,7 @@ async def run_scheduled_ap_reboot_cycle(*, session: Session) -> dict:
         logger.info("Auto-reboot cycle skipped: AUTO_REBOOT_AP_ENABLED is false")
         return {"status": "disabled"}
 
-    allowed_stores = _parse_allowed_stores(settings.AUTO_REBOOT_AP_ALLOWED_STORES)
+    allowed_stores = parse_allowed_stores(settings.AUTO_REBOOT_AP_ALLOWED_STORES)
     if not allowed_stores:
         logger.info("Auto-reboot cycle skipped: AUTO_REBOOT_AP_ALLOWED_STORES is empty")
         return {"status": "no_allowed_stores"}
@@ -192,25 +280,13 @@ async def run_scheduled_ap_reboot_cycle(*, session: Session) -> dict:
 
     switch_results = []
     for switch in switches:
-        if switch.vendor != "cisco":
-            logger.info("Auto-reboot skipped for %s: vendor %s not supported", switch.name, switch.vendor)
-            continue
-        if switch.ap_vlan != REQUIRED_AP_VLAN:
-            logger.warning(
-                "Auto-reboot skipped for %s: ap_vlan=%s (only VLAN %s is allowed)",
-                switch.name,
-                switch.ap_vlan,
-                REQUIRED_AP_VLAN,
-            )
-            continue
-        if _normalize_store_name(switch.name) not in allowed_stores:
-            logger.info(
-                "Auto-reboot skipped for %s: store not in AUTO_REBOOT_AP_ALLOWED_STORES allowlist", switch.name
-            )
+        eligible, skip_reason = switch_eligible_for_auto_reboot(switch, allowed_stores)
+        if not eligible:
+            logger.info("Auto-reboot skipped for %s: %s", switch.name, skip_reason)
             continue
 
         try:
-            switch_results.append(await _reboot_switch_aps(session, switch))
+            switch_results.append(await run_ap_reboot_for_switch(session, switch))
         except Exception as exc:
             logger.exception("Auto-reboot cycle failed for switch %s", switch.name)
             write_event_log(

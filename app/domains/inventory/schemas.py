@@ -788,6 +788,16 @@ class AccessPointInfo(BaseModel):
     cdp_platform: str | None = None
     poe_power: str | None = None
     poe_status: str | None = None
+    # From the persistent AP registry (app.domains.inventory.ap_registry):
+    # is_responding=False means this AP is known from a past scan but did
+    # not answer CDP just now - a hang signal invisible to a plain live scan.
+    is_responding: bool = True
+    last_seen_at: datetime | None = None
+    exclude_from_auto_reboot: bool = False
+
+
+class SetApExcludedRequest(BaseModel):
+    excluded: bool
 
 
 class SwitchPortInfo(BaseModel):
