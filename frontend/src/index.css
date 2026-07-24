@@ -330,35 +330,6 @@ body {
     border-color 180ms ease;
 }
 
-/* Small corner ribbon used to flag MAC verification status (ok/warn/danger)
-   on device cards (printers, switches, media players) without taking up
-   layout space. */
-.app-card-corner {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 0 22px 22px 0;
-  border-left-color: transparent;
-  z-index: 1;
-  pointer-events: none;
-  border-top-right-radius: 10px;
-}
-
-.app-card-corner-ok {
-  border-right-color: #10b981;
-}
-
-.app-card-corner-warn {
-  border-right-color: #f59e0b;
-}
-
-.app-card-corner-danger {
-  border-right-color: #ef4444;
-}
-
 .app-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);

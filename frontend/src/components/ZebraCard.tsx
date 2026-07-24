@@ -28,21 +28,8 @@ function statusBadge(printer: Printer) {
   return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
 }
 
-function macCornerMeta(printer: Printer): { tone: "ok" | "warn" | "danger"; title: string } | null {
-  if (!printer.mac_address && !printer.mac_status) return null;
-  const macText = printer.mac_address ? ` (${printer.mac_address})` : "";
-  if (printer.mac_status === "verified") {
-    return { tone: "ok", title: `MAC подтвержден${macText}` };
-  }
-  if (printer.mac_status === "mismatch") {
-    return { tone: "danger", title: `MAC не совпадает${macText}` };
-  }
-  return { tone: "warn", title: `MAC не подтвержден${macText}` };
-}
-
 export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
   const isUsb = printer.connection_type === "usb";
-  const macCorner = !isUsb ? macCornerMeta(printer) : null;
 
   const polledAt = printer.last_polled_at
     ? new Date(printer.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
@@ -50,13 +37,6 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
-      {macCorner && (
-        <div
-          className={`app-card-corner app-card-corner-${macCorner.tone}`}
-          title={macCorner.title}
-          aria-label={macCorner.title}
-        />
-      )}
       <div className="p-5 flex flex-col gap-3">
         {/* Header */}
         <div className="flex items-start justify-between">

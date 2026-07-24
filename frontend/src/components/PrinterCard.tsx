@@ -59,18 +59,6 @@ function statusBadge(printer: Printer) {
   return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
 }
 
-function macCornerMeta(printer: Printer): { tone: "ok" | "warn" | "danger"; title: string } | null {
-  if (!printer.mac_address && !printer.mac_status) return null;
-  const macText = printer.mac_address ? ` (${printer.mac_address})` : "";
-  if (printer.mac_status === "verified") {
-    return { tone: "ok", title: `MAC подтвержден${macText}` };
-  }
-  if (printer.mac_status === "mismatch") {
-    return { tone: "danger", title: `MAC не совпадает${macText}` };
-  }
-  return { tone: "warn", title: `MAC не подтвержден${macText}` };
-}
-
 export default function PrinterCard({
   printer,
   onPoll,
@@ -118,7 +106,6 @@ export default function PrinterCard({
       return { key, shortLabel, value, toneClass };
     })
     .filter(Boolean) as Array<{ key: "black" | "cyan" | "magenta" | "yellow"; shortLabel: string; value: number; toneClass: string }>;
-  const macCorner = macCornerMeta(printer);
   const hasMlData = mlPredictionEntries.length > 0 || Boolean(offlineRiskLevel);
   const handleCopyToner = async (name: string | null) => {
     if (!name) return;
@@ -134,13 +121,6 @@ export default function PrinterCard({
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
-      {macCorner && (
-        <div
-          className={`app-card-corner app-card-corner-${macCorner.tone}`}
-          title={macCorner.title}
-          aria-label={macCorner.title}
-        />
-      )}
       <div className="p-5 flex flex-col gap-4">
         {/* Header */}
         <div className="flex items-start justify-between">

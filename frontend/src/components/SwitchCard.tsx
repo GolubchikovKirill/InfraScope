@@ -30,18 +30,6 @@ function statusBadge(sw: NetworkSwitch) {
   return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
 }
 
-function macCornerMeta(sw: NetworkSwitch): { tone: "ok" | "warn" | "danger"; title: string } | null {
-  if (!sw.mac_address && !sw.mac_status) return null;
-  const macText = sw.mac_address ? ` (${sw.mac_address})` : "";
-  if (sw.mac_status === "verified") {
-    return { tone: "ok", title: `MAC подтвержден${macText}` };
-  }
-  if (sw.mac_status === "mismatch") {
-    return { tone: "danger", title: `MAC не совпадает${macText}` };
-  }
-  return { tone: "warn", title: `MAC не подтвержден${macText}` };
-}
-
 function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: string; isSuperuser: boolean }) {
   const queryClient = useQueryClient();
   const [rebooting, setRebooting] = useState(false);
@@ -180,20 +168,12 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
   const polledAt = sw.last_polled_at
     ? new Date(sw.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
-  const macCorner = macCornerMeta(sw);
   const closeActions = useCallback(() => setIsActionsOpen(false), []);
   useClickOutside(actionsRef, isActionsOpen, closeActions);
   useEscapeKey(isActionsOpen, closeActions);
 
   return (
     <div className={`app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col ${isActionsOpen ? "relative z-30" : ""}`}>
-      {macCorner && (
-        <div
-          className={`app-card-corner app-card-corner-${macCorner.tone}`}
-          title={macCorner.title}
-          aria-label={macCorner.title}
-        />
-      )}
       <div className="p-5 flex flex-col gap-3">
         {/* Header */}
         <div className="flex items-start justify-between">
