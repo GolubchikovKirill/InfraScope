@@ -397,6 +397,42 @@ def get_port_poe_power(ip: str, username: str, password: str, enable_password: s
         ssh.close()
 
 
+def get_switch_arp_mac_map(ip: str, username: str, password: str, enable_password: str, port: int) -> dict[str, str]:
+    """Best-effort mac->ip map read from this switch's own ARP table.
+
+    Read-only, single SSH session. Used as a fast/quiet first source for
+    MAC-based device rediscovery (app.services.switch_mac_lookup) ahead of
+    the ARP-table + ping-sweep fallback in mac_rediscovery.py - reading a
+    table the switch already has costs nothing on the network, unlike a
+    ping sweep across a whole subnet.
+    """
+    ssh = CiscoSSH(ip, username, password, enable_password, port)
+    if not ssh.connect():
+        return {}
+    try:
+        arp_output = ssh.execute("show ip arp")
+        return _parse_arp_mac_to_ip(arp_output)
+    except Exception as e:
+        logger.warning("ARP map fetch failed on %s: %s", ip, e)
+        return {}
+    finally:
+        ssh.close()
+
+
+def _parse_arp_mac_to_ip(arp_output: str) -> dict[str, str]:
+    mac_to_ip: dict[str, str] = {}
+    for line in arp_output.split("\n"):
+        m = re.search(
+            r"(\d+\.\d+\.\d+\.\d+)\s+\S+\s+"
+            r"([0-9a-fA-F]{4}\.[0-9a-fA-F]{4}\.[0-9a-fA-F]{4})",
+            line,
+        )
+        if m:
+            mac = _format_mac(m.group(2).lower())
+            mac_to_ip[mac] = m.group(1)
+    return mac_to_ip
+
+
 _AP_PLATFORM_PATTERNS = re.compile(
     r"AIR-|[Aa]ironet|[Cc]9120|[Cc]9130|[Cc]9115|[Cc]9105|[Cc]1560"
     r"|[Cc]isco\s+AP|[Ww]ireless|Trans-Bridge",

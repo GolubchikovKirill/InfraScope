@@ -583,6 +583,7 @@ class NetworkSwitchCreate(BaseModel):
     snmp_version: str = "2c"
     snmp_community_ro: str = "public"
     snmp_community_rw: str | None = None
+    mac_address: str | None = None
     auto_reboot_aps_enabled: bool = False
     auto_reboot_mode: str = "dry_run"
 
@@ -593,6 +594,11 @@ class NetworkSwitchCreate(BaseModel):
         if not v or len(v) > 255:
             raise ValueError("name must be 1-255 characters")
         return v
+
+    @field_validator("mac_address")
+    @classmethod
+    def validate_mac(cls, v: str | None) -> str | None:
+        return _normalize_mac(v)
 
     @field_validator("auto_reboot_mode")
     @classmethod
@@ -679,6 +685,7 @@ class NetworkSwitchUpdate(BaseModel):
     snmp_version: str | None = None
     snmp_community_ro: str | None = None
     snmp_community_rw: str | None = None
+    mac_address: str | None = None
     auto_reboot_aps_enabled: bool | None = None
     auto_reboot_mode: str | None = None
 
@@ -690,6 +697,11 @@ class NetworkSwitchUpdate(BaseModel):
             if not v or len(v) > 255:
                 raise ValueError("name must be 1-255 characters")
         return v
+
+    @field_validator("mac_address")
+    @classmethod
+    def validate_mac(cls, v: str | None) -> str | None:
+        return _normalize_mac(v)
 
     @field_validator("auto_reboot_mode")
     @classmethod
@@ -769,6 +781,8 @@ class NetworkSwitchPublic(BaseModel):
     uptime: str | None = None
     is_online: bool | None = None
     last_polled_at: datetime | None = None
+    mac_address: str | None = None
+    mac_status: str | None = None
     auto_reboot_aps_enabled: bool = False
     auto_reboot_mode: str = "dry_run"
     created_at: datetime

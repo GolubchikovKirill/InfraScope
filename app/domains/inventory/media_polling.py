@@ -119,7 +119,7 @@ async def poll_single_media_player_local(*, session: Session, player_id: uuid.UU
     ).inc()
 
     if not player.is_online and player.mac_address:
-        matches = await resolve_devices_by_mac([_media_player_mac_target(player)])
+        matches = await resolve_devices_by_mac([_media_player_mac_target(player)], session=session)
         new_ip = matches[0].new_ip if matches else None
         if new_ip and new_ip != player.ip_address:
             conflict = session.exec(
@@ -290,7 +290,9 @@ async def rediscover_media_players_local(*, session: Session) -> MediaPlayersPub
         return MediaPlayersPublic(data=[], count=0)
 
     updated = 0
-    matches = await resolve_devices_by_mac([_media_player_mac_target(player) for player in players])
+    matches = await resolve_devices_by_mac(
+        [_media_player_mac_target(player) for player in players], session=session
+    )
     matches_by_id = {match.target.entity_id: match for match in matches}
     for player in players:
         match = matches_by_id.get(str(player.id))
@@ -352,7 +354,9 @@ async def _relocate_offline_media_players(session: Session, offline_with_mac: li
         return
 
     logger.info("Trying MAC rediscovery for %d offline devices...", len(offline_with_mac))
-    matches = await resolve_devices_by_mac([_media_player_mac_target(player) for player in offline_with_mac])
+    matches = await resolve_devices_by_mac(
+        [_media_player_mac_target(player) for player in offline_with_mac], session=session
+    )
     matches_by_id = {match.target.entity_id: match for match in matches}
     for player in offline_with_mac:
         match = matches_by_id.get(str(player.id))

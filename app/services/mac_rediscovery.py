@@ -3,8 +3,12 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from app.services.device_poll import find_devices_by_macs
+
+if TYPE_CHECKING:
+    from sqlmodel import Session
 
 _MAC_HEX_RE = re.compile(r"^[0-9a-f]{12}$")
 
@@ -43,6 +47,7 @@ async def resolve_devices_by_mac(
     targets: list[MacRediscoveryTarget],
     *,
     subnets: list[str] | None = None,
+    session: "Session | None" = None,
 ) -> list[MacRediscoveryMatch]:
     mac_to_targets: dict[str, list[MacRediscoveryTarget]] = defaultdict(list)
     for target in targets:
@@ -53,12 +58,31 @@ async def resolve_devices_by_mac(
     if not mac_to_targets:
         return []
 
-    found = await find_devices_by_macs(list(mac_to_targets), subnets=subnets)
-    normalized_found = {
-        normalized: ip
-        for mac, ip in found.items()
-        if (normalized := normalize_mac(mac)) and ip
-    }
+    normalized_found: dict[str, str] = {}
+    remaining = list(mac_to_targets)
+
+    if session is not None:
+        # Local import to avoid a circular import (switch_mac_lookup uses
+        # normalize_mac from this module) - only needed when a session is
+        # actually passed in.
+        from app.services.switch_mac_lookup import build_switch_mac_map
+
+        try:
+            switch_map = await build_switch_mac_map(session)
+        except Exception:
+            switch_map = {}
+        for mac in list(remaining):
+            ip = switch_map.get(mac)
+            if ip:
+                normalized_found[mac] = ip
+                remaining.remove(mac)
+
+    if remaining:
+        found = await find_devices_by_macs(remaining, subnets=subnets)
+        for mac, ip in found.items():
+            normalized = normalize_mac(mac)
+            if normalized and ip:
+                normalized_found[normalized] = ip
 
     matches: list[MacRediscoveryMatch] = []
     for mac, target_group in mac_to_targets.items():

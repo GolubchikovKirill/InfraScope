@@ -70,9 +70,13 @@ async def test_poll_one_switch_returns_provider_info(monkeypatch) -> None:
 
     monkeypatch.setattr("app.domains.inventory.switch_polling.poll_jitter_async", no_jitter)
     monkeypatch.setattr("app.domains.inventory.switch_polling.resolve_switch_provider", lambda _switch: _Provider())
+    monkeypatch.setattr(
+        "app.domains.inventory.switch_polling._fetch_switch_mac", lambda _switch: "aa:bb:cc:dd:ee:ff"
+    )
 
-    polled_switch, info, exc = await poll_one_switch(switch)
+    polled_switch, info, mac, exc = await poll_one_switch(switch)
 
     assert polled_switch is switch
     assert exc is None
+    assert mac == "aa:bb:cc:dd:ee:ff"
     assert info == SwitchPollInfo(is_online=True, hostname="SW-CORE-01")

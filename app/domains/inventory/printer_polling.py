@@ -94,7 +94,7 @@ def poll_printer_batch(printers: list[Printer]) -> dict[str, tuple[object | None
     return results
 
 
-async def find_printer_ip_by_mac(printer: Printer) -> str | None:
+async def find_printer_ip_by_mac(session: Session, printer: Printer) -> str | None:
     if not printer.mac_address:
         return None
     matches = await resolve_devices_by_mac(
@@ -106,7 +106,8 @@ async def find_printer_ip_by_mac(printer: Printer) -> str | None:
                 current_ip=printer.ip_address,
                 mac_address=printer.mac_address,
             )
-        ]
+        ],
+        session=session,
     )
     return matches[0].new_ip if matches else None
 
@@ -135,7 +136,7 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
         _, result, current_mac = await asyncio.to_thread(poll_one_printer, printer)
         if result is None or not result.is_online:
             if printer.mac_address:
-                new_ip = await find_printer_ip_by_mac(printer)
+                new_ip = await find_printer_ip_by_mac(session, printer)
                 if new_ip and new_ip != printer.ip_address:
                     old_ip = printer.ip_address
                     logger.info(
@@ -330,7 +331,7 @@ async def _relocate_offline_printers(session: Session, offline_with_mac: list[Pr
         for printer in offline_with_mac
         if printer.mac_address
     ]
-    matches = await resolve_devices_by_mac(targets)
+    matches = await resolve_devices_by_mac(targets, session=session)
     matches_by_id = {match.target.entity_id: match for match in matches}
 
     for printer in offline_with_mac:

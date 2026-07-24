@@ -89,6 +89,12 @@ class NetworkSwitch(SQLModel, table=True):
     is_online: bool | None = Field(default=None)
     last_polled_at: datetime | None = Field(default=None)
 
+    # A stable identifier for MAC-based rediscovery if ip_address ever
+    # changes (DHCP reservation slip, re-cabling). See app.services.
+    # mac_rediscovery / app.services.switch_mac_lookup.
+    mac_address: str | None = Field(default=None, max_length=17, index=True)
+    mac_status: str | None = Field(default=None, max_length=20)
+
     # Scheduled Wi-Fi AP reboot (VLAN 20 only, see app.domains.inventory.ap_auto_reboot).
     # Opt-in per switch, and still gated by a global store allowlist so
     # enabling this toggle on the wrong switch can't reboot APs it shouldn't.

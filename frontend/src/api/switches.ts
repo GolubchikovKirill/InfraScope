@@ -18,6 +18,8 @@ export interface NetworkSwitch {
   uptime: string | null;
   is_online: boolean | null;
   last_polled_at: string | null;
+  mac_address: string | null;
+  mac_status: string | null;
   auto_reboot_aps_enabled: boolean;
   auto_reboot_mode: "dry_run" | "live";
   created_at: string;

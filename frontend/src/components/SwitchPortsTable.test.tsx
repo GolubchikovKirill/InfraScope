@@ -67,6 +67,8 @@ describe("SwitchPortsTable", () => {
             uptime: null,
             is_online: true,
             last_polled_at: null,
+            mac_address: null,
+            mac_status: null,
             auto_reboot_aps_enabled: false,
             auto_reboot_mode: "dry_run",
             created_at: new Date().toISOString(),

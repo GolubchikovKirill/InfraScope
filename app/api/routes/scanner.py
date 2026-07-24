@@ -285,7 +285,7 @@ async def rediscover_by_mac(body: MacRediscoveryRequest, session: SessionDep) ->
             for player in players
         )
 
-    matches = await resolve_devices_by_mac(targets, subnets=subnets)
+    matches = await resolve_devices_by_mac(targets, subnets=subnets, session=session)
     matches_by_target = {(match.target.device_kind, match.target.entity_id): match for match in matches}
     printer_ip_owner = {
         ip_address: str(printer_id)
