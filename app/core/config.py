@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     POLL_CIRCUIT_OPEN_SECONDS: int = 45
     POLL_RESILIENCE_STATE_TTL_SECONDS: int = 7200
     PRINTER_POLL_MAX_WORKERS: int = 16
+    # Laser printers poll every 15 min (see celery_app.py), but only need a
+    # full SNMP toner walk this rarely - cycle N of every M is "full", the
+    # rest are a cheap online/offline-only check. 4 == once an hour.
+    PRINTER_FULL_POLL_EVERY_N_CYCLES: int = 4
     MEDIA_POLL_MAX_WORKERS: int = 12
     SWITCH_POLL_MAX_CONCURRENCY: int = 8
     COMPUTER_POLL_CONCURRENCY: int = 16

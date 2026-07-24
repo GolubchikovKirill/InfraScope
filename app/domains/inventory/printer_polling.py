@@ -19,7 +19,7 @@ from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_b
 from app.services.ml_snapshots import write_printer_snapshots
 from app.services.ping import check_port
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
-from app.services.snmp import get_snmp_mac, poll_printer
+from app.services.snmp import get_snmp_mac, poll_printer, poll_printer_light
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,21 @@ def _record_status_change(session: Session, printer: Printer, was_online: bool |
     )
 
 
-def poll_one_printer(printer: Printer) -> tuple[str, object | None, str | None]:
+def is_full_poll_cycle() -> bool:
+    """Whether this run should do the full SNMP toner walk vs. just an
+    online/offline check.
+
+    Laser printers poll every 15 min (celery_app.py), but a full toner walk
+    that often is more network traffic than the toner data needs - it only
+    changes noticeably over hours, not minutes. Cycles are derived from wall
+    clock (minute // 15) so the backend, worker, and any manual "poll all"
+    call all agree on which cycle this is without shared state.
+    """
+    n = max(1, settings.PRINTER_FULL_POLL_EVERY_N_CYCLES)
+    return (datetime.now(UTC).minute // 15) % n == 0
+
+
+def poll_one_printer(printer: Printer, *, full: bool = True) -> tuple[str, object | None, str | None]:
     if printer.connection_type == "usb" or not printer.ip_address:
         return "", None, None
     ip = printer.ip_address
@@ -59,8 +73,12 @@ def poll_one_printer(printer: Printer) -> tuple[str, object | None, str | None]:
         if printer.printer_type == "label":
             online = check_port(ip)
             return ip, {"is_online": online}, None
-        result = poll_printer(ip, printer.snmp_community)
-        current_mac = get_snmp_mac(ip, printer.snmp_community) if result.is_online else None
+        if full:
+            result = poll_printer(ip, printer.snmp_community)
+            current_mac = get_snmp_mac(ip, printer.snmp_community) if result.is_online else None
+        else:
+            result = poll_printer_light(ip, printer.snmp_community)
+            current_mac = None
         return ip, result, current_mac
     except Exception as exc:
         logger.warning("Poll failed for %s: %s", ip, exc)
@@ -78,11 +96,13 @@ def verify_printer_mac(printer: Printer, current_mac: str | None) -> str | None:
     return "mismatch"
 
 
-def poll_printer_batch(printers: list[Printer]) -> dict[str, tuple[object | None, str | None]]:
+def poll_printer_batch(
+    printers: list[Printer], *, full: bool = True
+) -> dict[str, tuple[object | None, str | None]]:
     results: dict[str, tuple[object | None, str | None]] = {}
     max_workers = max(1, min(settings.PRINTER_POLL_MAX_WORKERS, len(printers)))
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(poll_one_printer, printer): printer.ip_address for printer in printers}
+        futures = {pool.submit(poll_one_printer, printer, full=full): printer.ip_address for printer in printers}
         for future in as_completed(futures):
             ip = futures[future]
             try:
@@ -225,9 +245,10 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
             continue
         poll_targets.append(printer)
 
+    full = is_full_poll_cycle()
     printer_map = {printer.ip_address: printer for printer in poll_targets}
     try:
-        poll_results = await asyncio.to_thread(poll_printer_batch, poll_targets) if poll_targets else {}
+        poll_results = await asyncio.to_thread(poll_printer_batch, poll_targets, full=full) if poll_targets else {}
         offline_with_mac: list[Printer] = []
 
         for ip, (result, current_mac) in poll_results.items():
@@ -272,7 +293,10 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
             else:
                 printer.is_online = effective_online
                 if effective_online:
-                    _apply_full_printer_result(printer, result, current_mac)
+                    if full:
+                        _apply_full_printer_result(printer, result, current_mac)
+                    else:
+                        _apply_light_printer_result(printer, result)
                 else:
                     printer.status = "offline"
                     printer.mac_status = verify_printer_mac(printer, current_mac)
@@ -317,6 +341,15 @@ def _apply_full_printer_result(printer: Printer, result, current_mac: str | None
     printer.toner_magenta = result.toner_magenta
     printer.toner_yellow = result.toner_yellow
     printer.mac_status = verify_printer_mac(printer, current_mac)
+
+
+def _apply_light_printer_result(printer: Printer, result) -> None:
+    """A light poll only checks online/offline - leave toner levels and MAC
+    verification status as they were from the last full poll rather than
+    overwriting them with data this cycle never collected.
+    """
+    printer.is_online = result.is_online
+    printer.status = result.status
 
 
 async def _relocate_offline_printers(session: Session, offline_with_mac: list[Printer]) -> None:

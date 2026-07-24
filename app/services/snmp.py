@@ -945,6 +945,63 @@ def poll_printer(ip_address: str, community: str = "public") -> PrinterStatus:
     return result
 
 
+async def _poll_printer_light_async(ip_address: str, community: str = "public") -> PrinterStatus:
+    """Online/offline only - one SNMP GET, no toner walk or HTTP scraping."""
+    engine = SnmpEngine()
+    try:
+        target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+    except Exception as e:
+        logger.debug("Cannot create SNMP target for %s: %s", ip_address, e)
+        return PrinterStatus(is_online=False, status="unreachable")
+
+    comm = CommunityData(community)
+    sys_descr = await _snmp_get(engine, target, comm, OID_SYS_DESCR)
+    if sys_descr is not None:
+        return PrinterStatus(
+            is_online=True,
+            status="online",
+            sys_description=sys_descr,
+            vendor=_detect_vendor(sys_descr),
+        )
+
+    reachable = await asyncio.to_thread(_tcp_reachable, ip_address)
+    if reachable:
+        return PrinterStatus(is_online=True, status="online (no SNMP)")
+    return PrinterStatus(is_online=False, status="offline")
+
+
+def poll_printer_light(ip_address: str, community: str = "public") -> PrinterStatus:
+    """Cheap synchronous online/offline check for the frequent polling cadence.
+
+    Skips the toner walk and HTTP-scraping fallbacks that poll_printer() does,
+    so it's safe to run every cycle; the full toner poll runs on a slower
+    cadence via poll_printer() instead.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    try:
+        if loop and loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                result = pool.submit(asyncio.run, _poll_printer_light_async(ip_address, community)).result()
+        else:
+            result = asyncio.run(_poll_printer_light_async(ip_address, community))
+    except Exception:
+        snmp_operations_total.labels(operation="poll_printer_light", result="error", reason="exception").inc()
+        raise
+
+    snmp_operations_total.labels(
+        operation="poll_printer_light",
+        result="success" if result.is_online else "offline",
+        reason="none",
+    ).inc()
+    return result
+
+
 OID_IF_PHYS_ADDR = "1.3.6.1.2.1.2.2.1.6"
 
 
