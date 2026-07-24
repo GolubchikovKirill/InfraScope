@@ -91,7 +91,7 @@ async def _verify_ap_back_online(switch: NetworkSwitch, mac_address: str) -> boo
             switch.ssh_port,
             switch.ap_vlan,
         )
-        if any(candidate.mac_address == mac_address for candidate in aps):
+        if aps and any(candidate.mac_address == mac_address for candidate in aps):
             return True
     return False
 
@@ -109,6 +109,25 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
         switch.ssh_port,
         switch.ap_vlan,
     )
+
+    if live_aps is None:
+        # Couldn't reach the switch this cycle at all - do NOT treat this as
+        # "every known AP went silent". Skip the cycle entirely rather than
+        # rebooting anything on unreliable information; a real hang is still
+        # caught on the next cycle that actually manages to scan.
+        write_event_log(
+            session,
+            severity="warning",
+            category="network",
+            event_type="ap_auto_reboot_skipped",
+            device_kind="switch",
+            device_name=switch.name,
+            ip_address=switch.ip_address,
+            message=f"Auto-reboot ({mode_label}): could not reach {switch.name} via SSH this cycle, skipping",
+        )
+        session.commit()
+        return {"switch": switch.name, "mode": mode_label, "aps_found": 0, "results": [], "skipped": "switch_unreachable"}
+
     live_aps = [ap for ap in live_aps if ap.port and ap.mac_address]
 
     record_seen_aps(session, switch_id=switch.id, live_aps=live_aps)

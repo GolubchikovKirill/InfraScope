@@ -129,6 +129,33 @@ def merge_live_and_known(
     return merged
 
 
+def known_aps_as_still_responding(known_rows: list[SwitchAccessPoint], *, vlan: int) -> list[MergedAccessPoint]:
+    """Build a merged view for a cycle where the switch could not be scanned
+    at all (SSH failed), as opposed to a successful scan that found nothing.
+
+    A failed scan carries no information about which APs are actually up, so
+    every known AP is presented as still responding rather than hung - a
+    missed scan must never itself look like evidence that APs went silent.
+    Real hangs are still caught on the next scan that succeeds.
+    """
+    return [
+        MergedAccessPoint(
+            mac_address=row.mac_address,
+            port=row.port,
+            vlan=vlan,
+            cdp_name=row.cdp_name,
+            ip_address=None,
+            cdp_platform=None,
+            poe_power=None,
+            poe_status=None,
+            is_responding=True,
+            last_seen_at=row.last_seen_at,
+            exclude_from_auto_reboot=row.exclude_from_auto_reboot,
+        )
+        for row in known_rows
+    ]
+
+
 def set_ap_excluded(session: Session, *, switch_id: uuid.UUID, mac_address: str, excluded: bool) -> bool:
     """Returns False if the AP isn't in the registry for this switch yet."""
     row = session.exec(

@@ -18,7 +18,13 @@ from app.domains.inventory.ap_auto_reboot import (
     run_ap_reboot_for_switch,
     switch_eligible_for_auto_reboot,
 )
-from app.domains.inventory.ap_registry import get_known_aps, merge_live_and_known, record_seen_aps, set_ap_excluded
+from app.domains.inventory.ap_registry import (
+    get_known_aps,
+    known_aps_as_still_responding,
+    merge_live_and_known,
+    record_seen_aps,
+    set_ap_excluded,
+)
 from app.domains.inventory.models import NetworkSwitch
 from app.domains.inventory.schemas import (
     AccessPointInfo,
@@ -444,12 +450,17 @@ async def get_switch_aps(
         switch.ssh_port,
         switch.ap_vlan,
     )
-    switch_ops_total.labels(operation="access_points", result="success").inc()
-
-    live_aps = [ap for ap in live_aps if ap.mac_address and ap.port]
-    record_seen_aps(session, switch_id=switch.id, live_aps=live_aps)
     known_rows = get_known_aps(session, switch_id=switch.id)
-    merged = merge_live_and_known(live_aps, known_rows, vlan=switch.ap_vlan)
+
+    if live_aps is None:
+        # Couldn't reach the switch this time - show the known APs as still
+        # responding rather than flagging them hung on a missed scan alone.
+        logger.warning("Could not scan %s for access points (SSH unreachable); showing last-known state", switch.name)
+        merged = known_aps_as_still_responding(known_rows, vlan=switch.ap_vlan)
+    else:
+        live_aps = [ap for ap in live_aps if ap.mac_address and ap.port]
+        record_seen_aps(session, switch_id=switch.id, live_aps=live_aps)
+        merged = merge_live_and_known(live_aps, known_rows, vlan=switch.ap_vlan)
 
     return [
         AccessPointInfo(

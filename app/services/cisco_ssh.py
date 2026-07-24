@@ -283,15 +283,30 @@ def get_switch_info(ip: str, username: str, password: str, enable_password: str 
 
 def get_access_points(
     ip: str, username: str, password: str, enable_password: str = "", port: int = 22, vlan: int = 20
-) -> list[APInfo]:
-    """Discover access points on the given VLAN using CDP as primary source."""
+) -> list[APInfo] | None:
+    """Discover access points on the given VLAN using CDP as primary source.
+
+    Returns None if the switch could not be scanned at all (SSH connection
+    or the CDP command itself failed), distinct from an empty list, which
+    means the scan succeeded and genuinely found zero APs. Callers must not
+    treat None the same as []: doing so would let a transient SSH hiccup
+    (e.g. the switch's VTY session limit) look identical to "every known AP
+    on this switch just went silent", which is exactly what the auto-reboot
+    hung-AP detection watches for.
+    """
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
         switch_ops_total.labels(operation="access_points", result="error").inc()
-        return []
+        return None
 
     try:
-        cdp_output = ssh.execute("show cdp neighbors detail")
+        try:
+            cdp_output = ssh.execute("show cdp neighbors detail")
+        except Exception as e:
+            logger.warning("Failed to get CDP neighbors from %s: %s", ip, e)
+            switch_ops_total.labels(operation="access_points", result="error").inc()
+            return None
+
         aps = _parse_cdp_access_points(cdp_output, vlan)
         logger.info("CDP found %d access points on %s vlan %d", len(aps), ip, vlan)
 
@@ -299,21 +314,32 @@ def get_access_points(
             switch_ops_total.labels(operation="access_points", result="success").inc()
             return []
 
-        mac_output = ssh.execute(f"show mac address-table vlan {vlan}")
-        _enrich_mac_from_table(aps, mac_output)
+        # Enrichment failures shouldn't discard APs CDP already found - each
+        # step is independent and best-effort.
+        try:
+            mac_output = ssh.execute(f"show mac address-table vlan {vlan}")
+            _enrich_mac_from_table(aps, mac_output)
+        except Exception as e:
+            logger.warning("MAC table enrichment failed for %s: %s", ip, e)
 
-        poe_output = ssh.execute("show power inline")
-        _enrich_poe(aps, poe_output)
+        try:
+            poe_output = ssh.execute("show power inline")
+            _enrich_poe(aps, poe_output)
+        except Exception as e:
+            logger.warning("PoE enrichment failed for %s: %s", ip, e)
 
-        arp_output = ssh.execute(f"show ip arp vlan {vlan}")
-        _enrich_arp(aps, arp_output)
+        try:
+            arp_output = ssh.execute(f"show ip arp vlan {vlan}")
+            _enrich_arp(aps, arp_output)
+        except Exception as e:
+            logger.warning("ARP enrichment failed for %s: %s", ip, e)
 
         switch_ops_total.labels(operation="access_points", result="success").inc()
         return aps
     except Exception as e:
         logger.warning("Failed to get APs from %s: %s", ip, e)
         switch_ops_total.labels(operation="access_points", result="error").inc()
-        return []
+        return None
     finally:
         ssh.close()
 
