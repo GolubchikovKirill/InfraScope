@@ -88,7 +88,14 @@ class Settings(BaseSettings):
     # This is a live-hardware pilot (A30 first), so both gates default narrow.
     AUTO_REBOOT_AP_ENABLED: bool = True
     AUTO_REBOOT_AP_ALLOWED_STORES: str = "A30"
+    # Real Cisco APs routinely take well over a minute to fully boot and
+    # reappear in CDP after a PoE cycle - a single fixed pause caused every
+    # reboot to be logged as a false "did not reappear" failure even though
+    # the AP had actually recovered fine. Poll repeatedly instead of a single
+    # check after one fixed wait.
     AUTO_REBOOT_AP_PAUSE_SECONDS: int = 45
+    AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS: int = 240
+    AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS: int = 20
     AUTO_REBOOT_AP_MAX_PER_SWITCH: int = 20
     DISCOVERY_SERVICE_ENABLED: bool = False
     DISCOVERY_SERVICE_URL: str = "http://discovery-service:8012"

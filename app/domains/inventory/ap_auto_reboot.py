@@ -44,16 +44,31 @@ def _normalize_store_name(name: str) -> str:
 
 
 async def _verify_ap_back_online(switch: NetworkSwitch, ap: APInfo) -> bool:
-    aps = await asyncio.to_thread(
-        get_access_points,
-        switch.ip_address,
-        switch.ssh_username,
-        switch.ssh_password,
-        switch.enable_password,
-        switch.ssh_port,
-        switch.ap_vlan,
-    )
-    return any(candidate.mac_address == ap.mac_address for candidate in aps)
+    """Poll for the AP to reappear via CDP instead of checking once.
+
+    A single fixed pause was too short for real hardware: APs commonly take
+    well over a minute to boot and start advertising CDP again, so a
+    one-shot check right after the pause reported "failed" on recovered APs
+    every time. This checks repeatedly up to a bounded total wait.
+    """
+    max_wait = settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS
+    interval = max(settings.AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS, 1)
+    elapsed = 0
+    while elapsed < max_wait:
+        await asyncio.sleep(interval)
+        elapsed += interval
+        aps = await asyncio.to_thread(
+            get_access_points,
+            switch.ip_address,
+            switch.ssh_username,
+            switch.ssh_password,
+            switch.enable_password,
+            switch.ssh_port,
+            switch.ap_vlan,
+        )
+        if any(candidate.mac_address == ap.mac_address for candidate in aps):
+            return True
+    return False
 
 
 async def _reboot_switch_aps(session: Session, switch: NetworkSwitch) -> dict:
@@ -130,7 +145,9 @@ async def _reboot_switch_aps(session: Session, switch: NetworkSwitch) -> dict:
 
         came_back = False
         if ok:
-            await asyncio.sleep(settings.AUTO_REBOOT_AP_PAUSE_SECONDS)
+            # Polls repeatedly rather than a single fixed-delay check - see
+            # _verify_ap_back_online for why (real APs take well over a
+            # minute to reappear in CDP after a PoE cycle).
             came_back = await _verify_ap_back_online(switch, ap)
             if not came_back:
                 write_event_log(
@@ -143,7 +160,8 @@ async def _reboot_switch_aps(session: Session, switch: NetworkSwitch) -> dict:
                     ip_address=switch.ip_address,
                     message=(
                         f"AP {ap.mac_address} (port {ap.port}) on {switch.name} did not reappear "
-                        f"on VLAN {switch.ap_vlan} after reboot"
+                        f"on VLAN {switch.ap_vlan} within {settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS}s "
+                        "after reboot"
                     ),
                 )
                 session.commit()
@@ -151,6 +169,11 @@ async def _reboot_switch_aps(session: Session, switch: NetworkSwitch) -> dict:
         results.append(
             {"port": ap.port, "mac_address": ap.mac_address, "action": "rebooted", "ok": ok, "back_online": came_back}
         )
+
+        # Space this switch's AP reboots out over time instead of running
+        # them back-to-back, so the store never loses every AP in one burst.
+        if ap is not aps[-1]:
+            await asyncio.sleep(settings.AUTO_REBOOT_AP_PAUSE_SECONDS)
 
     return {"switch": switch.name, "mode": mode_label, "aps_found": len(aps), "results": results}
 
