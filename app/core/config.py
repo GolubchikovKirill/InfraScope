@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS: int = 240
     AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS: int = 20
     AUTO_REBOOT_AP_MAX_PER_SWITCH: int = 20
+    # With many switches allowed at once, starting every one of them at the
+    # exact same instant is both a thundering-herd risk on the network and
+    # the wrong kind of "care" for a live-hardware reboot. Each eligible
+    # switch's own reboot cycle is dispatched as an independent task, offset
+    # by this many seconds times its position in the (name-sorted) list.
+    AUTO_REBOOT_AP_STAGGER_SECONDS: int = 90
     # VLANs used for camera/video-surveillance subnets. Cameras don't announce
     # themselves via CDP/LLDP, so identifying "camera ports" for a switch is
     # purely VLAN membership + link/PoE state, not device discovery - this is

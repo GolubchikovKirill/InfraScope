@@ -285,39 +285,28 @@ async def _handle_one_ap(
     }
 
 
-async def run_scheduled_ap_reboot_cycle(*, session: Session) -> dict:
+def get_eligible_switches_for_auto_reboot(session: Session) -> list[NetworkSwitch]:
+    """Switches currently eligible for the scheduled AP reboot cycle.
+
+    Sorted by name so dispatch order - and therefore which switch lands at
+    which staggered offset - is stable across cycles rather than depending
+    on incidental DB row order.
+    """
     if not settings.AUTO_REBOOT_AP_ENABLED:
-        logger.info("Auto-reboot cycle skipped: AUTO_REBOOT_AP_ENABLED is false")
-        return {"status": "disabled"}
+        return []
 
     allowed_stores = parse_allowed_stores(settings.AUTO_REBOOT_AP_ALLOWED_STORES)
     if not allowed_stores:
-        logger.info("Auto-reboot cycle skipped: AUTO_REBOOT_AP_ALLOWED_STORES is empty")
-        return {"status": "no_allowed_stores"}
+        return []
 
     switches = session.exec(select(NetworkSwitch).where(NetworkSwitch.auto_reboot_aps_enabled)).all()
-
-    switch_results = []
+    eligible: list[NetworkSwitch] = []
     for switch in switches:
-        eligible, skip_reason = switch_eligible_for_auto_reboot(switch, allowed_stores)
-        if not eligible:
+        ok, skip_reason = switch_eligible_for_auto_reboot(switch, allowed_stores)
+        if ok:
+            eligible.append(switch)
+        else:
             logger.info("Auto-reboot skipped for %s: %s", switch.name, skip_reason)
-            continue
 
-        try:
-            switch_results.append(await run_ap_reboot_for_switch(session, switch))
-        except Exception as exc:
-            logger.exception("Auto-reboot cycle failed for switch %s", switch.name)
-            write_event_log(
-                session,
-                severity="error",
-                category="network",
-                event_type="ap_auto_reboot_error",
-                device_kind="switch",
-                device_name=switch.name,
-                ip_address=switch.ip_address,
-                message=f"Auto-reboot cycle raised an error on {switch.name}: {exc}",
-            )
-            session.commit()
-
-    return {"status": "completed", "switches_processed": len(switch_results), "results": switch_results}
+    eligible.sort(key=lambda sw: sw.name)
+    return eligible

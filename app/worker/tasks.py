@@ -12,13 +12,19 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.db import engine
-from app.domains.inventory.ap_auto_reboot import run_scheduled_ap_reboot_cycle
+from app.domains.inventory.ap_auto_reboot import (
+    get_eligible_switches_for_auto_reboot,
+    parse_allowed_stores,
+    run_ap_reboot_for_switch,
+    switch_eligible_for_auto_reboot,
+)
 from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
 from app.domains.operations.models import CashRegister
 from app.observability.metrics import (
     observe_service_edge,
     worker_task_duration_seconds,
     worker_task_executions_total,
+    worker_tasks_enqueued_total,
     worker_tasks_in_progress,
 )
 from app.services.polling_orchestrator import (
@@ -384,28 +390,86 @@ def poll_all_cash_registers_task(self) -> dict:
 
 @shared_task(
     bind=True,
+    soft_time_limit=300,
+    time_limit=600,
+    name="tasks.ap_auto_reboot_cycle",
+)
+def ap_auto_reboot_cycle_task(self) -> dict:
+    """Dispatcher: fans out one independent task per eligible switch instead
+    of rebooting all of them inline. With many switches allowed at once this
+    avoids two problems a single big loop would have - every switch's PoE
+    cycle landing on the network in the same few seconds, and the whole
+    cycle blowing through one task's time limit partway through a large
+    fleet (leaving the rest of that day's switches unprocessed with no
+    record of why). Each switch's own reboot keeps its own no-autoretry
+    time-limited task, unaffected by any other switch's outcome.
+    """
+    operation = "ap_auto_reboot_cycle"
+    started_at = _task_started(operation)
+    try:
+        with Session(engine) as session:
+            switches = get_eligible_switches_for_auto_reboot(session)
+            stagger = max(settings.AUTO_REBOOT_AP_STAGGER_SECONDS, 0)
+            for index, switch in enumerate(switches):
+                ap_auto_reboot_switch_task.apply_async(
+                    args=[str(switch.id)],
+                    countdown=index * stagger,
+                )
+                worker_tasks_enqueued_total.labels(operation="ap_auto_reboot_switch").inc()
+
+        payload = {
+            "task_id": self.request.id,
+            "operation": operation,
+            "finished_at": datetime.now(UTC).isoformat(),
+            "status": "dispatched",
+            "switches_scheduled": len(switches),
+            "stagger_seconds": stagger,
+        }
+        _task_finished(operation, started_at, "success")
+        return payload
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
     # No autoretry: this reboots live hardware. If a cycle errors partway
     # through, retrying could double-reboot an AP that already came back up.
     # A failure is logged (event_log + task result) for manual follow-up
     # instead of retried automatically.
     soft_time_limit=1700,
     time_limit=1800,
-    name="tasks.ap_auto_reboot_cycle",
+    name="tasks.ap_auto_reboot_switch",
 )
-def ap_auto_reboot_cycle_task(self) -> dict:
-    operation = "ap_auto_reboot_cycle"
+def ap_auto_reboot_switch_task(self, switch_id: str) -> dict:
+    operation = "ap_auto_reboot_switch"
     started_at = _task_started(operation)
     try:
         with Session(engine) as session:
-            result = asyncio.run(run_scheduled_ap_reboot_cycle(session=session))
-        payload = {
-            "task_id": self.request.id,
-            "operation": operation,
-            "finished_at": datetime.now(UTC).isoformat(),
-            **result,
-        }
+            switch = session.get(NetworkSwitch, uuid.UUID(switch_id))
+            if switch is None:
+                _task_finished(operation, started_at, "error")
+                return {"status": "switch_not_found", "switch_id": switch_id}
+
+            # Re-check eligibility at execution time, not just at dispatch:
+            # a staggered fleet can span the better part of an hour, long
+            # enough for someone to flip the toggle or the allowlist off
+            # in between.
+            if not switch.auto_reboot_aps_enabled:
+                _task_finished(operation, started_at, "skipped")
+                return {"status": "disabled_since_dispatch", "switch": switch.name}
+
+            allowed_stores = parse_allowed_stores(settings.AUTO_REBOOT_AP_ALLOWED_STORES)
+            eligible, reason = switch_eligible_for_auto_reboot(switch, allowed_stores)
+            if not eligible:
+                _task_finished(operation, started_at, "skipped")
+                return {"status": "no_longer_eligible", "switch": switch.name, "reason": reason}
+
+            result = asyncio.run(run_ap_reboot_for_switch(session, switch))
+
         _task_finished(operation, started_at, "success")
-        return payload
+        return {"task_id": self.request.id, "operation": operation, **result}
     except Exception:
         _task_finished(operation, started_at, "error")
         raise
