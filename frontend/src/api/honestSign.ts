@@ -4,6 +4,7 @@ export interface HonestSignTarget {
   host: string;
   label: string;
   hostname: string | null;
+  original_host: string;
 }
 
 export interface HonestSignTargetsResponse {
@@ -52,5 +53,13 @@ export async function checkHonestSignTarget(host: string) {
 
 export async function initializeHonestSignTarget(host: string) {
   const { data } = await api.post<HonestSignInitializeResult>(`/honest-sign/${encodeURIComponent(host)}/initialize`);
+  return data;
+}
+
+export async function updateHonestSignTargetIp(originalHost: string, newIp: string) {
+  const { data } = await api.patch<HonestSignTarget>(
+    `/honest-sign/${encodeURIComponent(originalHost)}/ip`,
+    { new_ip: newIp },
+  );
   return data;
 }

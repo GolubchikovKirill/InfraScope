@@ -114,7 +114,6 @@ def main() -> int:
     parser.add_argument("--computers", type=Path, required=True)
     parser.add_argument("--hostname-map", type=Path)
     parser.add_argument("--env", type=Path, required=True)
-    parser.add_argument("--allowed-email", default="golubchikovka@regstaer.ru")
     parser.add_argument("--max-concurrency", type=int, default=32)
     args = parser.parse_args()
 
@@ -127,7 +126,6 @@ def main() -> int:
     update_env(
         args.env,
         {
-            "HONEST_SIGN_ALLOWED_EMAILS": args.allowed_email.strip().casefold(),
             "HONEST_SIGN_TARGETS": ",".join(targets),
             "HONEST_SIGN_API_LOGIN": config["login"],
             "HONEST_SIGN_API_PASSWORD": config["password"],
@@ -136,10 +134,7 @@ def main() -> int:
         },
     )
     matched_hostnames = sum(1 for target in targets if target.count("|") == 2)
-    print(
-        f"configured_targets={len(targets)} matched_hostnames={matched_hostnames} "
-        "allowed_accounts=1"
-    )
+    print(f"configured_targets={len(targets)} matched_hostnames={matched_hostnames}")
     return 0
 
 

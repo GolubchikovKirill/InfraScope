@@ -82,16 +82,9 @@ describe("App routes", () => {
     expect(api.pollAllComputers).not.toHaveBeenCalled();
   });
 
-  it("allows only the configured account to open Honest Sign", async () => {
-    authState.user = { email: "golubchikovka@regstaer.ru", is_superuser: true };
+  it("allows any authenticated user to open Honest Sign", async () => {
+    authState.user = { email: "regular@example.com", is_superuser: false };
     renderWithProviders("/honest-sign");
     expect(await screen.findByText("HonestSignPage")).toBeInTheDocument();
-  });
-
-  it("redirects another administrator away from Honest Sign", async () => {
-    authState.user = { email: "admin@example.com", is_superuser: true };
-    renderWithProviders("/honest-sign");
-    expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
-    expect(screen.queryByText("HonestSignPage")).not.toBeInTheDocument();
   });
 });

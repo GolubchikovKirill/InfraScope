@@ -171,6 +171,7 @@ class HonestSignTargetPublic(BaseModel):
     host: str
     label: str
     hostname: str | None = None
+    original_host: str = ""
 
 
 class HonestSignTargetsPublic(BaseModel):
@@ -178,6 +179,21 @@ class HonestSignTargetsPublic(BaseModel):
     count: int
     status_configured: bool
     initialization_configured: bool
+
+
+class HonestSignTargetIpUpdate(BaseModel):
+    new_ip: str
+
+    @field_validator("new_ip")
+    @classmethod
+    def validate_new_ip(cls, v: str) -> str:
+        import ipaddress
+
+        value = v.strip()
+        try:
+            return str(ipaddress.IPv4Address(value))
+        except ValueError:
+            raise ValueError("new_ip must be a valid IPv4 address")
 
 
 class HonestSignStatusPublic(HonestSignTargetPublic):

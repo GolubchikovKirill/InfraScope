@@ -69,3 +69,35 @@ async def test_initialize_skips_module_that_is_already_ready(monkeypatch: pytest
 
     assert result.result == "ALREADY_READY"
     assert methods == ["GET"]
+
+
+def test_ip_override_redirects_target_and_is_stable_across_edits(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_TARGETS", "172.23.8.21|A15|VNK-KKM-1501")
+
+    updated = honest_sign.set_target_ip_override(db_session, "172.23.8.21", "172.23.8.6")
+    assert updated.host == "172.23.8.6"
+    assert updated.original_host == "172.23.8.21"
+
+    targets = honest_sign.configured_targets(session=db_session)
+    assert [(t.original_host, t.host) for t in targets] == [("172.23.8.21", "172.23.8.6")]
+
+    # Re-editing the same target is keyed by the original host, not the
+    # previous override.
+    updated_again = honest_sign.set_target_ip_override(db_session, "172.23.8.21", "172.23.8.7")
+    assert updated_again.host == "172.23.8.7"
+    targets_again = honest_sign.configured_targets(session=db_session)
+    assert [(t.original_host, t.host) for t in targets_again] == [("172.23.8.21", "172.23.8.7")]
+
+
+def test_ip_override_rejects_unknown_target(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_TARGETS", "172.23.8.21|A15")
+
+    with pytest.raises(KeyError):
+        honest_sign.set_target_ip_override(db_session, "10.0.0.99", "172.23.8.6")
+
+
+def test_ip_override_rejects_collision_with_another_target(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_TARGETS", "172.23.8.21|A15,172.23.8.36|A16")
+
+    with pytest.raises(ValueError):
+        honest_sign.set_target_ip_override(db_session, "172.23.8.21", "172.23.8.36")

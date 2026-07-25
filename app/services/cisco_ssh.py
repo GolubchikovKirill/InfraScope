@@ -536,6 +536,48 @@ def poe_cycle_ap(ip: str, username: str, password: str, enable_password: str, po
         ssh.close()
 
 
+def poe_cycle_ports_bulk(
+    ip: str, username: str, password: str, enable_password: str, port: int, interfaces: list[str]
+) -> bool:
+    """PoE-cycle every given port in a single SSH session.
+
+    Used for "reboot all cameras on this switch": looping poe_cycle_ap per
+    port would open one SSH session per camera (connect + 5s wait each),
+    which for a store with a dozen-plus cameras takes minutes and hits the
+    switch with N separate config sessions. Powering all ports off, waiting
+    once, then powering all back on is both faster and a real single
+    power-cycle event rather than N staggered ones.
+    """
+    if not interfaces:
+        return True
+    ssh = CiscoSSH(ip, username, password, enable_password, port)
+    if not ssh.connect():
+        switch_ops_total.labels(operation="reboot_cameras_bulk_poe", result="error").inc()
+        return False
+
+    try:
+        ssh.execute("configure terminal")
+        for interface in interfaces:
+            ssh.execute(f"interface {interface}")
+            ssh.execute("power inline never")
+        ssh.execute("end")
+        time.sleep(5)
+        ssh.execute("configure terminal")
+        for interface in interfaces:
+            ssh.execute(f"interface {interface}")
+            ssh.execute("power inline auto")
+        ssh.execute("end")
+        logger.info("Bulk PoE cycle completed on %s ports %s", ip, interfaces)
+        switch_ops_total.labels(operation="reboot_cameras_bulk_poe", result="success").inc()
+        return True
+    except Exception as e:
+        logger.warning("Bulk PoE cycle failed on %s ports %s: %s", ip, interfaces, e)
+        switch_ops_total.labels(operation="reboot_cameras_bulk_poe", result="error").inc()
+        return False
+    finally:
+        ssh.close()
+
+
 def get_port_poe_power(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> float | None:
     """Return the PoE draw (watts) on a single port, or None if it's not
     currently powering anything (or the switch couldn't be reached).

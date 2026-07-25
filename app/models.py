@@ -6,6 +6,7 @@ while the codebase moves toward domain-local imports.
 """
 
 from app.domains.identity.models import User
+from app.domains.integrations.models import HonestSignTargetOverride
 from app.domains.inventory.models import (
     CartridgeStock,
     CartridgeStockMovement,
@@ -13,6 +14,8 @@ from app.domains.inventory.models import (
     MediaPlayer,
     NetworkSwitch,
     Printer,
+    SwitchAccessPoint,
+    SwitchPortSnapshot,
 )
 from app.domains.media_center.models import MediaAsset, MediaAssignment, MediaClientHeartbeat
 from app.domains.ml.models import (
@@ -30,6 +33,7 @@ __all__ = [
     "CartridgeStockMovement",
     "Computer",
     "EventLog",
+    "HonestSignTargetOverride",
     "MediaPlayer",
     "MediaAsset",
     "MediaAssignment",
@@ -40,5 +44,7 @@ __all__ = [
     "MLTonerPrediction",
     "NetworkSwitch",
     "Printer",
+    "SwitchAccessPoint",
+    "SwitchPortSnapshot",
     "User",
 ]

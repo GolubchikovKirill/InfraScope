@@ -4,10 +4,12 @@ from time import monotonic
 from fastapi.testclient import TestClient
 
 from app.api.routes.switches import _shared as switch_shared
+from app.api.routes.switches import access_points as switch_access_points
 from app.api.routes.switches import crud as switch_crud
 from app.api.routes.switches import ports as switch_ports
 from app.core.config import settings
 from app.domains.inventory import switch_polling
+from app.services.cisco_ssh import CameraPortInfo
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 
 
@@ -406,3 +408,76 @@ def test_switch_poe_cycle_is_rate_limited_by_cooldown(client: TestClient, admin_
     assert first.status_code == 200
     assert second.status_code == 429
     assert calls == [("Gi0/1", "cycle")]
+
+
+def test_reboot_all_cameras_requires_superuser(client: TestClient, admin_token: str, user_token: str):
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "SW-Cameras-Guard",
+            "ip_address": "10.10.10.60",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "cisco",
+            "management_protocol": "snmp+ssh",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/camera-ports/reboot-all",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert response.status_code == 403
+
+
+def test_reboot_all_cameras_cycles_every_camera_port_in_one_call(client: TestClient, admin_token: str, monkeypatch):
+    calls: list[list[str]] = []
+
+    def _fake_get_camera_ports(*_args, **_kwargs):
+        return [
+            CameraPortInfo(port="Gi0/10", vlan=241, oper_status="connected"),
+            CameraPortInfo(port="Gi0/11", vlan=241, oper_status="notconnect"),
+        ]
+
+    def _fake_poe_cycle_bulk(_ip, _user, _pw, _enable, _port, interfaces):
+        calls.append(list(interfaces))
+        return True
+
+    monkeypatch.setattr(switch_access_points, "get_camera_ports", _fake_get_camera_ports)
+    monkeypatch.setattr(switch_access_points, "poe_cycle_ports_bulk", _fake_poe_cycle_bulk)
+
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "SW-Cameras",
+            "ip_address": "10.10.10.61",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "cisco",
+            "management_protocol": "snmp+ssh",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/camera-ports/reboot-all",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "rebooting", "rebooted_count": 2}
+    assert calls == [["Gi0/10", "Gi0/11"]]

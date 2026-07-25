@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
+from sqlmodel import Session, select
 
 from app.core.config import settings
+from app.domains.integrations.models import HonestSignTargetOverride
 from app.domains.integrations.schemas import HonestSignInitializePublic, HonestSignStatusPublic
 
 
@@ -18,27 +20,24 @@ class HonestSignTarget:
     host: str
     label: str
     hostname: str | None = None
+    # The IP as originally configured in HONEST_SIGN_TARGETS. Stays stable
+    # across IP overrides (see set_target_ip_override) - equal to `host`
+    # unless an override has redirected this target to a different IP.
+    original_host: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.original_host:
+            object.__setattr__(self, "original_host", self.host)
 
 
 class HonestSignConfigurationError(RuntimeError):
     pass
 
 
-def allowed_operator_emails() -> set[str]:
-    return {
-        item.strip().casefold()
-        for item in settings.HONEST_SIGN_ALLOWED_EMAILS.split(",")
-        if item.strip()
-    }
-
-
-def is_honest_sign_operator(email: str | None) -> bool:
-    return bool(email) and email.strip().casefold() in allowed_operator_emails()
-
-
-def configured_targets(raw: str | None = None) -> list[HonestSignTarget]:
+def configured_targets(raw: str | None = None, session: Session | None = None) -> list[HonestSignTarget]:
     value = settings.HONEST_SIGN_TARGETS if raw is None else raw
     items = value.replace("\r", "\n").replace("\n", ",").split(",")
+    overrides = _overrides_by_original_host(session) if session is not None else {}
     targets: list[HonestSignTarget] = []
     seen: set[str] = set()
     for item in items:
@@ -48,16 +47,29 @@ def configured_targets(raw: str | None = None) -> list[HonestSignTarget]:
         parts = [part.strip() for part in entry.split("|", 2)]
         host_text = parts[0]
         try:
-            host = str(ipaddress.IPv4Address(host_text.strip()))
+            original_host = str(ipaddress.IPv4Address(host_text.strip()))
         except ipaddress.AddressValueError:
             continue
-        if host in seen:
+        if original_host in seen:
             continue
-        seen.add(host)
+        seen.add(original_host)
         label = parts[1] if len(parts) > 1 and parts[1] else "Касса"
         hostname = _normalize_hostname(parts[2]) if len(parts) > 2 else None
-        targets.append(HonestSignTarget(host=host, label=label[:128], hostname=hostname))
+        effective_host = overrides.get(original_host, original_host)
+        targets.append(
+            HonestSignTarget(
+                host=effective_host,
+                label=label[:128],
+                hostname=hostname,
+                original_host=original_host,
+            )
+        )
     return targets
+
+
+def _overrides_by_original_host(session: Session) -> dict[str, str]:
+    rows = session.exec(select(HonestSignTargetOverride)).all()
+    return {row.original_host: row.current_host for row in rows}
 
 
 def _normalize_hostname(raw: str) -> str | None:
@@ -75,15 +87,57 @@ def _normalize_hostname(raw: str) -> str | None:
     return value
 
 
-def get_configured_target(host: str) -> HonestSignTarget:
+def get_configured_target(session: Session, host: str) -> HonestSignTarget:
     try:
         normalized = str(ipaddress.IPv4Address(host.strip()))
     except ipaddress.AddressValueError as exc:
         raise KeyError(host) from exc
-    for target in configured_targets():
+    for target in configured_targets(session=session):
         if target.host == normalized:
             return target
     raise KeyError(host)
+
+
+def set_target_ip_override(session: Session, original_host: str, new_ip: str) -> HonestSignTarget:
+    """Redirect a Honest Sign target to a different IP without editing .env.
+
+    Raises KeyError if original_host isn't a currently-configured target, and
+    ValueError if new_ip is invalid or already in use by another target.
+    """
+    try:
+        normalized_original = str(ipaddress.IPv4Address(original_host.strip()))
+    except ipaddress.AddressValueError as exc:
+        raise KeyError(original_host) from exc
+    try:
+        normalized_new = str(ipaddress.IPv4Address(new_ip.strip()))
+    except ipaddress.AddressValueError as exc:
+        raise ValueError("new_ip must be a valid IPv4 address") from exc
+
+    base_targets = configured_targets()
+    matched = next((t for t in base_targets if t.original_host == normalized_original), None)
+    if matched is None:
+        raise KeyError(original_host)
+
+    in_use = any(
+        t.original_host != normalized_original
+        and (t.original_host == normalized_new or t.host == normalized_new)
+        for t in configured_targets(session=session)
+    )
+    if in_use:
+        raise ValueError(f"{normalized_new} is already used by another Honest Sign target")
+
+    existing = session.exec(
+        select(HonestSignTargetOverride).where(HonestSignTargetOverride.original_host == normalized_original)
+    ).first()
+    if existing:
+        existing.current_host = normalized_new
+        existing.updated_at = datetime.now(UTC)
+        session.add(existing)
+    else:
+        session.add(HonestSignTargetOverride(original_host=normalized_original, current_host=normalized_new))
+    session.commit()
+
+    return next(t for t in configured_targets(session=session) if t.original_host == normalized_original)
 
 
 def status_configuration_ready() -> bool:
@@ -140,6 +194,7 @@ async def _check_target(client: httpx.AsyncClient, target: HonestSignTarget) -> 
                 host=target.host,
                 label=target.label,
                 hostname=target.hostname,
+                original_host=target.original_host,
                 reachable=True,
                 status=f"HTTP_{response.status_code}",
                 ready=False,
@@ -153,6 +208,7 @@ async def _check_target(client: httpx.AsyncClient, target: HonestSignTarget) -> 
                 host=target.host,
                 label=target.label,
                 hostname=target.hostname,
+                original_host=target.original_host,
                 reachable=True,
                 status="INVALID_RESPONSE",
                 ready=False,
@@ -166,6 +222,7 @@ async def _check_target(client: httpx.AsyncClient, target: HonestSignTarget) -> 
             host=target.host,
             label=target.label,
             hostname=target.hostname,
+            original_host=target.original_host,
             reachable=True,
             status=status,
             version=version,
@@ -180,6 +237,7 @@ async def _check_target(client: httpx.AsyncClient, target: HonestSignTarget) -> 
         host=target.host,
         label=target.label,
         hostname=target.hostname,
+        original_host=target.original_host,
         reachable=False,
         status="ERROR",
         ready=False,
@@ -194,9 +252,9 @@ async def check_honest_sign_target(target: HonestSignTarget) -> HonestSignStatus
         return await _check_target(client, target)
 
 
-async def check_all_honest_sign_targets() -> list[HonestSignStatusPublic]:
+async def check_all_honest_sign_targets(session: Session | None = None) -> list[HonestSignStatusPublic]:
     _require_status_configuration()
-    targets = configured_targets()
+    targets = configured_targets(session=session)
     semaphore = asyncio.Semaphore(max(1, min(settings.HONEST_SIGN_MAX_CONCURRENCY, 32)))
     async with _client() as client:
         async def check_one(target: HonestSignTarget) -> HonestSignStatusPublic:
@@ -215,6 +273,7 @@ async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignI
                 host=target.host,
                 label=target.label,
                 hostname=target.hostname,
+                original_host=target.original_host,
                 initial_status=initial.status,
                 final_status=initial.status,
                 result="ERROR",
@@ -226,6 +285,7 @@ async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignI
                 host=target.host,
                 label=target.label,
                 hostname=target.hostname,
+                original_host=target.original_host,
                 initial_status=initial.status,
                 final_status=initial.status,
                 result="ALREADY_READY",
@@ -264,6 +324,7 @@ async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignI
                     host=target.host,
                     label=target.label,
                     hostname=target.hostname,
+                    original_host=target.original_host,
                     initial_status=initial.status,
                     final_status=final.status,
                     result=result,
@@ -274,6 +335,7 @@ async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignI
             host=target.host,
             label=target.label,
             hostname=target.hostname,
+            original_host=target.original_host,
             initial_status=initial.status,
             final_status=initial.status,
             result=result,

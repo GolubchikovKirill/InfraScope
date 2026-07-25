@@ -191,7 +191,6 @@ class Settings(BaseSettings):
     ONEC_EXCHANGE_API_URL: str = ""
     ONEC_EXCHANGE_API_TOKEN: str = ""
     ONEC_EXCHANGE_TIMEOUT_SECONDS: float = 20.0
-    HONEST_SIGN_ALLOWED_EMAILS: str = "golubchikovka@regstaer.ru"
     HONEST_SIGN_TARGETS: str = ""
     HONEST_SIGN_API_LOGIN: str = ""
     HONEST_SIGN_API_PASSWORD: str = ""

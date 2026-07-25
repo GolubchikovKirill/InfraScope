@@ -136,6 +136,13 @@ export async function getSwitchCameraPorts(id: string) {
   return data;
 }
 
+export async function rebootAllCameraPorts(id: string) {
+  const { data } = await api.post<{ status: string; rebooted_count: number }>(
+    `/switches/${id}/camera-ports/reboot-all`,
+  );
+  return data;
+}
+
 export async function rebootAP(switchId: string, iface: string, method: string = "poe") {
   const { data } = await api.post(`/switches/${switchId}/reboot-ap`, { interface: iface, method });
   return data;

@@ -5,32 +5,42 @@ import {
   CircleHelp,
   CircleX,
   Loader2,
+  Pencil,
   PlayCircle,
   RefreshCw,
   Search,
   ServerCog,
   ShieldCheck,
   TriangleAlert,
+  X,
 } from "lucide-react";
 import {
   checkAllHonestSignTargets,
   checkHonestSignTarget,
   getHonestSignTargets,
   initializeHonestSignTarget,
+  updateHonestSignTargetIp,
   type HonestSignInitializeResult,
   type HonestSignStatus,
   type HonestSignStatusesResponse,
   type HonestSignTarget,
 } from "../client";
+import { useAuth } from "../auth";
+import { showToast } from "../lib/toastBus";
+import { apiErrorMessage } from "../lib/apiError";
 
 const STATUS_QUERY_KEY = ["honest-sign", "statuses"] as const;
 
 export default function HonestSignPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isSuperuser = user?.is_superuser ?? false;
   const [targetToInitialize, setTargetToInitialize] = useState<HonestSignTarget | null>(null);
   const [lastResult, setLastResult] = useState<HonestSignInitializeResult | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
+  const [editingIpFor, setEditingIpFor] = useState<string | null>(null);
+  const [newIpValue, setNewIpValue] = useState("");
 
   const targetsQuery = useQuery({
     queryKey: ["honest-sign", "targets"],
@@ -63,6 +73,31 @@ export default function HonestSignPage() {
       await statusesQuery.refetch();
     },
   });
+  const updateIpMutation = useMutation({
+    mutationFn: ({ originalHost, newIp }: { originalHost: string; newIp: string }) =>
+      updateHonestSignTargetIp(originalHost, newIp),
+    onSuccess: async () => {
+      setEditingIpFor(null);
+      setNewIpValue("");
+      showToast("IP кассы обновлён", "success");
+      await targetsQuery.refetch();
+      await statusesQuery.refetch();
+    },
+    onError: (error) => showToast(apiErrorMessage(error, "Не удалось изменить IP"), "error"),
+  });
+
+  const startEditingIp = (target: HonestSignTarget) => {
+    setEditingIpFor(target.original_host);
+    setNewIpValue(target.host);
+  };
+  const cancelEditingIp = () => {
+    setEditingIpFor(null);
+    setNewIpValue("");
+  };
+  const confirmEditingIp = (originalHost: string) => {
+    if (!newIpValue.trim()) return;
+    updateIpMutation.mutate({ originalHost, newIp: newIpValue.trim() });
+  };
 
   const targets = targetsQuery.data?.data ?? [];
   const statuses = statusesQuery.data?.data ?? [];
@@ -173,13 +208,65 @@ export default function HonestSignPage() {
           const status = byHost.get(target.host);
           const checkingThis = checkOneMutation.isPending && checkOneMutation.variables === target.host;
           const initializingThis = initializeMutation.isPending && initializeMutation.variables === target.host;
+          const isEditingIp = editingIpFor === target.original_host;
+          const savingIp = updateIpMutation.isPending && updateIpMutation.variables?.originalHost === target.original_host;
           return (
-            <article key={target.host} className="app-panel p-5">
+            <article key={target.original_host} className="app-panel p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
                   <div className={`rounded-xl p-2.5 ${status?.ready ? "bg-emerald-100 text-emerald-700" : status?.reachable === false ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-600"}`}><ServerCog className="h-5 w-5" /></div>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold text-slate-900">{target.host}</h3><StatusBadge status={status} /></div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isEditingIp ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={newIpValue}
+                            onChange={(event) => setNewIpValue(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") confirmEditingIp(target.original_host);
+                              if (event.key === "Escape") cancelEditingIp();
+                            }}
+                            autoFocus
+                            disabled={savingIp}
+                            className="app-input w-36 px-2 py-1 font-mono text-sm"
+                          />
+                          <button
+                            type="button"
+                            title="Сохранить"
+                            onClick={() => confirmEditingIp(target.original_host)}
+                            disabled={savingIp}
+                            className="rounded-lg p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-40"
+                          >
+                            {savingIp ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            title="Отмена"
+                            onClick={cancelEditingIp}
+                            disabled={savingIp}
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 disabled:opacity-40"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <h3 className="font-semibold text-slate-900">{target.host}</h3>
+                          {isSuperuser && (
+                            <button
+                              type="button"
+                              title="Изменить IP"
+                              onClick={() => startEditingIp(target)}
+                              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                      <StatusBadge status={status} />
+                    </div>
                     <p className="mt-1 text-sm text-slate-500">{target.label}</p>
                     {target.hostname && <p className="mt-1 font-mono text-xs font-medium text-slate-700">{target.hostname}</p>}
                     <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
@@ -202,15 +289,17 @@ export default function HonestSignPage() {
                   >
                     {checkingThis ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setTargetToInitialize(target)}
-                    disabled={!targetsQuery.data?.initialization_configured || status?.ready || initializeMutation.isPending}
-                    className="app-btn-primary inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-40"
-                  >
-                    {initializingThis ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-                    Активировать
-                  </button>
+                  {isSuperuser && (
+                    <button
+                      type="button"
+                      onClick={() => setTargetToInitialize(target)}
+                      disabled={!targetsQuery.data?.initialization_configured || status?.ready || initializeMutation.isPending}
+                      className="app-btn-primary inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-40"
+                    >
+                      {initializingThis ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                      Активировать
+                    </button>
+                  )}
                 </div>
               </div>
             </article>

@@ -19,7 +19,7 @@ from app.domains.inventory.ap_registry import (
 from app.domains.inventory.schemas import AccessPointInfo, CameraPortInfo, SetApExcludedRequest
 from app.domains.shared.schemas import Message
 from app.observability.metrics import switch_ops_total
-from app.services.cisco_ssh import get_access_points, get_camera_ports, poe_cycle_ap, reboot_ap
+from app.services.cisco_ssh import get_access_points, get_camera_ports, poe_cycle_ap, poe_cycle_ports_bulk, reboot_ap
 from app.services.internal_services import _proxy_request
 
 from ._shared import (
@@ -121,6 +121,51 @@ async def get_switch_camera_ports(
         )
         for p in ports
     ]
+
+
+@router.post("/{switch_id}/camera-ports/reboot-all", dependencies=[Depends(get_current_active_superuser)])
+async def reboot_all_camera_ports(switch_id: uuid.UUID, session: SessionDep) -> dict:
+    switch = _get_switch_or_404(session, switch_id)
+    if switch.vendor != "cisco":
+        raise HTTPException(status_code=400, detail="Camera reboot is available for Cisco switches")
+
+    camera_vlans = {int(v) for v in settings.CAMERA_VLANS.split(",") if v.strip().isdigit()}
+    if not camera_vlans:
+        raise HTTPException(status_code=400, detail="No camera VLANs configured")
+
+    lock_key = await _acquire_switch_write_lock(switch_id)
+    await _enforce_switch_cooldown(switch_id=switch_id, port="*", operation="reboot_cameras_bulk")
+    try:
+        ports = await asyncio.to_thread(
+            get_camera_ports,
+            switch.ip_address,
+            switch.ssh_username,
+            switch.ssh_password,
+            switch.enable_password,
+            switch.ssh_port,
+            camera_vlans,
+        )
+        if ports is None:
+            raise HTTPException(status_code=503, detail="Could not reach switch via SSH")
+        if not ports:
+            return {"status": "no_cameras", "rebooted_count": 0}
+
+        ok = await asyncio.to_thread(
+            poe_cycle_ports_bulk,
+            switch.ip_address,
+            switch.ssh_username,
+            switch.ssh_password,
+            switch.enable_password,
+            switch.ssh_port,
+            [p.port for p in ports],
+        )
+        if not ok:
+            switch_ops_total.labels(operation="reboot_cameras_bulk", result="error").inc()
+            raise HTTPException(status_code=502, detail="Failed to reboot camera ports")
+        switch_ops_total.labels(operation="reboot_cameras_bulk", result="success").inc()
+        return {"status": "rebooting", "rebooted_count": len(ports)}
+    finally:
+        await _release_switch_write_lock(lock_key)
 
 
 @router.patch("/{switch_id}/access-points/{mac_address}/exclude", dependencies=[Depends(get_current_active_superuser)])
