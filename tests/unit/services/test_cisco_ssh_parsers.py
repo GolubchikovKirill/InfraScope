@@ -42,6 +42,31 @@ IP address: 10.10.20.10
     assert _normalize_port("GigabitEthernet1/0/10") == "Gi1/0/10"
 
 
+def test_parse_cdp_access_points_excludes_wireless_controller():
+    # Real capture from A22: a 5508 WLC's two uplinks were being counted as
+    # access points because "AIR-CT5508-K9" starts with the same "AIR-"
+    # prefix real AP models use (AIR-CAP..., AIR-LAP..., AIR-AP...).
+    cdp_output = """
+-------------------------
+Device ID: Cisco_5500_PRI
+Entry address(es):
+  IP address: 172.19.17.16
+Platform: AIR-CT5508-K9,  Capabilities: Host
+Interface: GigabitEthernet2/0/45,  Port ID (outgoing port): GigabitEthernet0/0/2
+Holdtime : 136 sec
+-------------------------
+Device ID: AP7cad.744c.ef08
+Entry address(es):
+  IP address: 172.19.20.24
+Platform: cisco AIR-CAP2602I-R-K9,  Capabilities: Trans-Bridge Source-Route-Bridge IGMP
+Interface: GigabitEthernet2/0/47,  Port ID (outgoing port): GigabitEthernet0
+Holdtime : 142 sec
+"""
+    aps = _parse_cdp_access_points(cdp_output, vlan=20)
+    assert len(aps) == 1
+    assert aps[0].cdp_name == "AP7cad.744c.ef08"
+
+
 def test_parse_interface_status_table_keeps_ports_with_no_description():
     # Real "show interfaces status" output: the Name column is fixed-width
     # but empty for most ports. Counting whitespace-split tokens from the

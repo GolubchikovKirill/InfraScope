@@ -599,7 +599,13 @@ def _parse_arp_mac_to_ip(arp_output: str) -> dict[str, str]:
 
 
 _AP_PLATFORM_PATTERNS = re.compile(
-    r"AIR-|[Aa]ironet|[Cc]9120|[Cc]9130|[Cc]9115|[Cc]9105|[Cc]1560"
+    # AIR-CT... is a Wireless LAN Controller, not an access point - it just
+    # shares the "AIR-" prefix with real AP models (AIR-CAP..., AIR-LAP...,
+    # AIR-AP...). Confirmed on A22: a 5508 controller's two uplinks were
+    # being counted as APs (no MAC ever resolved for them, so they were
+    # silently filtered out downstream, but they still polluted CDP counts
+    # and logs).
+    r"AIR-(?!CT)|[Aa]ironet|[Cc]9120|[Cc]9130|[Cc]9115|[Cc]9105|[Cc]1560"
     r"|[Cc]isco\s+AP|[Ww]ireless|Trans-Bridge",
 )
 
