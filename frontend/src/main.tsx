@@ -1,10 +1,14 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, MutationCache } from "@tanstack/react-query";
 import { AuthProvider } from "./auth";
 import App from "./App";
 import { initDensityMode, initThemeMode } from "./theme";
+import { apiErrorMessage } from "./lib/apiError";
+import { showToast } from "./lib/toastBus";
+import ToastContainer from "./components/ToastContainer";
+import { ConfirmProvider } from "./components/ConfirmDialog";
 import "./index.css";
 
 initThemeMode();
@@ -23,6 +27,15 @@ const queryClient = new QueryClient({
       retry: 0,
     },
   },
+  // Individual mutations keep their own onSuccess/onError for query
+  // invalidation and local state - this just adds a visible toast for any
+  // mutation that fails, since most call sites had no user-facing feedback
+  // at all when a click silently failed.
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      showToast(apiErrorMessage(error), "error");
+    },
+  }),
 });
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -30,7 +43,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <ConfirmProvider>
+            <App />
+            <ToastContainer />
+          </ConfirmProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

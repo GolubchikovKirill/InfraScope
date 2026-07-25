@@ -40,6 +40,7 @@ vi.mock("../components/SwitchPortsTable", () => ({
 }));
 
 import SwitchesPage from "./SwitchesPage";
+import { ConfirmProvider } from "../components/ConfirmDialog";
 
 describe("SwitchesPage", () => {
   it("runs poll-all action from toolbar", async () => {
@@ -54,7 +55,9 @@ describe("SwitchesPage", () => {
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <SwitchesPage />
+        <ConfirmProvider>
+          <SwitchesPage />
+        </ConfirmProvider>
       </QueryClientProvider>,
     );
 

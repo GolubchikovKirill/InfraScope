@@ -12,6 +12,8 @@ import {
 } from "../client";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useConfirm } from "./ConfirmDialog";
+import { showToast } from "../lib/toastBus";
 
 interface Props {
   sw: NetworkSwitch;
@@ -35,6 +37,7 @@ function statusBadge(sw: NetworkSwitch) {
 
 function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: string; isSuperuser: boolean }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [rebooting, setRebooting] = useState(false);
   const isHung = !ap.is_responding;
 
@@ -42,6 +45,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
 
   const rebootMut = useMutation({
     mutationFn: () => rebootAP(switchId, ap.port),
+    onSuccess: () => showToast(`Точка на порту ${ap.port} перезагружена`, "success"),
     onSettled: () => {
       setRebooting(false);
       invalidateAps();
@@ -53,8 +57,8 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
     onSuccess: invalidateAps,
   });
 
-  const handleReboot = () => {
-    if (confirm(`Перезагрузить точку доступа на порту ${ap.port}?`)) {
+  const handleReboot = async () => {
+    if (await confirm(`Перезагрузить точку доступа на порту ${ap.port}?`, { danger: true, confirmText: "Перезагрузить" })) {
       setRebooting(true);
       rebootMut.mutate();
     }
@@ -127,19 +131,21 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
 
 function CameraPortRow({ cam, switchId, isSuperuser }: { cam: CameraPort; switchId: string; isSuperuser: boolean }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [rebooting, setRebooting] = useState(false);
   const isDown = cam.oper_status !== "connected";
 
   const rebootMut = useMutation({
     mutationFn: () => setSwitchPortPoe(switchId, cam.port, "cycle"),
+    onSuccess: () => showToast(`Камера на порту ${cam.port} перезагружена`, "success"),
     onSettled: () => {
       setRebooting(false);
       queryClient.invalidateQueries({ queryKey: ["switch-camera-ports", switchId] });
     },
   });
 
-  const handleReboot = () => {
-    if (confirm(`Перезагрузить камеру на порту ${cam.port} (VLAN ${cam.vlan})?`)) {
+  const handleReboot = async () => {
+    if (await confirm(`Перезагрузить камеру на порту ${cam.port} (VLAN ${cam.vlan})?`, { danger: true, confirmText: "Перезагрузить" })) {
       setRebooting(true);
       rebootMut.mutate();
     }
@@ -190,6 +196,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const { data: aps, isLoading: loadingAPs } = useQuery({
     queryKey: ["switch-aps", sw.id],
@@ -220,13 +227,19 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
   const runNowMut = useMutation({
     mutationFn: () => runAutoRebootNow(sw.id),
     onSuccess: () => {
+      showToast(`Цикл автоперезагрузки для ${sw.name} завершён`, "success");
       queryClient.invalidateQueries({ queryKey: ["switch-aps", sw.id] });
       queryClient.invalidateQueries({ queryKey: ["switch-auto-reboot-history", sw.id] });
     },
   });
 
-  const handleRunNow = () => {
-    if (confirm(`Запустить цикл автоперезагрузки точек доступа для ${sw.name} сейчас?\n\nТочки будут реально перезагружены.`)) {
+  const handleRunNow = async () => {
+    if (
+      await confirm(
+        `Запустить цикл автоперезагрузки точек доступа для ${sw.name} сейчас?\n\nТочки будут реально перезагружены.`,
+        { danger: true, confirmText: "Запустить" },
+      )
+    ) {
       runNowMut.mutate();
     }
   };

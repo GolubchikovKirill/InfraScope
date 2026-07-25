@@ -9,6 +9,7 @@ import SwitchCard from "../components/SwitchCard";
 import SwitchPortsTable from "../components/SwitchPortsTable";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useConfirm } from "../components/ConfirmDialog";
 
 type StatusFilter = "all" | "online" | "offline";
 
@@ -16,6 +17,7 @@ export default function SwitchesPage() {
   const { user } = useAuth();
   const isSuperuser = user?.is_superuser ?? false;
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -83,8 +85,8 @@ export default function SwitchesPage() {
     queryClient.invalidateQueries({ queryKey: ["switches"] });
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm("Удалить свитч?")) deleteMut.mutate(id);
+  const handleDelete = async (id: string) => {
+    if (await confirm("Удалить свитч?", { danger: true, confirmText: "Удалить" })) deleteMut.mutate(id);
   };
 
   return (

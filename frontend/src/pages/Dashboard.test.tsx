@@ -51,6 +51,7 @@ vi.mock("../components/CartridgeStockPanel", () => ({
 }));
 
 import Dashboard from "./Dashboard";
+import { ConfirmProvider } from "../components/ConfirmDialog";
 
 describe("Dashboard", () => {
   it("runs poll-all with active printer tab", async () => {
@@ -89,7 +90,9 @@ describe("Dashboard", () => {
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <Dashboard />
+        <ConfirmProvider>
+          <Dashboard />
+        </ConfirmProvider>
       </QueryClientProvider>,
     );
 

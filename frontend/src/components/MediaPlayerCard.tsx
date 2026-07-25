@@ -11,6 +11,7 @@ import {
 } from "../client";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useConfirm } from "./ConfirmDialog";
 
 interface Props {
   player: MediaPlayer;
@@ -53,6 +54,7 @@ function webPanelUrl(player: MediaPlayer): string {
 
 function IconbitControls({ playerId }: { playerId: string }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -205,7 +207,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
                 {f}
               </span>
               <button
-                onClick={() => { if (confirm(`Удалить ${f}?`)) deleteFileMut.mutate(f); }}
+                onClick={async () => { if (await confirm(`Удалить ${f}?`, { danger: true, confirmText: "Удалить" })) deleteFileMut.mutate(f); }}
                 className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition"
                 title="Удалить файл"
               >

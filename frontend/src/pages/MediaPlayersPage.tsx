@@ -27,6 +27,7 @@ import MediaPlayerForm from "../components/MediaPlayerForm";
 import MediaAssignmentPanel from "../components/MediaAssignmentPanel";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useConfirm } from "../components/ConfirmDialog";
 
 type FilterKey = "all" | DeviceType;
 type StatusFilter = "all" | "online" | "offline";
@@ -42,6 +43,7 @@ export default function MediaPlayersPage() {
   const { user } = useAuth();
   const isSuperuser = user?.is_superuser ?? false;
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
@@ -163,8 +165,8 @@ export default function MediaPlayersPage() {
     onError: (err) => setMediaError(extractError(err)),
   });
 
-  const handleDelete = (id: string) => {
-    if (confirm("Удалить устройство?")) deleteMut.mutate(id);
+  const handleDelete = async (id: string) => {
+    if (await confirm("Удалить устройство?", { danger: true, confirmText: "Удалить" })) deleteMut.mutate(id);
   };
 
   const showBulkResult = (res: { success: number; failed: number }) => {
@@ -205,9 +207,9 @@ export default function MediaPlayersPage() {
     e.target.value = "";
   };
 
-  const handleBulkReplace = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBulkReplace = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && confirm(`Заменить плейлист на всех Iconbit на "${file.name}"?\nСтарые файлы будут удалены.`)) {
+    if (file && await confirm(`Заменить плейлист на всех Iconbit на "${file.name}"?\nСтарые файлы будут удалены.`, { danger: true, confirmText: "Заменить" })) {
       bulkReplaceMut.mutate(file);
     }
     e.target.value = "";

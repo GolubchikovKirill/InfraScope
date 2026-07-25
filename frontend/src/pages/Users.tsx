@@ -10,10 +10,12 @@ import {
 } from "../client";
 import { useAuth } from "../auth";
 import UserForm from "../components/UserForm";
+import { useConfirm } from "../components/ConfirmDialog";
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -62,9 +64,9 @@ export default function UsersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users"] }),
   });
 
-  const handleDelete = (user: User) => {
+  const handleDelete = async (user: User) => {
     if (user.id === currentUser?.id) return;
-    if (confirm(`Удалить пользователя ${user.email}?`)) {
+    if (await confirm(`Удалить пользователя ${user.email}?`, { danger: true, confirmText: "Удалить" })) {
       deleteMut.mutate(user.id);
     }
   };

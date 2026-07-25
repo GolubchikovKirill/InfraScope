@@ -49,6 +49,7 @@ vi.mock("../components/MediaAssignmentPanel", () => ({
 }));
 
 import MediaPlayersPage from "./MediaPlayersPage";
+import { ConfirmProvider } from "../components/ConfirmDialog";
 
 describe("MediaPlayersPage", () => {
   it("shows iconbit bulk controls and runs bulk stop", async () => {
@@ -80,7 +81,9 @@ describe("MediaPlayersPage", () => {
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <MediaPlayersPage />
+        <ConfirmProvider>
+          <MediaPlayersPage />
+        </ConfirmProvider>
       </QueryClientProvider>,
     );
 

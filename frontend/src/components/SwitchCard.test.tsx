@@ -4,6 +4,7 @@ import { vi } from "vitest";
 
 import type { NetworkSwitch } from "../client";
 import SwitchCard from "./SwitchCard";
+import { ConfirmProvider } from "./ConfirmDialog";
 
 const sw: NetworkSwitch = {
   id: "switch-1",
@@ -33,15 +34,17 @@ describe("SwitchCard", () => {
     const qc = new QueryClient();
     render(
       <QueryClientProvider client={qc}>
-        <SwitchCard
-          sw={sw}
-          onPoll={vi.fn()}
-          onEdit={vi.fn()}
-          onDelete={vi.fn()}
-          onOpenPorts={vi.fn()}
-          isPolling={false}
-          isSuperuser={true}
-        />
+        <ConfirmProvider>
+          <SwitchCard
+            sw={sw}
+            onPoll={vi.fn()}
+            onEdit={vi.fn()}
+            onDelete={vi.fn()}
+            onOpenPorts={vi.fn()}
+            isPolling={false}
+            isSuperuser={true}
+          />
+        </ConfirmProvider>
       </QueryClientProvider>,
     );
 

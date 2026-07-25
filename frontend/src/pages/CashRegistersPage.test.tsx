@@ -29,6 +29,7 @@ vi.mock("../hooks/useDebouncedValue", () => ({
 vi.mock("../client", () => api);
 
 import CashRegistersPage from "./CashRegistersPage";
+import { ConfirmProvider } from "../components/ConfirmDialog";
 
 describe("CashRegistersPage", () => {
   it("runs poll-all from toolbar", async () => {
@@ -62,7 +63,9 @@ describe("CashRegistersPage", () => {
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <CashRegistersPage />
+        <ConfirmProvider>
+          <CashRegistersPage />
+        </ConfirmProvider>
       </QueryClientProvider>,
     );
 
@@ -120,7 +123,9 @@ describe("CashRegistersPage", () => {
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <CashRegistersPage />
+        <ConfirmProvider>
+          <CashRegistersPage />
+        </ConfirmProvider>
       </QueryClientProvider>,
     );
 

@@ -27,6 +27,7 @@ import {
 } from "../client";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useConfirm } from "../components/ConfirmDialog";
 
 type StatusFilter = "all" | "online" | "offline" | "unknown" | "attention";
 type ZoneFilter = "all" | "DF" | "DP";
@@ -90,6 +91,7 @@ function compareText(a: string | null, b: string | null) {
 
 export default function CashRegistersPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const isSuperuser = Boolean(user?.is_superuser);
   const [q, setQ] = useState("");
@@ -320,8 +322,8 @@ export default function CashRegistersPage() {
                     onCopy={copyText}
                     onPoll={() => pollMut.mutate(item.id)}
                     onEdit={() => openEdit(item)}
-                    onDelete={() => {
-                      if (window.confirm(`Удалить кассу ${item.kkm_number}?`)) deleteMut.mutate(item.id);
+                    onDelete={async () => {
+                      if (await confirm(`Удалить кассу ${item.kkm_number}?`, { danger: true, confirmText: "Удалить" })) deleteMut.mutate(item.id);
                     }}
                   />
                 ))}

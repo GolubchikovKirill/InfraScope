@@ -27,6 +27,7 @@ import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import PrinterForm from "../components/PrinterForm";
 import CartridgeStockPanel from "../components/CartridgeStockPanel";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useConfirm } from "../components/ConfirmDialog";
 
 type TabKey = PrinterType | "cartridges";
 type StatusFilter = "all" | "online" | "offline" | "low_toner";
@@ -41,6 +42,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const isSuperuser = user?.is_superuser ?? false;
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const [activeTab, setActiveTab] = useState<TabKey>("laser");
   const [search, setSearch] = useState("");
@@ -165,8 +167,8 @@ export default function Dashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["printers"] }),
   });
 
-  const handleDelete = (id: string) => {
-    if (confirm("Удалить принтер?")) deleteMut.mutate(id);
+  const handleDelete = async (id: string) => {
+    if (await confirm("Удалить принтер?", { danger: true, confirmText: "Удалить" })) deleteMut.mutate(id);
   };
 
   const printers = data?.data ?? [];
