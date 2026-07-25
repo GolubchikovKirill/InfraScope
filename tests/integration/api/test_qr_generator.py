@@ -76,6 +76,40 @@ def test_qr_generator_uses_channel_specific_database_for_duty_paid(client, admin
     assert captured["params"].server == "paid-sql"
     assert captured["params"].database == "PaidCash"
     assert captured["params"].both_databases is False
+    assert captured["params"].label == "Duty Paid"
+
+
+def test_qr_generator_uses_channel_specific_database_for_duty_free(client, admin_token: str, monkeypatch):
+    # Regression test: the label used to be guessed from the server string
+    # ("Duty Free" only if it contained "KC01"), which broke as soon as the
+    # real servers were configured as IPs - duty_free requests silently
+    # produced files labeled "Duty Paid".
+    _configure_qr_credentials(monkeypatch)
+    captured = {}
+
+    monkeypatch.setattr(qr_routes.settings, "QR_SQL_DUTY_FREE_SERVER", "10.10.94.228")
+    monkeypatch.setattr(qr_routes.settings, "QR_SQL_DUTY_FREE_DATABASE", "CashDB51")
+
+    def _fake_generate(_params):
+        captured["params"] = _params
+        return b"fake-zip-content"
+
+    monkeypatch.setattr(qr_routes.qr_export_service, "generate_zip", _fake_generate)
+
+    response = client.post(
+        "/api/v1/qr-generator/export",
+        json={
+            "db_mode": "duty_free",
+            "airport_code": "4007",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+    assert captured["params"].server == "10.10.94.228"
+    assert captured["params"].database == "CashDB51"
+    assert captured["params"].both_databases is False
+    assert captured["params"].label == "Duty Free"
 
 
 def test_qr_generator_returns_504_on_sql_timeout(client, admin_token: str, monkeypatch):

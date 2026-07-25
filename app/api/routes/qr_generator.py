@@ -30,22 +30,24 @@ def _validate_qr_sql_config() -> None:
         )
 
 
-def _qr_database_for_mode(db_mode: str) -> tuple[str, str]:
+def _qr_database_for_mode(db_mode: str) -> tuple[str, str, str]:
     if db_mode == "duty_paid":
         return (
             settings.QR_SQL_DUTY_PAID_SERVER,
             settings.QR_SQL_DUTY_PAID_DATABASE or settings.QR_SQL_DATABASE,
+            "Duty Paid",
         )
     return (
         settings.QR_SQL_DUTY_FREE_SERVER,
         settings.QR_SQL_DUTY_FREE_DATABASE or settings.QR_SQL_DATABASE,
+        "Duty Free",
     )
 
 
 @router.post("/export", dependencies=[Depends(get_current_active_superuser)])
 def export_qr_docs(payload: QRGeneratorRequest) -> StreamingResponse:
     both_databases = payload.db_mode == "both"
-    server, database = _qr_database_for_mode(payload.db_mode)
+    server, database, label = _qr_database_for_mode(payload.db_mode)
     try:
         _validate_qr_sql_config()
         params = QRGeneratorParams(
@@ -57,6 +59,7 @@ def export_qr_docs(payload: QRGeneratorRequest) -> StreamingResponse:
             surnames=payload.surnames,
             add_login=payload.add_login,
             both_databases=both_databases,
+            label=label,
         )
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(qr_export_service.generate_zip, params)

@@ -32,6 +32,13 @@ class QRGeneratorParams:
     surnames: str | None
     add_login: bool
     both_databases: bool
+    # Which zone server/database belong to, for the single-database path.
+    # The caller (the API route) knows this directly from the requested
+    # db_mode - deriving it here from the server string was fragile and
+    # wrong once real servers were identified by IP rather than a hostname
+    # containing "KC01"/"KC02" (see generate_qr_docs_zip). Unused when
+    # both_databases is True, since that path builds its own labels.
+    label: str = "Duty Free"
 
 
 @dataclass(frozen=True)
@@ -303,7 +310,7 @@ def generate_qr_docs_zip(params: QRGeneratorParams) -> bytes:
         QRDatabaseTarget(
             server=params.server,
             database=params.database,
-            label="Duty Free" if "KC01" in params.server else "Duty Paid",
+            label=params.label,
         )
     ]
     if params.both_databases:
