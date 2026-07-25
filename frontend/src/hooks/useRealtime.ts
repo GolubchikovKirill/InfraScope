@@ -11,7 +11,14 @@ export function useRealtime() {
     function connect() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = window.location.host;
-      const wsUrl = `${protocol}//${host}/api/v1/realtime/ws`;
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        // Not logged in yet - retry once auth completes rather than
+        // connecting unauthenticated and getting closed immediately.
+        reconnectTimeout = window.setTimeout(connect, 3000);
+        return;
+      }
+      const wsUrl = `${protocol}//${host}/api/v1/realtime/ws?token=${encodeURIComponent(token)}`;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

@@ -399,39 +399,70 @@ def get_camera_ports(
         ssh.close()
 
 
+@dataclass
+class InterfaceStatusRow:
+    """One row of 'show interfaces status', before any caller-specific shaping."""
+
+    port: str
+    status: str  # connected | notconnect | disabled | err-disabled | monitor | inactive
+    vlan_text: str
+    duplex_text: str
+    speed_text: str
+    media_type: str
+    name: str | None = None
+
+
 _INTERFACE_STATUS_RE = re.compile(
-    r"^(\S+)\s{2,}(\S.*?)?\s{2,}(connected|notconnect|disabled|err-disabled|monitor|inactive)\s+(\S+)"
+    r"^(?P<port>\S+)\s{2,}(?P<name>\S.*?)?\s{2,}"
+    r"(?P<status>connected|notconnect|disabled|err-disabled|monitor|inactive)\s+"
+    r"(?P<vlan>\S+)\s+(?P<duplex>\S+)\s+(?P<speed>\S+)\s+(?P<type>\S+)\s*$"
 )
 
 
-def _parse_ports_on_vlans(status_output: str, vlans: set[int]) -> list[CameraPortInfo]:
-    """Parse 'show interfaces status'.
+def parse_interface_status_table(output: str) -> list[InterfaceStatusRow]:
+    """Parse 'show interfaces status' into structured rows.
 
-    Uses double-space-delimited columns rather than splitting on whitespace:
-    the Name column is fixed-width but often empty, so plain split() gives a
-    different token count for a port with no description vs. one with a
-    description - counting fields from the end (as cisco_provider.py's own
-    parser does) silently drops every undescribed port, which in practice is
-    most of them.
+    Uses double-space-delimited columns rather than splitting on whitespace
+    or counting tokens from the end of the line: the Name column is
+    fixed-width but frequently empty, so a port with no description has one
+    fewer whitespace-separated token than one with a description - counting
+    from the end silently drops every undescribed port, which in practice
+    is most of them.
     """
-    ports: list[CameraPortInfo] = []
-    for line in status_output.splitlines():
+    rows: list[InterfaceStatusRow] = []
+    for line in output.splitlines():
         line = line.rstrip()
         if not line or line.lower().startswith("port ") or line.startswith("---"):
             continue
         m = _INTERFACE_STATUS_RE.match(line)
         if not m:
             continue
-        port_name, name_text, status_text, vlan_text = m.groups()
-        name_text = (name_text or "").strip()
-        if not vlan_text.isdigit() or int(vlan_text) not in vlans:
+        name = (m.group("name") or "").strip()
+        rows.append(
+            InterfaceStatusRow(
+                port=m.group("port"),
+                name=name if name and name != "--" else None,
+                status=m.group("status"),
+                vlan_text=m.group("vlan"),
+                duplex_text=m.group("duplex"),
+                speed_text=m.group("speed"),
+                media_type=m.group("type"),
+            )
+        )
+    return rows
+
+
+def _parse_ports_on_vlans(status_output: str, vlans: set[int]) -> list[CameraPortInfo]:
+    ports: list[CameraPortInfo] = []
+    for row in parse_interface_status_table(status_output):
+        if not row.vlan_text.isdigit() or int(row.vlan_text) not in vlans:
             continue
         ports.append(
             CameraPortInfo(
-                port=port_name,
-                vlan=int(vlan_text),
-                oper_status=status_text,
-                description=name_text if name_text and name_text != "--" else None,
+                port=row.port,
+                vlan=int(row.vlan_text),
+                oper_status=row.status,
+                description=row.name,
             )
         )
     return ports

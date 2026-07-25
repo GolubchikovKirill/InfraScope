@@ -34,7 +34,10 @@ def test_get_ports_uses_single_ssh_session(monkeypatch):
         def execute(self, cmd: str):
             self.commands.append(cmd)
             if cmd == "show interfaces status":
-                return "Gi1/0/1 -- connected 1 a-full a-100 10/100/1000-TX"
+                # Real Cisco output column-aligns with multiple spaces, incl.
+                # when the Name field is empty - a single-space fixture here
+                # would mask a real parser bug (see test_cisco_ssh_parsers.py).
+                return "Gi1/0/1                      connected    1          a-full  a-100 10/100/1000-TX"
             if cmd == "show interfaces switchport":
                 return "Name: Gi1/0/1\nAdministrative Mode: static access\nAccess Mode VLAN: 1\n"
             return ""
@@ -50,6 +53,9 @@ def test_get_ports_uses_single_ssh_session(monkeypatch):
     assert _FakeSSH.connect_calls == 1
     assert _FakeSSH.close_calls == 1
     assert len(ports) == 1
+    assert ports[0].port == "Gi1/0/1"
+    assert ports[0].vlan == 1
+    assert ports[0].description is None
 
 
 def test_set_poe_cycle_uses_single_session(monkeypatch):

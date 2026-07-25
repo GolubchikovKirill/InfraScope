@@ -2,16 +2,27 @@ import asyncio
 import contextlib
 import json
 import logging
+import uuid
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import jwt
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from jwt.exceptions import InvalidTokenError
+from pydantic import ValidationError
+from sqlmodel import Session
 
+from app.core.config import settings
+from app.core.db import engine
 from app.core.redis import get_redis
+from app.core.security import ALGORITHM, is_token_blacklisted
+from app.domains.identity.models import User
+from app.domains.identity.schemas import TokenPayload
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 REALTIME_CHANNEL = "infrascope:realtime"
+WS_UNAUTHORIZED_CLOSE_CODE = 4401
 
 
 class ConnectionManager:
@@ -100,8 +111,46 @@ class RedisRelay:
 relay = RedisRelay()
 
 
+async def _authenticate_ws_token(token: str | None) -> User | None:
+    """Same validation as get_current_user (app.api.deps), adapted for a
+    WebSocket handshake: no request-scoped session/Depends chain available,
+    and failures return None to close the socket rather than raising
+    HTTPException.
+    """
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        token_data = TokenPayload(**payload)
+    except (InvalidTokenError, ValidationError):
+        return None
+    if token_data.type != "access":
+        return None
+    jti = payload.get("jti")
+    if jti and await is_token_blacklisted(jti):
+        return None
+    try:
+        user_id = uuid.UUID(token_data.sub) if token_data.sub else None
+    except ValueError:
+        return None
+    if user_id is None:
+        return None
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+    if not user or not user.is_active:
+        return None
+    return user
+
+
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(default=None)):
+    # Browsers can't set a custom Authorization header on a WebSocket
+    # handshake, so the access token travels as a query parameter instead.
+    user = await _authenticate_ws_token(token)
+    if user is None:
+        await websocket.close(code=WS_UNAUTHORIZED_CLOSE_CODE)
+        return
+
     await manager.connect(websocket)
     try:
         while True:

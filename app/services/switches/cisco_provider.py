@@ -4,7 +4,7 @@ import re
 import time
 
 from app.domains.inventory.models import NetworkSwitch
-from app.services.cisco_ssh import CiscoSSH, get_switch_info
+from app.services.cisco_ssh import CiscoSSH, get_switch_info, parse_interface_status_table
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 from app.services.switches.snmp_provider import SnmpSwitchProvider
 
@@ -98,35 +98,22 @@ class CiscoSwitchProvider:
 
     def _parse_interfaces_status(self, output: str) -> list[SwitchPortState]:
         ports: list[SwitchPortState] = []
-        for line in output.splitlines():
-            line = line.rstrip()
-            if not line or line.lower().startswith("port ") or line.startswith("---"):
-                continue
-            parts = line.split()
-            if len(parts) < 7:
-                continue
-            port_name = parts[0]
-            media_type = parts[-1]
-            speed_text = parts[-2]
-            duplex_text = parts[-3]
-            vlan_text = parts[-4]
-            status_text = parts[-5]
-            name_text = " ".join(parts[1:-5]).strip()
-            oper_state = "up" if status_text == "connected" else "down"
-            port_mode = "trunk" if vlan_text.lower() == "trunk" else ("access" if vlan_text.isdigit() else None)
-            vlan_num: int | None = int(vlan_text) if vlan_text.isdigit() else None
+        for row in parse_interface_status_table(output):
+            oper_state = "up" if row.status == "connected" else "down"
+            port_mode = "trunk" if row.vlan_text.lower() == "trunk" else ("access" if row.vlan_text.isdigit() else None)
+            vlan_num: int | None = int(row.vlan_text) if row.vlan_text.isdigit() else None
             ports.append(
                 SwitchPortState(
-                    port=port_name,
+                    port=row.port,
                     if_index=0,
-                    description=name_text if name_text and name_text != "--" else None,
+                    description=row.name,
                     admin_status=None,
                     oper_status=oper_state,
-                    status_text=status_text,
-                    vlan_text=vlan_text,
-                    duplex_text=duplex_text,
-                    speed_text=speed_text,
-                    media_type=media_type,
+                    status_text=row.status,
+                    vlan_text=row.vlan_text,
+                    duplex_text=row.duplex_text,
+                    speed_text=row.speed_text,
+                    media_type=row.media_type,
                     port_mode=port_mode,
                     vlan=vlan_num,
                     access_vlan=vlan_num if port_mode == "access" else None,
