@@ -28,6 +28,7 @@ import PrinterForm from "../components/PrinterForm";
 import CartridgeStockPanel from "../components/CartridgeStockPanel";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useConfirm } from "../components/ConfirmDialog";
+import AutoRebootSummaryPanel from "../components/AutoRebootSummaryPanel";
 
 type TabKey = PrinterType | "cartridges";
 type StatusFilter = "all" | "online" | "offline" | "low_toner";
@@ -278,6 +279,8 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      <AutoRebootSummaryPanel />
 
       {/* Stats (only for printer tabs) */}
       {activeTab !== "cartridges" && (

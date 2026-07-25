@@ -152,6 +152,20 @@ export async function runAutoRebootNow(switchId: string) {
   return data;
 }
 
+export interface AutoRebootSummary {
+  last_cycle_at: string | null;
+  window_hours: number;
+  switches_processed: number;
+  aps_rebooted_ok: number;
+  aps_failed: number;
+  switches_skipped: number;
+}
+
+export async function getAutoRebootSummary(hours = 24) {
+  const { data } = await api.get<AutoRebootSummary>("/switches/auto-reboot/summary", { params: { hours } });
+  return data;
+}
+
 export interface AutoRebootHistoryEntry {
   created_at: string;
   severity: string;

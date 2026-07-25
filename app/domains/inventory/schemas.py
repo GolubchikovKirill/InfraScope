@@ -819,6 +819,15 @@ class CameraPortInfo(BaseModel):
     poe_status: str | None = None
 
 
+class AutoRebootSummary(BaseModel):
+    last_cycle_at: datetime | None = None
+    window_hours: int
+    switches_processed: int
+    aps_rebooted_ok: int
+    aps_failed: int
+    switches_skipped: int
+
+
 class SetApExcludedRequest(BaseModel):
     excluded: bool
 

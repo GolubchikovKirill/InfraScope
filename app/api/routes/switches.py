@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from time import monotonic
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -28,6 +28,7 @@ from app.domains.inventory.ap_registry import (
 from app.domains.inventory.models import NetworkSwitch
 from app.domains.inventory.schemas import (
     AccessPointInfo,
+    AutoRebootSummary,
     CameraPortInfo,
     DiscoveryResults,
     NetworkSwitchCreate,
@@ -581,6 +582,49 @@ async def get_switch_auto_reboot_history(
         }
         for row in rows
     ]
+
+
+_AP_REBOOT_OK_EVENTS = {"ap_auto_reboot", "ap_auto_reboot_recovering_hung"}
+
+
+@router.get("/auto-reboot/summary", response_model=AutoRebootSummary)
+async def get_auto_reboot_summary(
+    session: SessionDep,
+    current_user: CurrentUser,
+    hours: int = Query(default=24, ge=1, le=168),
+) -> AutoRebootSummary:
+    """Fleet-wide view of the scheduled AP reboot cycle, for the Dashboard.
+
+    Per-switch history already exists on each switch card; this rolls it up
+    across every store so an operator doesn't have to open 32 cards to see
+    whether the last cycle went cleanly.
+    """
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    rows = session.exec(
+        select(EventLog).where(
+            EventLog.event_type.like("ap_auto_reboot%"),
+            EventLog.created_at >= since,
+        )
+    ).all()
+
+    if not rows:
+        return AutoRebootSummary(
+            last_cycle_at=None,
+            window_hours=hours,
+            switches_processed=0,
+            aps_rebooted_ok=0,
+            aps_failed=0,
+            switches_skipped=0,
+        )
+
+    return AutoRebootSummary(
+        last_cycle_at=max(row.created_at for row in rows),
+        window_hours=hours,
+        switches_processed=len({row.device_name for row in rows if row.device_name}),
+        aps_rebooted_ok=sum(1 for row in rows if row.event_type in _AP_REBOOT_OK_EVENTS),
+        aps_failed=sum(1 for row in rows if row.event_type == "ap_auto_reboot_failed"),
+        switches_skipped=sum(1 for row in rows if row.event_type == "ap_auto_reboot_skipped"),
+    )
 
 
 @router.post("/{switch_id}/reboot-ap")
