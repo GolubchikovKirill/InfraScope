@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { Printer } from "../client";
 import TonerBar from "./TonerBar";
+import OnlineStatusBadge from "./OnlineStatusBadge";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
@@ -47,16 +48,6 @@ async function copyText(text: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function statusBadge(printer: Printer) {
-  if (printer.is_online === null) {
-    return <span className="inline-flex items-center gap-1 text-xs text-gray-400"><span className="h-2 w-2 rounded-full bg-gray-300" />Не опрошен</span>;
-  }
-  if (printer.is_online) {
-    return <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Онлайн</span>;
-  }
-  return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
 }
 
 export default function PrinterCard({
@@ -134,7 +125,7 @@ export default function PrinterCard({
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
-            {statusBadge(printer)}
+            <OnlineStatusBadge isOnline={printer.is_online} />
           </div>
         </div>
 

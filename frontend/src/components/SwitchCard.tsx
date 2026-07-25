@@ -14,6 +14,7 @@ import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useConfirm } from "./ConfirmDialog";
 import { showToast } from "../lib/toastBus";
+import OnlineStatusBadge from "./OnlineStatusBadge";
 
 interface Props {
   sw: NetworkSwitch;
@@ -23,16 +24,6 @@ interface Props {
   onOpenPorts: (sw: NetworkSwitch) => void;
   isPolling: boolean;
   isSuperuser: boolean;
-}
-
-function statusBadge(sw: NetworkSwitch) {
-  if (sw.is_online === null) {
-    return <span className="inline-flex items-center gap-1 text-xs text-gray-400"><span className="h-2 w-2 rounded-full bg-gray-300" />Не проверен</span>;
-  }
-  if (sw.is_online) {
-    return <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Онлайн</span>;
-  }
-  return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
 }
 
 function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: string; isSuperuser: boolean }) {
@@ -266,7 +257,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
-            {statusBadge(sw)}
+            <OnlineStatusBadge isOnline={sw.is_online} />
             <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700">
               VLAN {sw.ap_vlan}
             </span>

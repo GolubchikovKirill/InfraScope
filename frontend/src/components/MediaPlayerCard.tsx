@@ -12,6 +12,7 @@ import {
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useConfirm } from "./ConfirmDialog";
+import OnlineStatusBadge from "./OnlineStatusBadge";
 
 interface Props {
   player: MediaPlayer;
@@ -36,16 +37,6 @@ const DEVICE_LABELS: Record<string, string> = {
   iconbit: "Iconbit",
   twix: "Twix",
 };
-
-function statusBadge(player: MediaPlayer) {
-  if (player.is_online === null) {
-    return <span className="inline-flex items-center gap-1 text-xs text-gray-400"><span className="h-2 w-2 rounded-full bg-gray-300" />Не проверен</span>;
-  }
-  if (player.is_online) {
-    return <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Онлайн</span>;
-  }
-  return <span className="inline-flex items-center gap-1 text-xs text-red-500"><span className="h-2 w-2 rounded-full bg-red-500" />Оффлайн</span>;
-}
 
 function webPanelUrl(player: MediaPlayer): string {
   if (player.device_type === "iconbit") return `http://${player.ip_address}:8081`;
@@ -287,7 +278,7 @@ export default function MediaPlayerCard({
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
-            {statusBadge(player)}
+            <OnlineStatusBadge isOnline={player.is_online} />
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${style.bg} ${style.iconColor}`}>
               {deviceLabel}
             </span>
