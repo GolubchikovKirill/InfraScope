@@ -226,10 +226,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
   });
 
   const handleRunNow = () => {
-    const modeWarning = sw.auto_reboot_mode === "live"
-      ? "Боевой режим: точки будут реально перезагружены."
-      : "Тестовый режим: реальной перезагрузки не будет, только запись в лог.";
-    if (confirm(`Запустить цикл автоперезагрузки точек доступа для ${sw.name} сейчас?\n\n${modeWarning}`)) {
+    if (confirm(`Запустить цикл автоперезагрузки точек доступа для ${sw.name} сейчас?\n\nТочки будут реально перезагружены.`)) {
       runNowMut.mutate();
     }
   };
@@ -321,8 +318,8 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           Порты свитча
         </button>
 
-        {/* Scheduled AP auto-reboot: pilot feature, VLAN 20 only, superuser-only.
-            The actual store allowlist lives server-side (AUTO_REBOOT_AP_ALLOWED_STORES) -
+        {/* Scheduled AP auto-reboot: VLAN 20 only, superuser-only. The actual
+            store allowlist lives server-side (AUTO_REBOOT_AP_ALLOWED_STORES) -
             this toggle alone does not guarantee the schedule will act on this switch. */}
         {isSuperuser && sw.vendor === "cisco" && sw.ap_vlan === 20 && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
@@ -332,7 +329,10 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
                 role="switch"
                 aria-checked={sw.auto_reboot_aps_enabled}
                 onClick={() =>
-                  autoRebootMut.mutate({ auto_reboot_aps_enabled: !sw.auto_reboot_aps_enabled })
+                  autoRebootMut.mutate({
+                    auto_reboot_aps_enabled: !sw.auto_reboot_aps_enabled,
+                    auto_reboot_mode: "live",
+                  })
                 }
                 disabled={autoRebootMut.isPending}
                 className={`relative h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50 ${
@@ -351,18 +351,6 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
               </span>
             </label>
             <div className="flex items-center gap-1.5">
-              {sw.auto_reboot_aps_enabled && (
-                <select
-                  value={sw.auto_reboot_mode}
-                  onChange={(e) => autoRebootMut.mutate({ auto_reboot_mode: e.target.value })}
-                  disabled={autoRebootMut.isPending}
-                  className="text-[11px] rounded border border-amber-300 bg-white px-1.5 py-0.5 text-amber-900"
-                  title="Тестовый режим только логирует; боевой реально перезагружает"
-                >
-                  <option value="dry_run">Тест (без реальной перезагрузки)</option>
-                  <option value="live">Боевой режим</option>
-                </select>
-              )}
               <button
                 onClick={handleRunNow}
                 disabled={runNowMut.isPending}
