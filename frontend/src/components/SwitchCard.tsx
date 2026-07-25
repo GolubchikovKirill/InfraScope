@@ -67,7 +67,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
         <Radio className="h-3.5 w-3.5 text-rose-500 shrink-0" />
       )}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className={`font-medium ${isHung ? "text-red-700" : "text-gray-800"}`}>
             {ap.cdp_name || ap.mac_address}
           </span>
@@ -85,7 +85,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-gray-500 mt-0.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-gray-500 mt-0.5">
           <span className="font-mono">{ap.port}</span>
           {ap.ip_address && <span className="font-mono">{ap.ip_address}</span>}
           <span className="font-mono text-gray-400">{ap.mac_address}</span>
@@ -146,7 +146,7 @@ function CameraPortRow({ cam, switchId, isSuperuser }: { cam: CameraPort; switch
     <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group text-xs ${isDown ? "bg-red-50" : "hover:bg-gray-50"}`}>
       <Camera className={`h-3.5 w-3.5 shrink-0 ${isDown ? "text-red-500" : "text-sky-500"}`} />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className={`font-medium ${isDown ? "text-red-700" : "text-gray-800"}`}>{cam.description || cam.port}</span>
           <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">VLAN {cam.vlan}</span>
           {isDown && (
@@ -155,7 +155,7 @@ function CameraPortRow({ cam, switchId, isSuperuser }: { cam: CameraPort; switch
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-gray-500 mt-0.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-gray-500 mt-0.5">
           <span className="font-mono">{cam.port}</span>
           {cam.poe_power && cam.poe_power !== "0.0W" && (
             <span className="inline-flex items-center gap-0.5 text-amber-600">
@@ -326,8 +326,8 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             store allowlist lives server-side (AUTO_REBOOT_AP_ALLOWED_STORES) -
             this toggle alone does not guarantee the schedule will act on this switch. */}
         {isSuperuser && sw.vendor === "cisco" && sw.ap_vlan === 20 && (
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none min-w-0">
               <button
                 type="button"
                 role="switch"
