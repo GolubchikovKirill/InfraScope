@@ -55,7 +55,7 @@ def test_rediscover_by_mac_updates_known_devices(client: TestClient, admin_token
     db_session.refresh(printer)
     db_session.refresh(player)
 
-    async def _fake_resolve(targets: list[MacRediscoveryTarget], subnets: list[str] | None = None):
+    async def _fake_resolve(targets: list[MacRediscoveryTarget], subnets: list[str] | None = None, session=None):
         assert subnets == ["10.10.98.0/24"]
         by_kind = {target.device_kind: target for target in targets}
         return [
@@ -93,7 +93,7 @@ def test_rediscover_by_mac_reports_conflict(client: TestClient, admin_token: str
     db_session.commit()
     db_session.refresh(source)
 
-    async def _fake_resolve(targets: list[MacRediscoveryTarget], subnets: list[str] | None = None):
+    async def _fake_resolve(targets: list[MacRediscoveryTarget], subnets: list[str] | None = None, session=None):
         return [MacRediscoveryMatch(targets[0], "aa:bb:cc:dd:ee:01", "10.10.98.11")]
 
     monkeypatch.setattr(scanner_routes, "resolve_devices_by_mac", _fake_resolve)
@@ -121,7 +121,7 @@ def test_rediscover_by_mac_dry_run_does_not_update(client: TestClient, admin_tok
     db_session.commit()
     db_session.refresh(printer)
 
-    async def _fake_resolve(targets: list[MacRediscoveryTarget], subnets: list[str] | None = None):
+    async def _fake_resolve(targets: list[MacRediscoveryTarget], subnets: list[str] | None = None, session=None):
         return [MacRediscoveryMatch(targets[0], "aa:bb:cc:dd:ee:03", "10.10.98.31")]
 
     monkeypatch.setattr(scanner_routes, "resolve_devices_by_mac", _fake_resolve)
