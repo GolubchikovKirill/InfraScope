@@ -54,7 +54,7 @@ async def poll_all_computers_local(*, session: Session) -> ComputersPublic:
     lock_acquired = True
     try:
         redis = await get_redis()
-        lock_acquired = bool(await redis.set(lock_key, "1", ex=45, nx=True))
+        lock_acquired = bool(await redis.set(lock_key, "1", ex=320, nx=True))
     except Exception:
         lock_acquired = True
 
