@@ -3,7 +3,10 @@ from time import monotonic
 
 from fastapi.testclient import TestClient
 
-from app.api.routes import switches as switch_routes
+from app.api.routes.switches import _shared as switch_shared
+from app.api.routes.switches import crud as switch_crud
+from app.api.routes.switches import ports as switch_ports
+from app.core.config import settings
 from app.domains.inventory import switch_polling
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 
@@ -141,8 +144,8 @@ def test_switch_ports_read_and_write(
         def set_poe(self, _switch, _port, _action):
             return None
 
-    monkeypatch.setattr(switch_routes, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
-    monkeypatch.setattr(switch_routes.settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
+    monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
+    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
 
     created = client.post(
         "/api/v1/switches/",
@@ -216,9 +219,9 @@ def test_switch_discovery_scan_and_results(client: TestClient, admin_token: str,
             }
         ]
 
-    monkeypatch.setattr(switch_routes, "run_discovery_scan", _fake_run)
-    monkeypatch.setattr(switch_routes, "get_discovery_progress", _fake_progress)
-    monkeypatch.setattr(switch_routes, "get_discovery_results", _fake_results)
+    monkeypatch.setattr(switch_crud, "run_discovery_scan", _fake_run)
+    monkeypatch.setattr(switch_crud, "get_discovery_progress", _fake_progress)
+    monkeypatch.setattr(switch_crud, "get_discovery_results", _fake_results)
 
     scan_resp = client.post(
         "/api/v1/switches/discover/scan",
@@ -266,8 +269,8 @@ def test_switch_port_write_uses_network_control_service_when_enabled(client: Tes
         assert kwargs["path"].endswith("/vlan")
         return {"message": "ok"}
 
-    monkeypatch.setattr(switch_routes.settings, "NETWORK_CONTROL_SERVICE_ENABLED", True)
-    monkeypatch.setattr(switch_routes, "_proxy_request", _fake_proxy_request)
+    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", True)
+    monkeypatch.setattr(switch_ports, "_proxy_request", _fake_proxy_request)
 
     created = client.post(
         "/api/v1/switches/",
@@ -314,9 +317,9 @@ def test_switch_write_rejects_unsafe_port_identifier(client: TestClient, admin_t
     async def _fake_get_redis():
         return fake_redis
 
-    monkeypatch.setattr(switch_routes, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
-    monkeypatch.setattr(switch_routes.settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
-    monkeypatch.setattr(switch_routes, "get_redis", _fake_get_redis)
+    monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
+    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
+    monkeypatch.setattr(switch_shared, "get_redis", _fake_get_redis)
 
     created = client.post(
         "/api/v1/switches/",
@@ -365,10 +368,10 @@ def test_switch_poe_cycle_is_rate_limited_by_cooldown(client: TestClient, admin_
     async def _fake_get_redis():
         return fake_redis
 
-    monkeypatch.setattr(switch_routes, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
-    monkeypatch.setattr(switch_routes.settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
-    monkeypatch.setattr(switch_routes.settings, "SWITCH_SAFETY_COOLDOWN_SECONDS", 60)
-    monkeypatch.setattr(switch_routes, "get_redis", _fake_get_redis)
+    monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
+    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
+    monkeypatch.setattr(settings, "SWITCH_SAFETY_COOLDOWN_SECONDS", 60)
+    monkeypatch.setattr(switch_shared, "get_redis", _fake_get_redis)
 
     created = client.post(
         "/api/v1/switches/",

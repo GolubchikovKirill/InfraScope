@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from celery import Celery
 from celery.schedules import crontab
 
@@ -82,6 +84,16 @@ if settings.AUTO_REBOOT_AP_ENABLED:
             "ap-auto-reboot-evening": {
                 "task": "tasks.ap_auto_reboot_cycle",
                 "schedule": crontab(hour=16, minute=30),
+            },
+        }
+    )
+
+if settings.SWITCH_PORT_SNAPSHOT_ENABLED:
+    _beat_schedule.update(
+        {
+            "switch-port-snapshot": {
+                "task": "tasks.switch_port_snapshot_cycle",
+                "schedule": timedelta(days=settings.SWITCH_PORT_SNAPSHOT_INTERVAL_DAYS),
             },
         }
     )

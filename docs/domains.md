@@ -33,9 +33,9 @@ This is the largest domain today; prefer extracting helpers from route files int
 before adding new route-level logic.
 
 - Domain package: `app/domains/inventory/`
-- Backend routes: `app/api/routes/printers.py`, `switches.py`, `computers.py`,
+- Backend routes: `app/api/routes/printers.py`, `switches/` (package), `computers.py`,
   `media_players.py`, `scanner.py`
-- Services: `app/services/snmp.py`, `cisco_ssh.py`, `device_poll.py`, `discovery.py`,
+- Services: `app/services/snmp/` (package), `cisco_ssh.py`, `device_poll.py`, `discovery.py`,
   `scanner.py`, `smart_search.py`, `switches/`
 - Application services: `app/domains/inventory/printer_polling.py`,
   `app/domains/inventory/media_polling.py`, `app/domains/inventory/switch_polling.py`,

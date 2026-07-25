@@ -19,6 +19,7 @@ from app.domains.inventory.ap_auto_reboot import (
     switch_eligible_for_auto_reboot,
 )
 from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
+from app.domains.inventory.port_snapshot import capture_switch_port_snapshot, get_switches_for_snapshot
 from app.domains.operations.models import CashRegister
 from app.observability.metrics import (
     observe_service_edge,
@@ -470,6 +471,80 @@ def ap_auto_reboot_switch_task(self, switch_id: str) -> dict:
 
         _task_finished(operation, started_at, "success")
         return {"task_id": self.request.id, "operation": operation, **result}
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
+    soft_time_limit=120,
+    time_limit=300,
+    name="tasks.switch_port_snapshot_cycle",
+)
+def switch_port_snapshot_cycle_task(self) -> dict:
+    """Dispatcher: one independent, staggered task per switch, same reasoning
+    as the AP-reboot dispatcher - avoid a simultaneous SSH/SNMP burst across
+    the whole fleet and keep one switch's failure from blocking the rest.
+    Purely read-only (see app.domains.inventory.port_snapshot), so unlike the
+    AP reboot dispatcher there's no eligibility/allowlist gating here.
+    """
+    operation = "switch_port_snapshot_cycle"
+    started_at = _task_started(operation)
+    try:
+        with Session(engine) as session:
+            switches = get_switches_for_snapshot(session)
+            stagger = max(settings.SWITCH_PORT_SNAPSHOT_STAGGER_SECONDS, 0)
+            for index, switch in enumerate(switches):
+                switch_port_snapshot_task.apply_async(
+                    args=[str(switch.id)],
+                    countdown=index * stagger,
+                )
+                worker_tasks_enqueued_total.labels(operation="switch_port_snapshot").inc()
+
+        payload = {
+            "task_id": self.request.id,
+            "operation": operation,
+            "finished_at": datetime.now(UTC).isoformat(),
+            "status": "dispatched",
+            "switches_scheduled": len(switches),
+            "stagger_seconds": stagger,
+        }
+        _task_finished(operation, started_at, "success")
+        return payload
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+    soft_time_limit=120,
+    time_limit=180,
+    name="tasks.switch_port_snapshot",
+)
+def switch_port_snapshot_task(self, switch_id: str) -> dict:
+    operation = "switch_port_snapshot"
+    started_at = _task_started(operation)
+    try:
+        with Session(engine) as session:
+            switch = session.get(NetworkSwitch, uuid.UUID(switch_id))
+            if switch is None:
+                _task_finished(operation, started_at, "error")
+                return {"status": "switch_not_found", "switch_id": switch_id}
+
+            snapshot = capture_switch_port_snapshot(session, switch)
+
+        _task_finished(operation, started_at, "success")
+        return {
+            "task_id": self.request.id,
+            "operation": operation,
+            "switch": switch.name,
+            "status": "changed" if snapshot else "unchanged_or_unreachable",
+        }
     except Exception:
         _task_finished(operation, started_at, "error")
         raise

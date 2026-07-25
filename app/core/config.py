@@ -103,6 +103,13 @@ class Settings(BaseSettings):
     # switch's own reboot cycle is dispatched as an independent task, offset
     # by this many seconds times its position in the (name-sorted) list.
     AUTO_REBOOT_AP_STAGGER_SECONDS: int = 90
+    # Periodic switch port-config snapshot, purely for history/drift
+    # detection - read-only, no writes to any switch. Runs every N days;
+    # a new row is only stored when the config actually changed since the
+    # last one, so this stays cheap even with a short interval.
+    SWITCH_PORT_SNAPSHOT_ENABLED: bool = True
+    SWITCH_PORT_SNAPSHOT_INTERVAL_DAYS: int = 4
+    SWITCH_PORT_SNAPSHOT_STAGGER_SECONDS: int = 60
     # VLANs used for camera/video-surveillance subnets. Cameras don't announce
     # themselves via CDP/LLDP, so identifying "camera ports" for a switch is
     # purely VLAN membership + link/PoE state, not device discovery - this is

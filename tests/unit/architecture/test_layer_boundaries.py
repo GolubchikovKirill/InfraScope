@@ -27,7 +27,7 @@ def test_discovery_does_not_import_private_scanner_helpers() -> None:
 
 def test_route_modules_do_not_manage_realtime_cache_invalidation_directly() -> None:
     route_dir = ROOT / "app/api/routes"
-    route_sources = "\n".join(path.read_text(encoding="utf-8") for path in route_dir.glob("*.py"))
+    route_sources = "\n".join(path.read_text(encoding="utf-8") for path in route_dir.rglob("*.py"))
 
     assert "broadcast_event" not in route_sources
 
@@ -58,7 +58,9 @@ def test_schema_definitions_live_in_domain_packages() -> None:
     assert "from app.domains." in schemas_facade
 
     operations_schemas = _read("app/domains/operations/schemas.py")
-    inventory_schemas = _read("app/domains/inventory/schemas.py")
+    inventory_schemas = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "app/domains/inventory/schemas").glob("*.py")
+    )
     assert "class Computer" not in operations_schemas
     assert "class Computer" in inventory_schemas
 

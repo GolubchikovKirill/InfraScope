@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Column
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 from app.core.crypto import EncryptedString
@@ -126,6 +126,22 @@ class SwitchAccessPoint(SQLModel, table=True):
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = Field(default=None)
+
+
+class SwitchPortSnapshot(SQLModel, table=True):
+    """A point-in-time capture of a switch's port configuration.
+
+    Written by the periodic snapshot task (app.domains.inventory.
+    port_snapshot) only when the config actually changed since the last
+    stored row, so an operator can see when a port's VLAN/description/trunk
+    setup last drifted without needing a live SSH/SNMP session to the switch.
+    """
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    switch_id: uuid.UUID = Field(index=True, foreign_key="networkswitch.id")
+    captured_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
+    ports_hash: str = Field(max_length=64, index=True)
+    ports_json: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
 
 
 class MediaPlayer(SQLModel, table=True):
