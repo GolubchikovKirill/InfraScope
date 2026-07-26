@@ -490,10 +490,12 @@ def reboot_ap(ip: str, username: str, password: str, enable_password: str, port:
         switch_ops_total.labels(operation="reboot_ap_shutdown", result="error").inc()
         return False
 
+    shut_down = False
     try:
         ssh.execute("configure terminal")
         ssh.execute(f"interface {interface}")
         ssh.execute("shutdown")
+        shut_down = True
         time.sleep(3)
         ssh.execute("no shutdown")
         ssh.execute("end")
@@ -502,10 +504,34 @@ def reboot_ap(ip: str, username: str, password: str, enable_password: str, port:
         return True
     except Exception as e:
         logger.warning("Failed to reboot AP on %s port %s: %s", ip, interface, e)
+        if shut_down:
+            _try_restore_admin_up(ssh, ip, interface)
         switch_ops_total.labels(operation="reboot_ap_shutdown", result="error").inc()
         return False
     finally:
         ssh.close()
+
+
+def _try_restore_admin_up(ssh: CiscoSSH, ip: str, interface: str) -> None:
+    """Best-effort recovery: a reboot that failed partway MUST NOT leave a
+    port administratively shut down forever - that silently kills the AP
+    instead of rebooting it. Only reachable after 'shutdown' already ran, so
+    this always attempts to undo it, even though the step that failed was
+    something else entirely.
+    """
+    try:
+        ssh.execute("configure terminal")
+        ssh.execute(f"interface {interface}")
+        ssh.execute("no shutdown")
+        ssh.execute("end")
+        logger.info("Recovered admin-up state on %s port %s after error", ip, interface)
+    except Exception as recovery_exc:
+        logger.error(
+            "CRITICAL: %s port %s may be stuck administratively shut down - recovery attempt also failed: %s",
+            ip,
+            interface,
+            recovery_exc,
+        )
 
 
 def poe_cycle_ap(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> bool:
@@ -515,11 +541,13 @@ def poe_cycle_ap(ip: str, username: str, password: str, enable_password: str, po
         switch_ops_total.labels(operation="reboot_ap_poe", result="error").inc()
         return False
 
+    powered_off = False
     try:
         ssh.execute("configure terminal")
         ssh.execute(f"interface {interface}")
         ssh.execute("power inline never")
         ssh.execute("end")
+        powered_off = True
         time.sleep(5)
         ssh.execute("configure terminal")
         ssh.execute(f"interface {interface}")
@@ -530,10 +558,34 @@ def poe_cycle_ap(ip: str, username: str, password: str, enable_password: str, po
         return True
     except Exception as e:
         logger.warning("PoE cycle failed on %s port %s: %s", ip, interface, e)
+        if powered_off:
+            _try_restore_poe_auto(ssh, ip, interface)
         switch_ops_total.labels(operation="reboot_ap_poe", result="error").inc()
         return False
     finally:
         ssh.close()
+
+
+def _try_restore_poe_auto(ssh: CiscoSSH, ip: str, interface: str) -> None:
+    """Best-effort recovery: a PoE cycle that failed partway MUST NOT leave a
+    port permanently unpowered - that's an outage indistinguishable from a
+    dead AP, not a reboot. Only reachable after 'power inline never' already
+    ran, so this always attempts to restore power, even though the step that
+    failed was something else entirely.
+    """
+    try:
+        ssh.execute("configure terminal")
+        ssh.execute(f"interface {interface}")
+        ssh.execute("power inline auto")
+        ssh.execute("end")
+        logger.info("Recovered PoE power state on %s port %s after error", ip, interface)
+    except Exception as recovery_exc:
+        logger.error(
+            "CRITICAL: %s port %s may be stuck powered off - recovery attempt also failed: %s",
+            ip,
+            interface,
+            recovery_exc,
+        )
 
 
 def poe_cycle_ports_bulk(
@@ -555,8 +607,10 @@ def poe_cycle_ports_bulk(
         switch_ops_total.labels(operation="reboot_cameras_bulk_poe", result="error").inc()
         return False
 
+    powering_off_started = False
     try:
         ssh.execute("configure terminal")
+        powering_off_started = True
         for interface in interfaces:
             ssh.execute(f"interface {interface}")
             ssh.execute("power inline never")
@@ -572,10 +626,35 @@ def poe_cycle_ports_bulk(
         return True
     except Exception as e:
         logger.warning("Bulk PoE cycle failed on %s ports %s: %s", ip, interfaces, e)
+        if powering_off_started:
+            # We can't tell how far the power-off loop got before failing,
+            # so the only safe recovery is to attempt "power on" for every
+            # port in the batch, not just the ones we're sure were touched.
+            _try_restore_poe_auto_bulk(ssh, ip, interfaces)
         switch_ops_total.labels(operation="reboot_cameras_bulk_poe", result="error").inc()
         return False
     finally:
         ssh.close()
+
+
+def _try_restore_poe_auto_bulk(ssh: CiscoSSH, ip: str, interfaces: list[str]) -> None:
+    """Best-effort recovery for poe_cycle_ports_bulk - see _try_restore_poe_auto.
+    A partial failure here can affect several cameras at once, so this is
+    logged at CRITICAL if it doesn't succeed."""
+    try:
+        ssh.execute("configure terminal")
+        for interface in interfaces:
+            ssh.execute(f"interface {interface}")
+            ssh.execute("power inline auto")
+        ssh.execute("end")
+        logger.info("Recovered PoE power state on %s ports %s after error", ip, interfaces)
+    except Exception as recovery_exc:
+        logger.error(
+            "CRITICAL: %s ports %s may be stuck powered off - recovery attempt also failed: %s",
+            ip,
+            interfaces,
+            recovery_exc,
+        )
 
 
 def get_port_poe_power(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> float | None:
