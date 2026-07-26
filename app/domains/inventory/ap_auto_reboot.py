@@ -183,7 +183,7 @@ async def _handle_one_ap(
             ip_address=switch.ip_address,
             message=(
                 f"[DRY RUN] {hung_prefix}Would PoE-cycle AP {ap.mac_address} (port {ap.port}) "
-                f"on {switch.name}, VLAN {switch.vlan}"
+                f"on {switch.name}, VLAN {switch.ap_vlan}"
             ),
         )
         ap_auto_reboot_total.labels(switch=switch.name, result="dry_run").inc()
@@ -261,7 +261,7 @@ async def _handle_one_ap(
                 ip_address=switch.ip_address,
                 message=(
                     f"AP {ap.mac_address} (port {ap.port}) on {switch.name} did not reappear "
-                    f"on VLAN {switch.vlan} within {settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS}s "
+                    f"on VLAN {switch.ap_vlan} within {settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS}s "
                     "after reboot"
                 ),
             )
