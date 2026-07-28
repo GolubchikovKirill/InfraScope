@@ -438,9 +438,10 @@ def test_reboot_all_cameras_requires_superuser(client: TestClient, admin_token: 
     assert response.status_code == 403
 
 
-def test_reboot_all_cameras_cycles_every_camera_port_in_one_call(client: TestClient, admin_token: str, monkeypatch):
+def test_reboot_all_cameras_cycles_one_camera_at_a_time(client: TestClient, admin_token: str, monkeypatch):
     monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS", 1)
     monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS", 1)
+    monkeypatch.setattr(settings, "CAMERA_REBOOT_STAGGER_SECONDS", 0)
     calls: list[list[str]] = []
 
     def _fake_get_camera_ports(*_args, **_kwargs):
@@ -483,8 +484,65 @@ def test_reboot_all_cameras_cycles_every_camera_port_in_one_call(client: TestCli
     assert response.status_code == 200
     # Gi0/10 is already "connected" in the fake, so verification finds it
     # back online; Gi0/11 stays "notconnect" and never resolves.
-    assert response.json() == {"status": "rebooting", "rebooted_count": 2, "back_online_count": 1}
-    assert calls == [["Gi0/10", "Gi0/11"]]
+    assert response.json() == {
+        "status": "rebooting",
+        "rebooted_count": 2,
+        "failed_count": 0,
+        "back_online_count": 1,
+    }
+    # Each camera is cycled in its own call, one port at a time - never a
+    # single call powering multiple cameras off together.
+    assert calls == [["Gi0/10"], ["Gi0/11"]]
+
+
+def test_reboot_all_cameras_continues_past_a_single_port_failure(client: TestClient, admin_token: str, monkeypatch):
+    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS", 1)
+    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS", 1)
+    monkeypatch.setattr(settings, "CAMERA_REBOOT_STAGGER_SECONDS", 0)
+
+    def _fake_get_camera_ports(*_args, **_kwargs):
+        return [
+            CameraPortInfo(port="Gi0/20", vlan=241, oper_status="connected"),
+            CameraPortInfo(port="Gi0/21", vlan=241, oper_status="connected"),
+        ]
+
+    def _fake_poe_cycle_bulk(_ip, _user, _pw, _enable, _port, interfaces):
+        return interfaces != ["Gi0/20"]
+
+    monkeypatch.setattr(switch_access_points, "get_camera_ports", _fake_get_camera_ports)
+    monkeypatch.setattr(switch_access_points, "poe_cycle_ports_bulk", _fake_poe_cycle_bulk)
+
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "SW-Cameras-Partial",
+            "ip_address": "10.10.10.64",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "cisco",
+            "management_protocol": "snmp+ssh",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/camera-ports/reboot-all",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "rebooting",
+        "rebooted_count": 1,
+        "failed_count": 1,
+        "back_online_count": 1,
+    }
 
 
 def test_reboot_camera_port_reports_back_online_status(client: TestClient, admin_token: str, monkeypatch):

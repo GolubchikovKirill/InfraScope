@@ -222,22 +222,43 @@ async def reboot_all_camera_ports(switch_id: uuid.UUID, session: SessionDep) -> 
         if not ports:
             return {"status": "no_cameras", "rebooted_count": 0}
 
-        ok = await asyncio.to_thread(
-            poe_cycle_ports_bulk,
-            switch.ip_address,
-            switch.ssh_username,
-            switch.ssh_password,
-            switch.enable_password,
-            switch.ssh_port,
-            [p.port for p in ports],
-        )
-        if not ok:
+        # One camera at a time, with a pause between each - powering every
+        # camera port off at once (even briefly) would drop a store's whole
+        # video coverage to zero for that window. Losing one camera while
+        # the rest keep recording is a much smaller risk than losing all of
+        # them simultaneously.
+        stagger = max(settings.CAMERA_REBOOT_STAGGER_SECONDS, 0)
+        cycled_ports: list[str] = []
+        failed_ports: list[str] = []
+        for index, cam in enumerate(ports):
+            ok = await asyncio.to_thread(
+                poe_cycle_ports_bulk,
+                switch.ip_address,
+                switch.ssh_username,
+                switch.ssh_password,
+                switch.enable_password,
+                switch.ssh_port,
+                [cam.port],
+            )
+            (cycled_ports if ok else failed_ports).append(cam.port)
+            if index < len(ports) - 1:
+                await asyncio.sleep(stagger)
+
+        if not cycled_ports:
             switch_ops_total.labels(operation="reboot_cameras_bulk", result="error").inc()
-            raise HTTPException(status_code=502, detail="Failed to reboot camera ports")
+            raise HTTPException(status_code=502, detail="Failed to reboot any camera port")
         switch_ops_total.labels(operation="reboot_cameras_bulk", result="success").inc()
-        back_online_map = await _verify_camera_ports_back_online(switch, [p.port for p in ports], camera_vlans)
+        if failed_ports:
+            switch_ops_total.labels(operation="reboot_cameras_bulk", result="partial").inc()
+
+        back_online_map = await _verify_camera_ports_back_online(switch, cycled_ports, camera_vlans)
         back_online_count = sum(1 for v in back_online_map.values() if v)
-        return {"status": "rebooting", "rebooted_count": len(ports), "back_online_count": back_online_count}
+        return {
+            "status": "rebooting",
+            "rebooted_count": len(cycled_ports),
+            "failed_count": len(failed_ports),
+            "back_online_count": back_online_count,
+        }
     finally:
         await _release_switch_write_lock(lock_key)
 

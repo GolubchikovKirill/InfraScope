@@ -115,6 +115,11 @@ class Settings(BaseSettings):
     # purely VLAN membership + link/PoE state, not device discovery - this is
     # manual-only (view ports, PoE-cycle one by hand), no scheduled auto-reboot.
     CAMERA_VLANS: str = "241,242,243,244,247"
+    # "Reboot all cameras on this switch" cycles one camera at a time with
+    # this pause between each, rather than powering every camera port off
+    # simultaneously - a store's whole camera coverage must never drop to
+    # zero at once, even for a few seconds.
+    CAMERA_REBOOT_STAGGER_SECONDS: int = 10
     DISCOVERY_SERVICE_ENABLED: bool = False
     DISCOVERY_SERVICE_URL: str = "http://discovery-service:8012"
     NETWORK_CONTROL_SERVICE_ENABLED: bool = False
