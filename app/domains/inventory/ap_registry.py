@@ -67,6 +67,34 @@ def record_seen_aps(session: Session, *, switch_id: uuid.UUID, live_aps: list[AP
     session.commit()
 
 
+def recover_missing_macs_from_registry(
+    live_aps: list[APInfo], known_rows: list[SwitchAccessPoint]
+) -> list[APInfo]:
+    """Fall back to a known MAC when CDP found an AP but its MAC couldn't be
+    resolved this scan.
+
+    Default-named APs ("APxxxx.xxxx.xxxx") already get their MAC decoded
+    straight from the CDP name in cisco_ssh.py. Custom-named APs (e.g.
+    "AP_A6_VS") have no such shortcut and depend entirely on the switch's
+    MAC address table, whose entry for a given port can be momentarily
+    stale even when CDP's own (much longer-lived) entry is solid - exactly
+    what caused A30's AP_A6_VS to intermittently show as unresponsive.
+
+    Only applied when both port AND cdp_name match a known registry row:
+    that combination is specific enough that reusing the MAC is safe,
+    whereas matching on port alone could misattribute a different physical
+    device that happens to occupy the same port later.
+    """
+    by_port_name = {(row.port, row.cdp_name): row.mac_address for row in known_rows if row.cdp_name}
+    for ap in live_aps:
+        if ap.mac_address or not ap.port or not ap.cdp_name:
+            continue
+        recovered = by_port_name.get((ap.port, ap.cdp_name))
+        if recovered:
+            ap.mac_address = recovered
+    return live_aps
+
+
 def get_known_aps(session: Session, *, switch_id: uuid.UUID) -> list[SwitchAccessPoint]:
     return session.exec(
         select(SwitchAccessPoint).where(

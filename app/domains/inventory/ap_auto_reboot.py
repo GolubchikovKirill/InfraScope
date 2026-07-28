@@ -34,6 +34,7 @@ from app.domains.inventory.ap_registry import (
     get_known_aps,
     merge_live_and_known,
     record_seen_aps,
+    recover_missing_macs_from_registry,
 )
 from app.domains.inventory.models import NetworkSwitch
 from app.observability.metrics import ap_auto_reboot_total
@@ -128,10 +129,11 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
         session.commit()
         return {"switch": switch.name, "mode": mode_label, "aps_found": 0, "results": [], "skipped": "switch_unreachable"}
 
+    known_rows = get_known_aps(session, switch_id=switch.id)
+    live_aps = recover_missing_macs_from_registry(live_aps, known_rows)
     live_aps = [ap for ap in live_aps if ap.port and ap.mac_address]
 
     record_seen_aps(session, switch_id=switch.id, live_aps=live_aps)
-    known_rows = get_known_aps(session, switch_id=switch.id)
     merged = merge_live_and_known(live_aps, known_rows, vlan=switch.ap_vlan)
 
     # Hung (known but not responding) first - that's the AP that actually

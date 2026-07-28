@@ -14,6 +14,7 @@ from app.domains.inventory.ap_registry import (
     known_aps_as_still_responding,
     merge_live_and_known,
     record_seen_aps,
+    recover_missing_macs_from_registry,
     set_ap_excluded,
 )
 from app.domains.inventory.schemas import AccessPointInfo, CameraPortInfo, SetApExcludedRequest
@@ -62,6 +63,7 @@ async def get_switch_aps(
         logger.warning("Could not scan %s for access points (SSH unreachable); showing last-known state", switch.name)
         merged = known_aps_as_still_responding(known_rows, vlan=switch.ap_vlan)
     else:
+        live_aps = recover_missing_macs_from_registry(live_aps, known_rows)
         live_aps = [ap for ap in live_aps if ap.mac_address and ap.port]
         record_seen_aps(session, switch_id=switch.id, live_aps=live_aps)
         merged = merge_live_and_known(live_aps, known_rows, vlan=switch.ap_vlan)
