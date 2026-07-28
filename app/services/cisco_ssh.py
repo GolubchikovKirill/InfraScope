@@ -730,6 +730,26 @@ _AP_PLATFORM_PATTERNS = re.compile(
     r"|[Cc]isco\s+AP|[Ww]ireless|Trans-Bridge",
 )
 
+# A Cisco AP's own CDP device ID defaults to "AP" + its MAC in dotted-hex
+# form (e.g. "APecbd.1df9.7ba0") whenever it hasn't been given a custom
+# hostname. Confirmed on A8: CDP correctly reported this AP every scan, but
+# `show mac address-table` didn't always have a current entry for its port
+# (CAM entries age out well before CDP's own holdtime), so the AP's MAC came
+# back empty and it was silently dropped downstream by callers that filter
+# on `ap.mac_address` being set - identical to being reported as completely
+# missing, even though CDP saw it fine.
+_AP_NAME_MAC_RE = re.compile(r"^AP([0-9a-f]{4})\.([0-9a-f]{4})\.([0-9a-f]{4})$", re.IGNORECASE)
+
+
+def _mac_from_ap_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    m = _AP_NAME_MAC_RE.match(name.strip())
+    if not m:
+        return None
+    hex_str = "".join(m.groups()).lower()
+    return ":".join(hex_str[i : i + 2] for i in range(0, 12, 2))
+
 
 def _parse_cdp_access_points(cdp_output: str, vlan: int) -> list[APInfo]:
     """Extract only access points from CDP neighbors detail output."""
@@ -764,7 +784,7 @@ def _parse_cdp_access_points(cdp_output: str, vlan: int) -> list[APInfo]:
 
         aps.append(
             APInfo(
-                mac_address="",
+                mac_address=_mac_from_ap_name(cdp_name) or "",
                 port=local_port,
                 vlan=vlan,
                 ip_address=ap_ip,
@@ -777,7 +797,14 @@ def _parse_cdp_access_points(cdp_output: str, vlan: int) -> list[APInfo]:
 
 
 def _enrich_mac_from_table(aps: list[APInfo], mac_output: str) -> None:
-    """Fill in MAC addresses for APs from the MAC address table."""
+    """Fill in MAC addresses for APs from the MAC address table.
+
+    Only fills gaps left by _mac_from_ap_name (custom-named APs, whose CDP
+    device ID doesn't encode a MAC) rather than overwriting it - the CAM
+    table entry for a port can be momentarily stale/aged-out even when CDP's
+    own (much longer-lived) entry is solid, so a CDP-derived MAC is the more
+    reliable of the two when both are available.
+    """
     port_to_mac: dict[str, str] = {}
     for line in mac_output.split("\n"):
         m = re.match(
@@ -793,6 +820,8 @@ def _enrich_mac_from_table(aps: list[APInfo], mac_output: str) -> None:
             port_to_mac[port_key] = mac
 
     for ap in aps:
+        if ap.mac_address:
+            continue
         port_key = _normalize_port(ap.port)
         if port_key in port_to_mac:
             ap.mac_address = port_to_mac[port_key]

@@ -1,5 +1,6 @@
 from app.services.cisco_ssh import (
     _enrich_mac_from_table,
+    _mac_from_ap_name,
     _normalize_port,
     _parse_cdp_access_points,
     parse_interface_status_table,
@@ -65,6 +66,57 @@ Holdtime : 142 sec
     aps = _parse_cdp_access_points(cdp_output, vlan=20)
     assert len(aps) == 1
     assert aps[0].cdp_name == "AP7cad.744c.ef08"
+
+
+def test_mac_from_ap_name_extracts_mac_from_default_cisco_ap_hostname():
+    assert _mac_from_ap_name("APecbd.1df9.7ba0") == "ec:bd:1d:f9:7b:a0"
+    assert _mac_from_ap_name("AP7cad.744c.ef08") == "7c:ad:74:4c:ef:08"
+
+
+def test_mac_from_ap_name_returns_none_for_a_custom_hostname():
+    assert _mac_from_ap_name("AP-Floor-01") is None
+    assert _mac_from_ap_name(None) is None
+
+
+def test_parse_cdp_access_points_derives_mac_from_default_hostname_without_mac_table():
+    # Real capture from A8: CDP found this AP on every scan, but its MAC
+    # address table entry for the port wasn't always current at scan time,
+    # so a caller filtering on `ap.mac_address` being set treated it as if
+    # CDP hadn't found the AP at all - same visible symptom as "not
+    # responding", even though the port and the AP were both fine.
+    cdp_output = """
+-------------------------
+Device ID: APecbd.1df9.7ba0
+Entry address(es):
+Platform: cisco AIR-CAP1702I-R-K9,  Capabilities: Router Trans-Bridge Source-Route-Bridge
+Interface: GigabitEthernet1/0/34,  Port ID (outgoing port): GigabitEthernet0
+Holdtime : 158 sec
+"""
+    aps = _parse_cdp_access_points(cdp_output, vlan=20)
+
+    assert len(aps) == 1
+    assert aps[0].mac_address == "ec:bd:1d:f9:7b:a0"
+    assert aps[0].port == "GigabitEthernet1/0/34"
+    assert aps[0].ip_address is None
+
+
+def test_enrich_mac_from_table_does_not_override_a_cdp_derived_mac():
+    aps = _parse_cdp_access_points(
+        """
+-------------------------
+Device ID: APecbd.1df9.7ba0
+Platform: cisco AIR-CAP1702I-R-K9,  Capabilities: Trans-Bridge
+Interface: GigabitEthernet1/0/34, Port ID (outgoing port): GigabitEthernet0
+""",
+        vlan=20,
+    )
+    assert aps[0].mac_address == "ec:bd:1d:f9:7b:a0"
+
+    # A stale/wrong CAM-table entry for the same port must not clobber the
+    # MAC CDP already gave us.
+    mac_output = " 20  aabb.ccdd.ee01   DYNAMIC  Gi1/0/34"
+    _enrich_mac_from_table(aps, mac_output)
+    assert aps[0].mac_address == "ec:bd:1d:f9:7b:a0"
 
 
 def test_parse_interface_status_table_keeps_ports_with_no_description():
