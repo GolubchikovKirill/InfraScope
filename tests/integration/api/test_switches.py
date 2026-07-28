@@ -439,6 +439,8 @@ def test_reboot_all_cameras_requires_superuser(client: TestClient, admin_token: 
 
 
 def test_reboot_all_cameras_cycles_every_camera_port_in_one_call(client: TestClient, admin_token: str, monkeypatch):
+    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS", 1)
+    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS", 1)
     calls: list[list[str]] = []
 
     def _fake_get_camera_ports(*_args, **_kwargs):
@@ -479,5 +481,158 @@ def test_reboot_all_cameras_cycles_every_camera_port_in_one_call(client: TestCli
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 200
-    assert response.json() == {"status": "rebooting", "rebooted_count": 2}
+    # Gi0/10 is already "connected" in the fake, so verification finds it
+    # back online; Gi0/11 stays "notconnect" and never resolves.
+    assert response.json() == {"status": "rebooting", "rebooted_count": 2, "back_online_count": 1}
     assert calls == [["Gi0/10", "Gi0/11"]]
+
+
+def test_reboot_camera_port_reports_back_online_status(client: TestClient, admin_token: str, monkeypatch):
+    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS", 1)
+    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS", 1)
+    calls: list[list[str]] = []
+
+    def _fake_get_camera_ports(*_args, **_kwargs):
+        return [CameraPortInfo(port="Gi0/12", vlan=241, oper_status="connected")]
+
+    def _fake_poe_cycle_bulk(_ip, _user, _pw, _enable, _port, interfaces):
+        calls.append(list(interfaces))
+        return True
+
+    monkeypatch.setattr(switch_access_points, "get_camera_ports", _fake_get_camera_ports)
+    monkeypatch.setattr(switch_access_points, "poe_cycle_ports_bulk", _fake_poe_cycle_bulk)
+
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "SW-Camera-Single",
+            "ip_address": "10.10.10.62",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "cisco",
+            "management_protocol": "snmp+ssh",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/camera-ports/Gi0%2F12/reboot",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "rebooting", "port": "Gi0/12", "back_online": True}
+    assert calls == [["Gi0/12"]]
+
+
+def test_reboot_camera_port_requires_superuser(client: TestClient, admin_token: str, user_token: str):
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "SW-Camera-Guard",
+            "ip_address": "10.10.10.63",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "cisco",
+            "management_protocol": "snmp+ssh",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/camera-ports/Gi0%2F12/reboot",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert response.status_code == 403
+
+
+def test_reboot_ap_verifies_and_reports_back_online_when_mac_address_given(
+    client: TestClient, admin_token: str, monkeypatch
+):
+    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
+    monkeypatch.setattr(switch_access_points, "poe_cycle_ap", lambda *a, **kw: True)
+
+    async def _fake_verify(_switch, mac_address):
+        assert mac_address == "aa:bb:cc:dd:ee:ff"
+        return True
+
+    monkeypatch.setattr(switch_access_points, "_verify_ap_back_online", _fake_verify)
+
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "SW-AP-Verify",
+            "ip_address": "10.10.10.70",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "cisco",
+            "management_protocol": "snmp+ssh",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/reboot-ap",
+        json={"interface": "Gi0/1", "mac_address": "aa:bb:cc:dd:ee:ff"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "rebooting", "interface": "Gi0/1", "method": "poe", "back_online": True}
+
+
+def test_reboot_ap_skips_verification_without_mac_address(client: TestClient, admin_token: str, monkeypatch):
+    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
+    monkeypatch.setattr(switch_access_points, "poe_cycle_ap", lambda *a, **kw: True)
+
+    def _must_not_be_called(*_a, **_kw):
+        raise AssertionError("verification must not run without a mac_address")
+
+    monkeypatch.setattr(switch_access_points, "_verify_ap_back_online", _must_not_be_called)
+
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "SW-AP-No-Verify",
+            "ip_address": "10.10.10.71",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "cisco",
+            "management_protocol": "snmp+ssh",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/reboot-ap",
+        json={"interface": "Gi0/1"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "rebooting", "interface": "Gi0/1", "method": "poe"}

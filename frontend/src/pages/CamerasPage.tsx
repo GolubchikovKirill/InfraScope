@@ -98,7 +98,14 @@ function CameraSwitchCard({
   const rebootAllMut = useMutation({
     mutationFn: () => rebootAllCameraPorts(switchId),
     onSuccess: (result) => {
-      showToast(`${switchName}: перезагружено камер — ${result.rebooted_count}`, "success");
+      const backOnline = result.back_online_count;
+      const message =
+        backOnline === undefined
+          ? `${switchName}: перезагружено камер — ${result.rebooted_count}`
+          : backOnline === result.rebooted_count
+            ? `${switchName}: перезагружено и вернулось онлайн — ${backOnline} из ${result.rebooted_count}`
+            : `${switchName}: вернулось онлайн ${backOnline} из ${result.rebooted_count} — проверьте остальные на месте`;
+      showToast(message, backOnline !== undefined && backOnline < result.rebooted_count ? "error" : "success");
       queryClient.invalidateQueries({ queryKey: ["switch-camera-ports", switchId] });
     },
     onError: (error) => showToast(apiErrorMessage(error, "Не удалось перезагрузить камеры"), "error"),

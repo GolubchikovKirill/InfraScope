@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Camera, RotateCcw, Zap } from "lucide-react";
 import type { CameraPort } from "../client";
-import { setSwitchPortPoe } from "../client";
+import { rebootCameraPort } from "../client";
 import { useConfirm } from "./ConfirmDialog";
 import { showToast } from "../lib/toastBus";
 
@@ -19,8 +19,14 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
   const isDown = cam.oper_status !== "connected";
 
   const rebootMut = useMutation({
-    mutationFn: () => setSwitchPortPoe(switchId, cam.port, "cycle"),
-    onSuccess: () => showToast(`Камера на порту ${cam.port} перезагружена`, "success"),
+    mutationFn: () => rebootCameraPort(switchId, cam.port),
+    onSuccess: (result) => {
+      if (!result.back_online) {
+        showToast(`Камера на порту ${cam.port} перезагружена, но не вернулась онлайн — проверьте на месте`, "error");
+      } else {
+        showToast(`Камера на порту ${cam.port} перезагружена и вернулась онлайн`, "success");
+      }
+    },
     onSettled: () => {
       setRebooting(false);
       queryClient.invalidateQueries({ queryKey: ["switch-camera-ports", switchId] });
@@ -28,7 +34,12 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
   });
 
   const handleReboot = async () => {
-    if (await confirm(`Перезагрузить камеру на порту ${cam.port} (VLAN ${cam.vlan})?`, { danger: true, confirmText: "Перезагрузить" })) {
+    if (
+      await confirm(
+        `Перезагрузить камеру на порту ${cam.port} (VLAN ${cam.vlan})?\n\nПроверка возврата онлайн может занять до нескольких минут.`,
+        { danger: true, confirmText: "Перезагрузить" },
+      )
+    ) {
       setRebooting(true);
       rebootMut.mutate();
     }

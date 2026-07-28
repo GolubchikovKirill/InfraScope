@@ -34,8 +34,14 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
   const invalidateAps = () => queryClient.invalidateQueries({ queryKey: ["switch-aps", switchId] });
 
   const rebootMut = useMutation({
-    mutationFn: () => rebootAP(switchId, ap.port),
-    onSuccess: () => showToast(`Точка на порту ${ap.port} перезагружена`, "success"),
+    mutationFn: () => rebootAP(switchId, ap.port, ap.mac_address),
+    onSuccess: (result) => {
+      if (result.back_online === false) {
+        showToast(`Точка на порту ${ap.port} перезагружена, но не вернулась онлайн — проверьте на месте`, "error");
+      } else {
+        showToast(`Точка на порту ${ap.port} перезагружена${result.back_online ? " и вернулась онлайн" : ""}`, "success");
+      }
+    },
     onSettled: () => {
       setRebooting(false);
       invalidateAps();
@@ -48,7 +54,12 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
   });
 
   const handleReboot = async () => {
-    if (await confirm(`Перезагрузить точку доступа на порту ${ap.port}?`, { danger: true, confirmText: "Перезагрузить" })) {
+    if (
+      await confirm(
+        `Перезагрузить точку доступа на порту ${ap.port}?\n\nПроверка возврата онлайн может занять до нескольких минут.`,
+        { danger: true, confirmText: "Перезагрузить" },
+      )
+    ) {
       setRebooting(true);
       rebootMut.mutate();
     }

@@ -136,15 +136,26 @@ export async function getSwitchCameraPorts(id: string) {
   return data;
 }
 
+export async function rebootCameraPort(id: string, port: string) {
+  const encoded = encodeURIComponent(port);
+  const { data } = await api.post<{ status: string; port: string; back_online: boolean }>(
+    `/switches/${id}/camera-ports/${encoded}/reboot`,
+  );
+  return data;
+}
+
 export async function rebootAllCameraPorts(id: string) {
-  const { data } = await api.post<{ status: string; rebooted_count: number }>(
+  const { data } = await api.post<{ status: string; rebooted_count: number; back_online_count?: number }>(
     `/switches/${id}/camera-ports/reboot-all`,
   );
   return data;
 }
 
-export async function rebootAP(switchId: string, iface: string, method: string = "poe") {
-  const { data } = await api.post(`/switches/${switchId}/reboot-ap`, { interface: iface, method });
+export async function rebootAP(switchId: string, iface: string, macAddress?: string, method: string = "poe") {
+  const { data } = await api.post<{ status: string; interface: string; method: string; back_online?: boolean }>(
+    `/switches/${switchId}/reboot-ap`,
+    { interface: iface, method, mac_address: macAddress },
+  );
   return data;
 }
 
