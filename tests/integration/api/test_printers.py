@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
 from app.api.routes import printers as printer_routes
+from app.domains.operations.models import EventLog
 
 
 def test_create_printer_and_reject_duplicate_ip(client: TestClient, admin_token: str, monkeypatch):
@@ -91,6 +94,50 @@ def test_poll_all_printers_uses_polling_service_when_enabled(client: TestClient,
     )
     assert response.status_code == 200
     assert response.json()["count"] == 0
+
+
+def test_read_printers_reports_offline_count_24h(client: TestClient, admin_token: str, db_session, monkeypatch):
+    async def _no_mac(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(printer_routes, "resolve_mac_for_ip_address", _no_mac)
+    create = client.post(
+        "/api/v1/printers/",
+        json={
+            "printer_type": "laser",
+            "connection_type": "ip",
+            "store_name": "Store Flapping",
+            "model": "HP M404",
+            "ip_address": "10.10.10.60",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert create.status_code == 200
+
+    now = datetime.now(UTC)
+    for _ in range(3):
+        db_session.add(
+            EventLog(
+                category="device",
+                event_type="device_offline",
+                severity="warning",
+                device_kind="printer",
+                device_name="Store Flapping",
+                message="Printer 'Store Flapping' is now offline",
+                created_at=now,
+            )
+        )
+    db_session.commit()
+
+    response = client.get(
+        "/api/v1/printers/",
+        params={"store_name": "Store Flapping"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    rows = response.json()["data"]
+    assert len(rows) == 1
+    assert rows[0]["offline_count_24h"] == 3
 
 
 def test_cartridge_stock_sync_adjust_issue_and_history(client: TestClient, admin_token: str, monkeypatch):

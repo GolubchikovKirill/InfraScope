@@ -158,6 +158,11 @@ class Settings(BaseSettings):
     POLL_CIRCUIT_FAILURE_THRESHOLD: int = 4
     POLL_CIRCUIT_OPEN_SECONDS: int = 45
     POLL_RESILIENCE_STATE_TTL_SECONDS: int = 7200
+    # A manual single-printer poll only gets one shot at the network, unlike the
+    # scheduled fleet poll which requires 2 consecutive cycle failures before
+    # declaring offline. Give it one quick retry before trusting a failure, so a
+    # single transient SNMP timeout doesn't flip the status.
+    PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS: float = 3.0
     PRINTER_POLL_MAX_WORKERS: int = 16
     # Laser printers poll every 15 min (see celery_app.py), but only need a
     # full SNMP toner walk this rarely - cycle N of every M is "full", the

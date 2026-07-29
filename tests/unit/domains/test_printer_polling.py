@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from app.domains.inventory.models import Printer
 from app.domains.inventory.printer_polling import (
+    _apply_full_printer_result,
     _apply_light_printer_result,
     is_full_poll_cycle,
     poll_one_printer,
     poll_printer_batch,
+    poll_single_printer_local,
     verify_printer_mac,
 )
 from app.services.snmp import PrinterStatus
@@ -143,3 +147,88 @@ def test_apply_light_printer_result_preserves_toner_levels() -> None:
     assert printer.is_online is True
     assert printer.toner_black == 42
     assert printer.mac_status == "verified"
+
+
+def test_apply_full_printer_result_stamps_toner_updated_at() -> None:
+    printer = Printer(
+        printer_type="laser",
+        connection_type="ip",
+        store_name="Store A",
+        model="HP",
+        ip_address="10.10.10.30",
+    )
+    assert printer.toner_updated_at is None
+    full_result = PrinterStatus(is_online=True, status="online", toner_black=55)
+
+    _apply_full_printer_result(printer, full_result, None)
+
+    assert printer.toner_black == 55
+    assert printer.toner_updated_at is not None
+
+
+@pytest.mark.asyncio
+async def test_poll_single_printer_local_retries_before_marking_offline(db_session, monkeypatch) -> None:
+    printer = Printer(
+        printer_type="laser",
+        connection_type="ip",
+        store_name="Store Retry",
+        model="HP",
+        ip_address="10.10.10.50",
+        is_online=True,
+        status="online",
+    )
+    db_session.add(printer)
+    db_session.commit()
+    db_session.refresh(printer)
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS", 0)
+
+    calls = {"count": 0}
+
+    def flaky_poll_one(target_printer: Printer, *, full: bool = True):
+        del full
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return target_printer.ip_address, None, None
+        return target_printer.ip_address, PrinterStatus(is_online=True, status="online", toner_black=10), "aa:bb:cc:dd:ee:ff"
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", flaky_poll_one)
+
+    result = await poll_single_printer_local(session=db_session, printer_id=printer.id)
+
+    assert calls["count"] == 2
+    assert result.is_online is True
+    assert result.status == "online"
+
+
+@pytest.mark.asyncio
+async def test_poll_single_printer_local_marks_offline_after_two_failed_attempts(db_session, monkeypatch) -> None:
+    printer = Printer(
+        printer_type="laser",
+        connection_type="ip",
+        store_name="Store Retry Fail",
+        model="HP",
+        ip_address="10.10.10.51",
+        is_online=True,
+        status="online",
+    )
+    db_session.add(printer)
+    db_session.commit()
+    db_session.refresh(printer)
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS", 0)
+
+    calls = {"count": 0}
+
+    def always_fails(target_printer: Printer, *, full: bool = True):
+        del full
+        calls["count"] += 1
+        return target_printer.ip_address, None, None
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", always_fails)
+
+    result = await poll_single_printer_local(session=db_session, printer_id=printer.id)
+
+    assert calls["count"] == 2
+    assert result.is_online is False
+    assert result.status == "error"

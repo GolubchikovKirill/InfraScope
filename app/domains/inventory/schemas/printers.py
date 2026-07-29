@@ -203,7 +203,9 @@ class PrinterPublic(BaseModel):
     toner_cyan_name: str | None = None
     toner_magenta_name: str | None = None
     toner_yellow_name: str | None = None
+    toner_updated_at: datetime | None = None
     last_polled_at: datetime | None = None
+    offline_count_24h: int = 0
     created_at: datetime
 
 

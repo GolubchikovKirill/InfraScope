@@ -144,6 +144,9 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
 
     if printer.printer_type == "label":
         online = await asyncio.to_thread(check_port, printer.ip_address)
+        if not online:
+            await asyncio.sleep(settings.PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS)
+            online = await asyncio.to_thread(check_port, printer.ip_address)
         printer.is_online = online
         printer.status = "online" if online else "offline"
         printer.mac_status = None
@@ -185,6 +188,10 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
                             message=f"Printer '{printer.store_name}' moved IP: {old_ip} -> {new_ip}",
                         )
                         _, result, current_mac = await asyncio.to_thread(poll_one_printer, printer)
+
+            if result is None or not result.is_online:
+                await asyncio.sleep(settings.PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS)
+                _, result, current_mac = await asyncio.to_thread(poll_one_printer, printer)
 
             if result is None:
                 printer.is_online = False
@@ -340,6 +347,7 @@ def _apply_full_printer_result(printer: Printer, result, current_mac: str | None
     printer.toner_cyan = result.toner_cyan
     printer.toner_magenta = result.toner_magenta
     printer.toner_yellow = result.toner_yellow
+    printer.toner_updated_at = datetime.now(UTC)
     printer.mac_status = verify_printer_mac(printer, current_mac)
 
 

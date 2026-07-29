@@ -70,6 +70,14 @@ export default function PrinterCard({
   const polledAt = printer.last_polled_at
     ? new Date(printer.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
+  const isOffline = printer.is_online === false;
+  const hasTonerData =
+    printer.toner_black !== null || printer.toner_cyan !== null || printer.toner_magenta !== null || printer.toner_yellow !== null;
+  const isTonerStale = isOffline && hasTonerData;
+  const tonerUpdatedAt = printer.toner_updated_at
+    ? new Date(printer.toner_updated_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
+    : null;
+  const isFlapping = printer.offline_count_24h >= 3;
   const lowTonerItems: Array<{ key: TonerKey; level: number | null; name: string | null }> = ([
     { key: "K", level: printer.toner_black, name: printer.toner_black_name },
     { key: "C", level: printer.toner_cyan, name: printer.toner_cyan_name },
@@ -126,6 +134,14 @@ export default function PrinterCard({
           </div>
           <div className="flex flex-col items-end gap-1">
             <OnlineStatusBadge isOnline={printer.is_online} />
+            {isFlapping && (
+              <span
+                className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                title="Принтер часто уходит в оффлайн и возвращается — возможна нестабильная связь на месте"
+              >
+                Нестабильная связь · {printer.offline_count_24h} за 24 ч
+              </span>
+            )}
           </div>
         </div>
 
@@ -140,7 +156,7 @@ export default function PrinterCard({
         )}
 
         {/* Toner levels */}
-        <div className="space-y-1.5">
+        <div className={`space-y-1.5 transition-opacity ${isTonerStale ? "opacity-50" : ""}`}>
           <TonerBar
             label="K"
             level={printer.toner_black}
@@ -178,6 +194,11 @@ export default function PrinterCard({
             onCopy={() => handleCopyToner(printer.toner_yellow_name)}
           />
         </div>
+        {isTonerStale && (
+          <div className="text-[11px] text-amber-600">
+            {tonerUpdatedAt ? `Данные картриджей от ${tonerUpdatedAt} (принтер сейчас оффлайн)` : "Принтер оффлайн — данные картриджей могут быть устаревшими"}
+          </div>
+        )}
         {tonerModels.length > 0 && (
           <div className="app-soft-panel rounded-lg px-3 py-2 text-xs text-gray-600">
             <button

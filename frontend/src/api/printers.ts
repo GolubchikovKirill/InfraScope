@@ -23,7 +23,9 @@ export interface Printer {
   toner_cyan_name: string | null;
   toner_magenta_name: string | null;
   toner_yellow_name: string | null;
+  toner_updated_at: string | null;
   last_polled_at: string | null;
+  offline_count_24h: number;
   created_at: string;
 }
 

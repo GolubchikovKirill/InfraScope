@@ -31,6 +31,7 @@ class Printer(SQLModel, table=True):
     toner_cyan_name: str | None = Field(default=None, max_length=128)
     toner_magenta_name: str | None = Field(default=None, max_length=128)
     toner_yellow_name: str | None = Field(default=None, max_length=128)
+    toner_updated_at: datetime | None = Field(default=None)
     last_polled_at: datetime | None = Field(default=None)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

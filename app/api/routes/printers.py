@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
@@ -28,6 +28,7 @@ from app.domains.inventory.schemas import (
     PrintersPublic,
     PrinterUpdate,
 )
+from app.domains.operations.models import EventLog
 from app.domains.shared.schemas import Message
 from app.services.cache import get_cached_model, set_cached_model
 from app.services.cartridge_stock import (
@@ -56,7 +57,7 @@ def _query_printers_page(
     store_name: str | None,
     skip: int,
     limit: int,
-) -> tuple[list[Printer], int]:
+) -> tuple[list[PrinterPublic], int]:
     statement = select(Printer).where(Printer.printer_type == printer_type)
     count_stmt = select(func.count()).select_from(Printer).where(Printer.printer_type == printer_type)
     if store_name:
@@ -75,7 +76,35 @@ def _query_printers_page(
             count_stmt = count_stmt.where(flt)
     count = session.exec(count_stmt).one()
     printers = session.exec(statement.offset(skip).limit(limit).order_by(Printer.store_name)).all()
-    return printers, count
+    public_printers = [PrinterPublic.model_validate(printer) for printer in printers]
+    _attach_offline_counts(session, public_printers)
+    return public_printers, count
+
+
+def _attach_offline_counts(session: SessionDep, printers: list[PrinterPublic]) -> None:
+    """Stamp offline_count_24h on already-converted PrinterPublic instances.
+
+    Printer (the SQLModel table class) rejects assignment of fields it doesn't
+    declare, so this only ever runs on PrinterPublic - never on the raw ORM
+    Printer rows.
+    """
+    if not printers:
+        return
+    store_names = {printer.store_name for printer in printers}
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
+    rows = session.exec(
+        select(EventLog.device_name, func.count())
+        .where(
+            EventLog.device_kind == "printer",
+            EventLog.event_type == "device_offline",
+            EventLog.created_at >= cutoff,
+            EventLog.device_name.in_(store_names),
+        )
+        .group_by(EventLog.device_name)
+    ).all()
+    counts = dict(rows)
+    for printer in printers:
+        printer.offline_count_24h = counts.get(printer.store_name, 0)
 
 
 def _get_printer_or_404(session: SessionDep, printer_id: uuid.UUID) -> Printer:
@@ -216,8 +245,11 @@ async def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Prin
 
 
 @router.get("/{printer_id}", response_model=PrinterPublic)
-def read_printer(printer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Printer:
-    return _get_printer_or_404(session, printer_id)
+def read_printer(printer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> PrinterPublic:
+    printer = _get_printer_or_404(session, printer_id)
+    public = PrinterPublic.model_validate(printer)
+    _attach_offline_counts(session, [public])
+    return public
 
 
 @router.patch("/{printer_id}", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
@@ -260,10 +292,13 @@ async def delete_printer(session: SessionDep, printer_id: uuid.UUID) -> Message:
 
 
 @router.post("/{printer_id}/poll", response_model=PrinterPublic)
-async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Printer:
+async def poll_single_printer(printer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> PrinterPublic:
     del current_user
     try:
-        return await poll_single_printer_local(session=session, printer_id=printer_id)
+        printer = await poll_single_printer_local(session=session, printer_id=printer_id)
+        public = PrinterPublic.model_validate(printer)
+        _attach_offline_counts(session, [public])
+        return public
     except PrinterNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Printer not found") from exc
     except UnsupportedPrinterPollError as exc:
@@ -286,4 +321,6 @@ async def poll_all_printers(
         )
         return PrintersPublic.model_validate(payload)
 
-    return await poll_all_printers_local(session=session, printer_type=printer_type)
+    result = await poll_all_printers_local(session=session, printer_type=printer_type)
+    _attach_offline_counts(session, result.data)
+    return result

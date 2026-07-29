@@ -24,7 +24,9 @@ const printer: Printer = {
   toner_cyan_name: "W2031A",
   toner_magenta_name: "W2033A",
   toner_yellow_name: "W2032A",
+  toner_updated_at: null,
   last_polled_at: null,
+  offline_count_24h: 0,
   created_at: "2026-05-21T00:00:00Z",
 };
 
