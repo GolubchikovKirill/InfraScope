@@ -53,6 +53,10 @@ def sync_cartridge_stock_from_printers(session: Session) -> list[CartridgeStock]
         row = session.exec(select(CartridgeStock).where(CartridgeStock.cartridge_name == cartridge_name)).first()
         if row is None:
             row = CartridgeStock(cartridge_name=cartridge_name)
+        elif not row.is_active:
+            # An inactive row is an explicit inventory tombstone. Do not
+            # resurrect it during printer metadata synchronization.
+            continue
         row.toner_color = meta["toner_color"]
         row.compatible_printer_models = ", ".join(sorted(model_sets[cartridge_name]))[:1024]
         row.printer_count = meta["printer_count"]

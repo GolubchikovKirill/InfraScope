@@ -83,7 +83,7 @@ export default function CartridgeStockPanel({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-sm font-semibold text-gray-900">Склад картриджей</div>
-            <div className="text-xs text-gray-500">Позиции собираются из моделей картриджей в карточках принтеров</div>
+            <div className="text-xs text-gray-500">Остатки ведутся по инвентаризации, совместимость — по моделям принтеров</div>
           </div>
           {isSuperuser && (
             <button
