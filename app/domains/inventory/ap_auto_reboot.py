@@ -35,6 +35,7 @@ from app.domains.inventory.ap_registry import (
     merge_live_and_known,
     record_seen_aps,
     recover_missing_macs_from_registry,
+    register_reboot_outcome,
 )
 from app.domains.inventory.models import NetworkSwitch
 from app.observability.metrics import ap_auto_reboot_total
@@ -220,6 +221,7 @@ async def _handle_one_ap(
             )
             session.commit()
             ap_auto_reboot_total.labels(switch=switch.name, result="skipped_no_power").inc()
+            _register_outcome_and_maybe_escalate(session, switch=switch, ap=ap, recovered=None)
             return {"port": ap.port, "mac_address": ap.mac_address, "hung": True, "action": "skipped_no_power"}
 
     ok = await asyncio.to_thread(
@@ -276,6 +278,7 @@ async def _handle_one_ap(
     else:
         metric_result = "failed"
     ap_auto_reboot_total.labels(switch=switch.name, result=metric_result).inc()
+    _register_outcome_and_maybe_escalate(session, switch=switch, ap=ap, recovered=came_back if ok else False)
 
     return {
         "port": ap.port,
@@ -285,6 +288,39 @@ async def _handle_one_ap(
         "ok": ok,
         "back_online": came_back,
     }
+
+
+def _register_outcome_and_maybe_escalate(
+    session: Session, *, switch: NetworkSwitch, ap: MergedAccessPoint, recovered: bool | None
+) -> None:
+    _row, escalated = register_reboot_outcome(
+        session,
+        switch_id=switch.id,
+        mac_address=ap.mac_address,
+        recovered=recovered,
+        threshold=settings.AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES,
+    )
+    if not escalated:
+        return
+    reason = (
+        "has shown no PoE draw" if recovered is None else "has failed to come back online after a reboot"
+    )
+    write_event_log(
+        session,
+        severity="critical",
+        category="network",
+        event_type="ap_auto_reboot_needs_attention",
+        device_kind="switch",
+        device_name=switch.name,
+        ip_address=switch.ip_address,
+        message=(
+            f"AP {ap.mac_address} (port {ap.port}) on {switch.name} {reason} for "
+            f"{settings.AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES} consecutive cycles - excluded from "
+            "auto-reboot until checked on site and manually re-included"
+        ),
+    )
+    session.commit()
+    ap_auto_reboot_total.labels(switch=switch.name, result="needs_attention").inc()
 
 
 def get_eligible_switches_for_auto_reboot(session: Session) -> list[NetworkSwitch]:

@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     # switch's own reboot cycle is dispatched as an independent task, offset
     # by this many seconds times its position in the (name-sorted) list.
     AUTO_REBOOT_AP_STAGGER_SECONDS: int = 90
+    # An AP that fails to come back (or shows zero PoE draw) for this many
+    # consecutive cycles almost certainly needs a physical/on-site fix that no
+    # amount of retrying will solve - repeating the same power-cycle forever
+    # is not obviously safe for already-struggling hardware, and it hides the
+    # problem instead of surfacing it. Once the streak hits this threshold the
+    # AP is auto-excluded from further cycles and a critical event is logged;
+    # re-including it (after checking on site) resets the streak.
+    AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES: int = 2
     # Periodic switch port-config snapshot, purely for history/drift
     # detection - read-only, no writes to any switch. Runs every N days;
     # a new row is only stored when the config actually changed since the

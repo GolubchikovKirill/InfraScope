@@ -21,15 +21,17 @@ export default function AutoRebootSummaryPanel() {
     refetchInterval: 60_000,
   });
 
-  if (!data || !data.last_cycle_at) return null;
+  if (!data || (!data.last_cycle_at && data.aps_needing_attention === 0)) return null;
 
-  const hasFailures = data.aps_failed > 0;
-  const lastCycleText = new Date(data.last_cycle_at).toLocaleString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-  });
+  const hasFailures = data.aps_failed > 0 || data.aps_needing_attention > 0;
+  const lastCycleText = data.last_cycle_at
+    ? new Date(data.last_cycle_at).toLocaleString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+      })
+    : null;
 
   return (
     <div
@@ -47,7 +49,9 @@ export default function AutoRebootSummaryPanel() {
         </div>
         <div>
           <div className="text-sm font-medium text-gray-900">Автоперезагрузка точек доступа</div>
-          <div className="text-xs text-gray-500">Последний цикл: {lastCycleText}</div>
+          <div className="text-xs text-gray-500">
+            {lastCycleText ? `Последний цикл: ${lastCycleText}` : `За последние ${data.window_hours} ч циклов не было`}
+          </div>
         </div>
       </div>
       <div className="flex items-center gap-5 sm:ml-auto">
@@ -57,6 +61,12 @@ export default function AutoRebootSummaryPanel() {
           <div className="flex items-center gap-1.5">
             <AlertTriangle className="h-4 w-4 text-red-500" />
             <MiniStat value={data.aps_failed} label="не вернулись" tone="danger" />
+          </div>
+        )}
+        {data.aps_needing_attention > 0 && (
+          <div className="flex items-center gap-1.5" title="Точки, исключённые из автоперезагрузки после нескольких неудачных циклов подряд — нужна проверка на месте">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <MiniStat value={data.aps_needing_attention} label="требуют проверки" tone="danger" />
           </div>
         )}
         {data.switches_skipped > 0 && (

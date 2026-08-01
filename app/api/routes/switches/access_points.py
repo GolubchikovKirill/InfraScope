@@ -84,6 +84,9 @@ async def get_switch_aps(
             is_responding=ap.is_responding,
             last_seen_at=ap.last_seen_at,
             exclude_from_auto_reboot=ap.exclude_from_auto_reboot,
+            consecutive_reboot_failures=ap.consecutive_reboot_failures,
+            consecutive_no_power_skips=ap.consecutive_no_power_skips,
+            needs_attention_since=ap.needs_attention_since,
         )
         for ap in merged
     ]

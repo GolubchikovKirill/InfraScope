@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
@@ -13,6 +13,7 @@ from app.domains.inventory.ap_auto_reboot import (
     run_ap_reboot_for_switch,
     switch_eligible_for_auto_reboot,
 )
+from app.domains.inventory.models import SwitchAccessPoint
 from app.domains.inventory.schemas import AutoRebootSummary
 from app.domains.operations.models import EventLog
 
@@ -95,6 +96,13 @@ async def get_auto_reboot_summary(
         )
     ).all()
 
+    # Unlike the other stats, this one is current state, not a windowed
+    # event count - an AP stays "needing attention" for as long as it's
+    # excluded, however many days that spans, not just the last N hours.
+    aps_needing_attention = session.exec(
+        select(func.count()).select_from(SwitchAccessPoint).where(SwitchAccessPoint.needs_attention_since.is_not(None))
+    ).one()
+
     if not rows:
         return AutoRebootSummary(
             last_cycle_at=None,
@@ -103,6 +111,7 @@ async def get_auto_reboot_summary(
             aps_rebooted_ok=0,
             aps_failed=0,
             switches_skipped=0,
+            aps_needing_attention=aps_needing_attention,
         )
 
     return AutoRebootSummary(
@@ -112,4 +121,5 @@ async def get_auto_reboot_summary(
         aps_rebooted_ok=sum(1 for row in rows if row.event_type in _AP_REBOOT_OK_EVENTS),
         aps_failed=sum(1 for row in rows if row.event_type == "ap_auto_reboot_failed"),
         switches_skipped=sum(1 for row in rows if row.event_type == "ap_auto_reboot_skipped"),
+        aps_needing_attention=aps_needing_attention,
     )

@@ -44,6 +44,9 @@ export interface AccessPoint {
   is_responding: boolean;
   last_seen_at: string | null;
   exclude_from_auto_reboot: boolean;
+  consecutive_reboot_failures: number;
+  consecutive_no_power_skips: number;
+  needs_attention_since: string | null;
 }
 
 export interface CameraPort {
@@ -177,6 +180,7 @@ export interface AutoRebootSummary {
   aps_rebooted_ok: number;
   aps_failed: number;
   switches_skipped: number;
+  aps_needing_attention: number;
 }
 
 export async function getAutoRebootSummary(hours = 24) {

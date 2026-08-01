@@ -89,10 +89,25 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
           {ap.cdp_platform && (
             <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{ap.cdp_platform}</span>
           )}
-          {ap.exclude_from_auto_reboot && (
-            <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
-              <EyeOff className="h-2.5 w-2.5" />искл. из автоперезагрузки
+          {ap.needs_attention_since ? (
+            <span
+              className="text-[10px] text-white bg-red-600 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 font-medium"
+              title={
+                `Не восстанавливается автоматически с ${new Date(ap.needs_attention_since).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}` +
+                (ap.consecutive_no_power_skips > ap.consecutive_reboot_failures
+                  ? ` — порт без питания ${ap.consecutive_no_power_skips} циклов подряд`
+                  : ` — не вернулась онлайн ${ap.consecutive_reboot_failures} перезагрузок подряд`) +
+                ". Автоперезагрузка отключена для этой точки, нужна проверка на месте."
+              }
+            >
+              <AlertTriangle className="h-2.5 w-2.5" />требует проверки на месте
             </span>
+          ) : (
+            ap.exclude_from_auto_reboot && (
+              <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
+                <EyeOff className="h-2.5 w-2.5" />искл. из автоперезагрузки
+              </span>
+            )
           )}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-gray-500 mt-0.5">
@@ -112,7 +127,13 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
             onClick={() => excludeMut.mutate(!ap.exclude_from_auto_reboot)}
             disabled={excludeMut.isPending}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 disabled:opacity-40"
-            title={ap.exclude_from_auto_reboot ? "Вернуть в автоперезагрузку" : "Исключить из автоперезагрузки"}
+            title={
+              ap.exclude_from_auto_reboot
+                ? ap.needs_attention_since
+                  ? "Отметить как исправлено и вернуть в автоперезагрузку"
+                  : "Вернуть в автоперезагрузку"
+                : "Исключить из автоперезагрузки"
+            }
           >
             <EyeOff className="h-3.5 w-3.5" />
           </button>

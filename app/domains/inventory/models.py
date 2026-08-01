@@ -124,6 +124,12 @@ class SwitchAccessPoint(SQLModel, table=True):
     last_seen_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     is_active: bool = Field(default=True)
     exclude_from_auto_reboot: bool = Field(default=False)
+    # Consecutive-cycle streaks used to auto-escalate an AP that reboots keep
+    # failing to fix (see app.domains.inventory.ap_auto_reboot). Both reset to
+    # 0 the moment the AP is next seen responding normally.
+    consecutive_reboot_failures: int = Field(default=0)
+    consecutive_no_power_skips: int = Field(default=0)
+    needs_attention_since: datetime | None = Field(default=None)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = Field(default=None)

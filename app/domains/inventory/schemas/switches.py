@@ -267,6 +267,9 @@ class AccessPointInfo(BaseModel):
     is_responding: bool = True
     last_seen_at: datetime | None = None
     exclude_from_auto_reboot: bool = False
+    consecutive_reboot_failures: int = 0
+    consecutive_no_power_skips: int = 0
+    needs_attention_since: datetime | None = None
 
 
 class CameraPortInfo(BaseModel):
@@ -285,6 +288,7 @@ class AutoRebootSummary(BaseModel):
     aps_rebooted_ok: int
     aps_failed: int
     switches_skipped: int
+    aps_needing_attention: int = 0
 
 
 class SetApExcludedRequest(BaseModel):

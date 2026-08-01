@@ -38,6 +38,9 @@ class MergedAccessPoint:
     is_responding: bool
     last_seen_at: datetime | None
     exclude_from_auto_reboot: bool
+    consecutive_reboot_failures: int = 0
+    consecutive_no_power_skips: int = 0
+    needs_attention_since: datetime | None = None
 
 
 def record_seen_aps(session: Session, *, switch_id: uuid.UUID, live_aps: list[APInfo]) -> None:
@@ -62,6 +65,10 @@ def record_seen_aps(session: Session, *, switch_id: uuid.UUID, live_aps: list[AP
             row.cdp_name = ap.cdp_name
         row.last_seen_at = now
         row.is_active = True
+        # Seen responding live - whatever failure/skip streak it had is over.
+        row.consecutive_reboot_failures = 0
+        row.consecutive_no_power_skips = 0
+        row.needs_attention_since = None
         row.updated_at = now
         session.add(row)
     session.commit()
@@ -128,6 +135,9 @@ def merge_live_and_known(
                 is_responding=True,
                 last_seen_at=known.last_seen_at if known else datetime.now(UTC),
                 exclude_from_auto_reboot=known.exclude_from_auto_reboot if known else False,
+                consecutive_reboot_failures=known.consecutive_reboot_failures if known else 0,
+                consecutive_no_power_skips=known.consecutive_no_power_skips if known else 0,
+                needs_attention_since=known.needs_attention_since if known else None,
             )
         )
 
@@ -151,6 +161,9 @@ def merge_live_and_known(
                 is_responding=False,
                 last_seen_at=row.last_seen_at,
                 exclude_from_auto_reboot=row.exclude_from_auto_reboot,
+                consecutive_reboot_failures=row.consecutive_reboot_failures,
+                consecutive_no_power_skips=row.consecutive_no_power_skips,
+                needs_attention_since=row.needs_attention_since,
             )
         )
 
@@ -179,6 +192,9 @@ def known_aps_as_still_responding(known_rows: list[SwitchAccessPoint], *, vlan: 
             is_responding=True,
             last_seen_at=row.last_seen_at,
             exclude_from_auto_reboot=row.exclude_from_auto_reboot,
+            consecutive_reboot_failures=row.consecutive_reboot_failures,
+            consecutive_no_power_skips=row.consecutive_no_power_skips,
+            needs_attention_since=row.needs_attention_since,
         )
         for row in known_rows
     ]
@@ -195,7 +211,66 @@ def set_ap_excluded(session: Session, *, switch_id: uuid.UUID, mac_address: str,
     if row is None:
         return False
     row.exclude_from_auto_reboot = excluded
+    if not excluded:
+        # A human is re-including it - treat that as a declaration it was
+        # fixed on site, so it isn't immediately re-excluded by a leftover
+        # streak from before the fix.
+        row.consecutive_reboot_failures = 0
+        row.consecutive_no_power_skips = 0
+        row.needs_attention_since = None
     row.updated_at = datetime.now(UTC)
     session.add(row)
     session.commit()
     return True
+
+
+def register_reboot_outcome(
+    session: Session,
+    *,
+    switch_id: uuid.UUID,
+    mac_address: str,
+    recovered: bool | None,
+    threshold: int,
+) -> tuple[SwitchAccessPoint | None, bool]:
+    """Track a reboot cycle's outcome for one AP and auto-escalate a
+    persistent streak.
+
+    `recovered` is True for a verified successful reboot, False for a reboot
+    whose recovery didn't verify (or whose PoE-cycle command itself failed),
+    and None for a cycle that skipped the AP entirely because its port showed
+    no PoE draw (not a reboot attempt, but still a sign it may be down).
+
+    Returns (row, escalated) where escalated is True exactly on the call that
+    crosses `threshold` - the caller writes the event log entry for it, since
+    only ap_auto_reboot.py knows the switch/port context worth logging.
+    """
+    row = session.exec(
+        select(SwitchAccessPoint).where(
+            SwitchAccessPoint.switch_id == switch_id,
+            SwitchAccessPoint.mac_address == mac_address,
+        )
+    ).first()
+    if row is None:
+        return None, False
+
+    escalated = False
+    if recovered is True:
+        row.consecutive_reboot_failures = 0
+        row.consecutive_no_power_skips = 0
+        row.needs_attention_since = None
+    else:
+        if recovered is False:
+            row.consecutive_reboot_failures += 1
+            streak = row.consecutive_reboot_failures
+        else:  # no_power skip
+            row.consecutive_no_power_skips += 1
+            streak = row.consecutive_no_power_skips
+        if streak >= threshold and row.needs_attention_since is None:
+            row.needs_attention_since = datetime.now(UTC)
+            row.exclude_from_auto_reboot = True
+            escalated = True
+
+    row.updated_at = datetime.now(UTC)
+    session.add(row)
+    session.commit()
+    return row, escalated

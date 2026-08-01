@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from app.domains.inventory.ap_auto_reboot import run_ap_reboot_for_switch
-from app.domains.inventory.ap_registry import MergedAccessPoint
-from app.domains.inventory.models import NetworkSwitch
+from app.domains.inventory.ap_registry import MergedAccessPoint, set_ap_excluded
+from app.domains.inventory.models import NetworkSwitch, SwitchAccessPoint
 
 
 class _FakeSession:
@@ -70,6 +70,7 @@ async def test_run_ap_reboot_logs_failure_when_ap_does_not_come_back_online(monk
     monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.merge_live_and_known", lambda *a, **kw: [ap])
     monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.poe_cycle_ap", lambda *a, **kw: True)
     monkeypatch.setattr("app.domains.inventory.ap_auto_reboot._verify_ap_back_online", lambda *a, **kw: _false())
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.register_reboot_outcome", lambda *a, **kw: (None, False))
 
     captured: list[dict] = []
     monkeypatch.setattr(
@@ -88,3 +89,121 @@ async def test_run_ap_reboot_logs_failure_when_ap_does_not_come_back_online(monk
 
 async def _false() -> bool:
     return False
+
+
+async def _true() -> bool:
+    return True
+
+
+def _make_switch_and_hung_ap(db_session, *, name: str = "TestSW") -> tuple[NetworkSwitch, SwitchAccessPoint]:
+    switch = NetworkSwitch(name=name, ip_address="10.0.0.1", ap_vlan=20, auto_reboot_mode="live")
+    db_session.add(switch)
+    db_session.commit()
+    db_session.refresh(switch)
+
+    ap_row = SwitchAccessPoint(switch_id=switch.id, mac_address="aa:bb:cc:dd:ee:01", port="Gi1/0/1")
+    db_session.add(ap_row)
+    db_session.commit()
+    db_session.refresh(ap_row)
+    return switch, ap_row
+
+
+@pytest.mark.asyncio
+async def test_ap_escalates_after_consecutive_reboot_failures(db_session, monkeypatch) -> None:
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.settings.AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES", 2)
+    switch, ap_row = _make_switch_and_hung_ap(db_session)
+
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_access_points", lambda *a, **kw: [])
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_port_poe_power", lambda *a, **kw: "15.4W")
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.poe_cycle_ap", lambda *a, **kw: True)
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot._verify_ap_back_online", lambda *a, **kw: _false())
+
+    captured: list[dict] = []
+    monkeypatch.setattr(
+        "app.domains.inventory.ap_auto_reboot.write_event_log",
+        lambda _session, **kwargs: captured.append(kwargs),
+    )
+
+    await run_ap_reboot_for_switch(db_session, switch)
+    db_session.refresh(ap_row)
+    assert ap_row.consecutive_reboot_failures == 1
+    assert ap_row.needs_attention_since is None
+    assert not any(c["event_type"] == "ap_auto_reboot_needs_attention" for c in captured)
+
+    await run_ap_reboot_for_switch(db_session, switch)
+    db_session.refresh(ap_row)
+    assert ap_row.consecutive_reboot_failures == 2
+    assert ap_row.needs_attention_since is not None
+    assert ap_row.exclude_from_auto_reboot is True
+
+    escalation_events = [c for c in captured if c["event_type"] == "ap_auto_reboot_needs_attention"]
+    assert len(escalation_events) == 1
+    assert escalation_events[0]["severity"] == "critical"
+
+
+@pytest.mark.asyncio
+async def test_ap_escalates_after_consecutive_no_power_skips(db_session, monkeypatch) -> None:
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.settings.AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES", 2)
+    switch, ap_row = _make_switch_and_hung_ap(db_session)
+
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_access_points", lambda *a, **kw: [])
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_port_poe_power", lambda *a, **kw: None)
+
+    def _must_not_be_called(*_a, **_kw):
+        raise AssertionError("a port with no PoE draw must never be power-cycled")
+
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.poe_cycle_ap", _must_not_be_called)
+
+    captured: list[dict] = []
+    monkeypatch.setattr(
+        "app.domains.inventory.ap_auto_reboot.write_event_log",
+        lambda _session, **kwargs: captured.append(kwargs),
+    )
+
+    await run_ap_reboot_for_switch(db_session, switch)
+    await run_ap_reboot_for_switch(db_session, switch)
+    db_session.refresh(ap_row)
+
+    assert ap_row.consecutive_no_power_skips == 2
+    assert ap_row.needs_attention_since is not None
+    assert ap_row.exclude_from_auto_reboot is True
+    assert any(c["event_type"] == "ap_auto_reboot_needs_attention" for c in captured)
+
+
+@pytest.mark.asyncio
+async def test_verified_recovery_resets_failure_streak(db_session, monkeypatch) -> None:
+    switch, ap_row = _make_switch_and_hung_ap(db_session)
+    ap_row.consecutive_reboot_failures = 1
+    db_session.add(ap_row)
+    db_session.commit()
+
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_access_points", lambda *a, **kw: [])
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_port_poe_power", lambda *a, **kw: "15.4W")
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.poe_cycle_ap", lambda *a, **kw: True)
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot._verify_ap_back_online", lambda *a, **kw: _true())
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.write_event_log", lambda _session, **kwargs: None)
+
+    await run_ap_reboot_for_switch(db_session, switch)
+    db_session.refresh(ap_row)
+
+    assert ap_row.consecutive_reboot_failures == 0
+    assert ap_row.needs_attention_since is None
+
+
+def test_set_ap_excluded_false_resets_escalation_state(db_session) -> None:
+    switch, ap_row = _make_switch_and_hung_ap(db_session)
+    ap_row.exclude_from_auto_reboot = True
+    ap_row.consecutive_reboot_failures = 2
+    from datetime import UTC, datetime
+
+    ap_row.needs_attention_since = datetime.now(UTC)
+    db_session.add(ap_row)
+    db_session.commit()
+
+    ok = set_ap_excluded(db_session, switch_id=switch.id, mac_address=ap_row.mac_address, excluded=False)
+
+    assert ok is True
+    db_session.refresh(ap_row)
+    assert ap_row.exclude_from_auto_reboot is False
+    assert ap_row.consecutive_reboot_failures == 0
+    assert ap_row.needs_attention_since is None
