@@ -22,6 +22,7 @@ export interface NetworkSwitch {
   mac_status: string | null;
   auto_reboot_aps_enabled: boolean;
   auto_reboot_mode: "dry_run" | "live";
+  switch_needs_attention_since: string | null;
   created_at: string;
 }
 
@@ -181,6 +182,7 @@ export interface AutoRebootSummary {
   aps_failed: number;
   switches_skipped: number;
   aps_needing_attention: number;
+  switches_needing_attention: number;
 }
 
 export async function getAutoRebootSummary(hours = 24) {

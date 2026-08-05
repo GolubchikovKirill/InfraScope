@@ -26,6 +26,7 @@ const sw: NetworkSwitch = {
   mac_status: null,
   auto_reboot_aps_enabled: false,
   auto_reboot_mode: "dry_run",
+  switch_needs_attention_since: null,
   created_at: "2026-05-22T00:00:00Z",
 };
 

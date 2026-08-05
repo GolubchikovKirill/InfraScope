@@ -227,6 +227,16 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           </div>
         </div>
 
+        {sw.switch_needs_attention_since && (
+          <div
+            className="flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-2.5 py-1.5 text-xs text-red-700"
+            title={`С ${new Date(sw.switch_needs_attention_since).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })} автоперезагрузка точек доступа не может нормально отработать на этом свитче несколько циклов подряд — не отвечает по SSH или не находит ни одной точки на VLAN. Требует проверки (доступ/конфигурация).`}
+          >
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span className="font-medium">Автоперезагрузка не работает на этом свитче — нужна проверка</span>
+          </div>
+        )}
+
         {/* Switch info */}
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5 text-xs text-gray-500">

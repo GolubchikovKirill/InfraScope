@@ -101,6 +101,15 @@ class NetworkSwitch(SQLModel, table=True):
     # enabling this toggle on the wrong switch can't reboot APs it shouldn't.
     auto_reboot_aps_enabled: bool = Field(default=False)
     auto_reboot_mode: str = Field(default="dry_run", max_length=10)
+    # Consecutive-cycle streaks for switch-level auto-reboot problems that
+    # aren't about any one AP: SSH unreachable, or genuinely zero known APs
+    # on ap_vlan (likely bad credentials or a VLAN misconfiguration). Unlike
+    # the per-AP streak, the switch is never auto-excluded for this - retrying
+    # SSH is cheap, so it keeps trying every cycle and heals itself the
+    # moment the real problem is fixed; this only tracks when to flag it.
+    consecutive_unreachable_cycles: int = Field(default=0)
+    consecutive_no_aps_found_cycles: int = Field(default=0)
+    switch_needs_attention_since: datetime | None = Field(default=None)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = Field(default=None)

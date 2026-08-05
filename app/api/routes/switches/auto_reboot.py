@@ -13,7 +13,7 @@ from app.domains.inventory.ap_auto_reboot import (
     run_ap_reboot_for_switch,
     switch_eligible_for_auto_reboot,
 )
-from app.domains.inventory.models import SwitchAccessPoint
+from app.domains.inventory.models import NetworkSwitch, SwitchAccessPoint
 from app.domains.inventory.schemas import AutoRebootSummary
 from app.domains.operations.models import EventLog
 
@@ -102,6 +102,9 @@ async def get_auto_reboot_summary(
     aps_needing_attention = session.exec(
         select(func.count()).select_from(SwitchAccessPoint).where(SwitchAccessPoint.needs_attention_since.is_not(None))
     ).one()
+    switches_needing_attention = session.exec(
+        select(func.count()).select_from(NetworkSwitch).where(NetworkSwitch.switch_needs_attention_since.is_not(None))
+    ).one()
 
     if not rows:
         return AutoRebootSummary(
@@ -112,6 +115,7 @@ async def get_auto_reboot_summary(
             aps_failed=0,
             switches_skipped=0,
             aps_needing_attention=aps_needing_attention,
+            switches_needing_attention=switches_needing_attention,
         )
 
     return AutoRebootSummary(
@@ -122,4 +126,5 @@ async def get_auto_reboot_summary(
         aps_failed=sum(1 for row in rows if row.event_type == "ap_auto_reboot_failed"),
         switches_skipped=sum(1 for row in rows if row.event_type == "ap_auto_reboot_skipped"),
         aps_needing_attention=aps_needing_attention,
+        switches_needing_attention=switches_needing_attention,
     )

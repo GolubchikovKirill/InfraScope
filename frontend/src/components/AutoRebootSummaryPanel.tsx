@@ -21,9 +21,9 @@ export default function AutoRebootSummaryPanel() {
     refetchInterval: 60_000,
   });
 
-  if (!data || (!data.last_cycle_at && data.aps_needing_attention === 0)) return null;
+  if (!data || (!data.last_cycle_at && data.aps_needing_attention === 0 && data.switches_needing_attention === 0)) return null;
 
-  const hasFailures = data.aps_failed > 0 || data.aps_needing_attention > 0;
+  const hasFailures = data.aps_failed > 0 || data.aps_needing_attention > 0 || data.switches_needing_attention > 0;
   const lastCycleText = data.last_cycle_at
     ? new Date(data.last_cycle_at).toLocaleString("ru-RU", {
         hour: "2-digit",
@@ -66,7 +66,13 @@ export default function AutoRebootSummaryPanel() {
         {data.aps_needing_attention > 0 && (
           <div className="flex items-center gap-1.5" title="Точки, исключённые из автоперезагрузки после нескольких неудачных циклов подряд — нужна проверка на месте">
             <AlertTriangle className="h-4 w-4 text-red-500" />
-            <MiniStat value={data.aps_needing_attention} label="требуют проверки" tone="danger" />
+            <MiniStat value={data.aps_needing_attention} label="точки требуют проверки" tone="danger" />
+          </div>
+        )}
+        {data.switches_needing_attention > 0 && (
+          <div className="flex items-center gap-1.5" title="Свитчи, у которых цикл авто-перезагрузки не может отработать несколько раз подряд — не отвечают по SSH или не находят точек на VLAN">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <MiniStat value={data.switches_needing_attention} label="свитчи требуют проверки" tone="danger" />
           </div>
         )}
         {data.switches_skipped > 0 && (

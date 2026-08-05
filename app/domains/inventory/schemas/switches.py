@@ -244,6 +244,7 @@ class NetworkSwitchPublic(BaseModel):
     mac_status: str | None = None
     auto_reboot_aps_enabled: bool = False
     auto_reboot_mode: str = "dry_run"
+    switch_needs_attention_since: datetime | None = None
     created_at: datetime
 
 
@@ -289,6 +290,7 @@ class AutoRebootSummary(BaseModel):
     aps_failed: int
     switches_skipped: int
     aps_needing_attention: int = 0
+    switches_needing_attention: int = 0
 
 
 class SetApExcludedRequest(BaseModel):

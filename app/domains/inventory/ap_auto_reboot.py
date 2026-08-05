@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
@@ -128,6 +129,7 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
             message=f"Auto-reboot ({mode_label}): could not reach {switch.name} via SSH this cycle, skipping",
         )
         session.commit()
+        _register_switch_outcome_and_maybe_escalate(session, switch=switch, reachable=False, has_known_aps=None)
         return {"switch": switch.name, "mode": mode_label, "aps_found": 0, "results": [], "skipped": "switch_unreachable"}
 
     known_rows = get_known_aps(session, switch_id=switch.id)
@@ -136,6 +138,7 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
 
     record_seen_aps(session, switch_id=switch.id, live_aps=live_aps)
     merged = merge_live_and_known(live_aps, known_rows, vlan=switch.ap_vlan)
+    _register_switch_outcome_and_maybe_escalate(session, switch=switch, reachable=True, has_known_aps=bool(merged))
 
     # Hung (known but not responding) first - that's the AP that actually
     # needs the reboot. Excluded ones are dropped entirely.
@@ -144,6 +147,14 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
     targets = targets[: settings.AUTO_REBOOT_AP_MAX_PER_SWITCH]
 
     if not targets:
+        message = (
+            f"Auto-reboot ({mode_label}): no VLAN {switch.ap_vlan} access points found on {switch.name}"
+            if not merged
+            else (
+                f"Auto-reboot ({mode_label}): {len(merged)} known VLAN {switch.ap_vlan} access point(s) on "
+                f"{switch.name}, all excluded from auto-reboot"
+            )
+        )
         write_event_log(
             session,
             severity="info",
@@ -152,7 +163,7 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
             device_kind="switch",
             device_name=switch.name,
             ip_address=switch.ip_address,
-            message=f"Auto-reboot ({mode_label}): no VLAN {switch.ap_vlan} access points found on {switch.name}",
+            message=message,
         )
         session.commit()
         return {"switch": switch.name, "mode": mode_label, "aps_found": 0, "results": []}
@@ -321,6 +332,65 @@ def _register_outcome_and_maybe_escalate(
     )
     session.commit()
     ap_auto_reboot_total.labels(switch=switch.name, result="needs_attention").inc()
+
+
+def _register_switch_outcome_and_maybe_escalate(
+    session: Session, *, switch: NetworkSwitch, reachable: bool, has_known_aps: bool | None
+) -> None:
+    """Track a scheduled cycle's switch-level outcome (as opposed to any one
+    AP's) and escalate a persistent streak.
+
+    Unlike an AP that keeps failing to recover, the switch is never
+    auto-excluded here - retrying SSH next cycle is a cheap few-second probe,
+    not a power-cycle of live hardware, so there's no safety reason to stop
+    trying. This only decides when a human should be told it's not just a
+    one-off blip (bad credentials, VLAN misconfiguration, etc.).
+    """
+    threshold = settings.AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES
+    reason: str | None = None
+
+    if not reachable:
+        switch.consecutive_unreachable_cycles += 1
+        if switch.consecutive_unreachable_cycles >= threshold and switch.switch_needs_attention_since is None:
+            reason = (
+                f"could not be reached via SSH for {switch.consecutive_unreachable_cycles} consecutive cycles "
+                "- check credentials/connectivity"
+            )
+    else:
+        switch.consecutive_unreachable_cycles = 0
+        if has_known_aps:
+            switch.consecutive_no_aps_found_cycles = 0
+            switch.switch_needs_attention_since = None
+        else:
+            switch.consecutive_no_aps_found_cycles += 1
+            if switch.consecutive_no_aps_found_cycles >= threshold and switch.switch_needs_attention_since is None:
+                reason = (
+                    f"found zero access points on VLAN {switch.ap_vlan} for "
+                    f"{switch.consecutive_no_aps_found_cycles} consecutive cycles - check ap_vlan or whether "
+                    "this switch actually has any APs"
+                )
+
+    if reason is not None:
+        switch.switch_needs_attention_since = datetime.now(UTC)
+
+    switch.updated_at = datetime.now(UTC)
+    session.add(switch)
+    session.commit()
+
+    if reason is None:
+        return
+    write_event_log(
+        session,
+        severity="critical",
+        category="network",
+        event_type="ap_auto_reboot_switch_needs_attention",
+        device_kind="switch",
+        device_name=switch.name,
+        ip_address=switch.ip_address,
+        message=f"Auto-reboot: switch {switch.name} {reason}",
+    )
+    session.commit()
+    ap_auto_reboot_total.labels(switch=switch.name, result="switch_needs_attention").inc()
 
 
 def get_eligible_switches_for_auto_reboot(session: Session) -> list[NetworkSwitch]:
