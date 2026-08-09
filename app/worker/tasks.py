@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
 from urllib.parse import urlparse
 
 import httpx
+import redis
 from celery import shared_task
+from redis.exceptions import RedisError
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -36,6 +40,92 @@ from app.services.polling_orchestrator import (
     poll_switch_local,
 )
 from app.services.scanner import scan_subnet
+
+
+@dataclass
+class _AutoRebootLease:
+    """Redis-backed lease for a live AP reboot task.
+
+    The broker can redeliver an ETA task before the original worker has
+    acknowledged it.  A per-switch lease prevents the duplicate from touching
+    hardware, while the completed marker makes late redelivery idempotent.
+    """
+
+    client: redis.Redis
+    lock_key: str
+    done_key: str
+    token: str
+
+    def mark_attempted(self) -> None:
+        # Compare-and-delete prevents one expired/replaced lease holder from
+        # clearing a newer task's lock.  Persisting the marker before release
+        # makes every outcome (including a partial hardware failure) safe from
+        # automatic repetition; a human can start a new manual cycle instead.
+        self.client.eval(
+            """
+            if redis.call('GET', KEYS[1]) == ARGV[1] then
+                redis.call('SET', KEYS[2], '1', 'EX', ARGV[2])
+                redis.call('DEL', KEYS[1])
+                return 1
+            end
+            return 0
+            """,
+            2,
+            self.lock_key,
+            self.done_key,
+            self.token,
+            settings.AUTO_REBOOT_AP_CYCLE_DEDUP_SECONDS,
+        )
+
+    def close(self) -> None:
+        try:
+            self.client.close()
+        except RedisError:
+            pass
+
+
+def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoRebootLease | None, str | None]:
+    """Acquire a fail-closed distributed lease for live switch operations."""
+    lock_key = f"lock:ap-auto-reboot:switch:{switch_id}"
+    done_key = f"done:ap-auto-reboot:{switch_id}:{cycle_id}"
+    token = secrets.token_urlsafe(24)
+    client = redis.Redis.from_url(
+        settings.REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=1,
+        socket_timeout=1,
+    )
+    try:
+        # This check-and-lock needs to be one Redis operation.  Reading the
+        # done key and then SET NX separately leaves a race after a first task
+        # releases its lease.
+        claimed = client.eval(
+            """
+            if redis.call('EXISTS', KEYS[2]) == 1 then
+                return 0
+            end
+            if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2]) then
+                return 1
+            end
+            return -1
+            """,
+            2,
+            lock_key,
+            done_key,
+            token,
+            settings.AUTO_REBOOT_AP_TASK_LOCK_SECONDS,
+        )
+    except RedisError:
+        client.close()
+        # Hardware writes must not proceed when the only duplicate-action
+        # guard is unavailable.
+        return None, "lock_unavailable"
+
+    if claimed == 1:
+        return _AutoRebootLease(client=client, lock_key=lock_key, done_key=done_key, token=token), None
+
+    client.close()
+    return None, "already_attempted" if claimed == 0 else "already_running"
 
 
 def _task_started(operation: str) -> float:
@@ -411,9 +501,10 @@ def ap_auto_reboot_cycle_task(self) -> dict:
         with Session(engine) as session:
             switches = get_eligible_switches_for_auto_reboot(session)
             stagger = max(settings.AUTO_REBOOT_AP_STAGGER_SECONDS, 0)
+            cycle_id = self.request.id or str(uuid.uuid4())
             for index, switch in enumerate(switches):
                 ap_auto_reboot_switch_task.apply_async(
-                    args=[str(switch.id)],
+                    args=[str(switch.id), cycle_id],
                     countdown=index * stagger,
                 )
                 worker_tasks_enqueued_total.labels(operation="ap_auto_reboot_switch").inc()
@@ -425,6 +516,7 @@ def ap_auto_reboot_cycle_task(self) -> dict:
             "status": "dispatched",
             "switches_scheduled": len(switches),
             "stagger_seconds": stagger,
+            "cycle_id": cycle_id,
         }
         _task_finished(operation, started_at, "success")
         return payload
@@ -443,9 +535,20 @@ def ap_auto_reboot_cycle_task(self) -> dict:
     time_limit=1800,
     name="tasks.ap_auto_reboot_switch",
 )
-def ap_auto_reboot_switch_task(self, switch_id: str) -> dict:
+def ap_auto_reboot_switch_task(self, switch_id: str, cycle_id: str | None = None) -> dict:
     operation = "ap_auto_reboot_switch"
     started_at = _task_started(operation)
+    cycle_id = cycle_id or self.request.id or f"manual:{uuid.uuid4()}"
+    lease, skipped_reason = _acquire_auto_reboot_lease(switch_id=switch_id, cycle_id=cycle_id)
+    if lease is None:
+        _task_finished(operation, started_at, "skipped")
+        return {
+            "task_id": self.request.id,
+            "operation": operation,
+            "switch_id": switch_id,
+            "cycle_id": cycle_id,
+            "status": skipped_reason,
+        }
     try:
         with Session(engine) as session:
             switch = session.get(NetworkSwitch, uuid.UUID(switch_id))
@@ -470,10 +573,20 @@ def ap_auto_reboot_switch_task(self, switch_id: str) -> dict:
             result = asyncio.run(run_ap_reboot_for_switch(session, switch))
 
         _task_finished(operation, started_at, "success")
-        return {"task_id": self.request.id, "operation": operation, **result}
+        return {"task_id": self.request.id, "operation": operation, "cycle_id": cycle_id, **result}
     except Exception:
         _task_finished(operation, started_at, "error")
         raise
+    finally:
+        # Mark even an exception as attempted.  A task can fail after a PoE
+        # command has already reached the switch, so automatic redelivery is
+        # less safe than requiring an explicit operator decision.
+        try:
+            lease.mark_attempted()
+        except RedisError:
+            pass
+        finally:
+            lease.close()
 
 
 @shared_task(

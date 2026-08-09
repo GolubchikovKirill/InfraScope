@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.domains.inventory.ap_auto_reboot import get_eligible_switches_for_auto_reboot
 from app.domains.inventory.models import NetworkSwitch
 from app.worker.tasks import ap_auto_reboot_cycle_task, ap_auto_reboot_switch_task
@@ -32,6 +34,27 @@ class _FakeSession:
 
     def __exit__(self, *_exc) -> None:
         return None
+
+
+class _FakeLease:
+    def __init__(self) -> None:
+        self.attempted = False
+        self.closed = False
+
+    def mark_attempted(self) -> None:
+        self.attempted = True
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def _allow_auto_reboot_lease(monkeypatch):
+    """Unit tests do not depend on a running Redis instance."""
+    monkeypatch.setattr(
+        "app.worker.tasks._acquire_auto_reboot_lease",
+        lambda **_kwargs: (_FakeLease(), None),
+    )
 
 
 def _switch(name: str, *, enabled: bool = True, vlan: int = 20, mode: str = "live") -> NetworkSwitch:
@@ -86,6 +109,7 @@ def test_cycle_task_dispatches_one_subtask_per_switch_with_stagger(monkeypatch) 
     assert result["switches_scheduled"] == 3
     assert [c["countdown"] for c in captured] == [0, 90, 180]
     assert [c["args"][0] for c in captured] == [str(sw.id) for sw in switches]
+    assert len({c["args"][1] for c in captured}) == 1
 
 
 def test_switch_task_skips_when_disabled_since_dispatch(monkeypatch) -> None:
@@ -115,3 +139,22 @@ def test_switch_task_skips_when_no_longer_eligible(monkeypatch) -> None:
     result = ap_auto_reboot_switch_task.apply(args=[str(switch.id)]).get()
 
     assert result["status"] == "no_longer_eligible"
+
+
+def test_switch_task_skips_duplicate_delivery_before_hardware_call(monkeypatch) -> None:
+    switch = _switch("A1")
+    monkeypatch.setattr("app.worker.tasks.Session", lambda _engine: _FakeSession(by_id={switch.id: switch}))
+    monkeypatch.setattr(
+        "app.worker.tasks._acquire_auto_reboot_lease",
+        lambda **_kwargs: (None, "already_running"),
+    )
+
+    def _must_not_run(*_args, **_kwargs):
+        raise AssertionError("duplicate delivery must not reach live hardware code")
+
+    monkeypatch.setattr("app.worker.tasks.run_ap_reboot_for_switch", _must_not_run)
+
+    result = ap_auto_reboot_switch_task.apply(args=[str(switch.id), "scheduled-cycle-1"]).get()
+
+    assert result["status"] == "already_running"
+    assert result["cycle_id"] == "scheduled-cycle-1"

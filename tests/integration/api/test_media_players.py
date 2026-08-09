@@ -23,11 +23,10 @@ def test_create_media_player_and_poll(client: TestClient, admin_token: str, monk
     async def _no_mac(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(
-        media_polling,
-        "poll_one_media_player",
-        lambda _player: ("10.10.10.20", _PollResult(open_ports=[445, 3389])),
-    )
+    async def _poll_one(_player, *, port_scan_semaphore):
+        return "10.10.10.20", _PollResult(open_ports=[445, 3389])
+
+    monkeypatch.setattr(media_polling, "poll_one_media_player_async", _poll_one)
     monkeypatch.setattr(media_polling, "resolve_devices_by_mac", _no_move)
     monkeypatch.setattr(media_routes, "resolve_mac_for_ip_address", _no_mac)
 
@@ -146,7 +145,18 @@ def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token:
     async def _no_mac(*args, **kwargs):
         return None
 
+    class _FakeRedis:
+        async def set(self, *_args, **_kwargs):
+            return True
+
+        async def delete(self, *_args, **_kwargs):
+            return 1
+
+    async def _redis():
+        return _FakeRedis()
+
     monkeypatch.setattr(media_routes, "resolve_mac_for_ip_address", _no_mac)
+    monkeypatch.setattr(media_polling, "get_redis", _redis)
     created = client.post(
         "/api/v1/media-players/",
         json={
@@ -161,10 +171,10 @@ def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token:
 
     monkeypatch.setattr(media_polling, "check_port", lambda _ip, port=8081, timeout=2.5: port == 8081)
 
-    def _should_not_be_called(_address: str):
+    async def _should_not_be_called(_address: str, **_kwargs):
         raise RuntimeError("generic poll should not be used for iconbit in bulk")
 
-    monkeypatch.setattr(media_polling, "poll_device_sync", _should_not_be_called)
+    monkeypatch.setattr(media_polling, "poll_device", _should_not_be_called)
 
     polled = client.post(
         "/api/v1/media-players/poll-all",

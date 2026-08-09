@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.domains.inventory.media_polling import (
     LightMediaPollResult,
     apply_media_poll_result,
@@ -78,12 +80,32 @@ def test_poll_media_player_batch_preserves_each_ip(monkeypatch) -> None:
         MediaPlayer(device_type="nettop", name="B", model="Nettop", ip_address="10.10.10.21"),
     ]
 
-    def fake_poll_one(player: MediaPlayer):
+    async def fake_poll_one(player: MediaPlayer, *, port_scan_semaphore):
         return player.ip_address, LightMediaPollResult(is_online=player.ip_address.endswith(".20"))
 
-    monkeypatch.setattr("app.domains.inventory.media_polling.poll_one_media_player", fake_poll_one)
+    monkeypatch.setattr("app.domains.inventory.media_polling.poll_one_media_player_async", fake_poll_one)
 
-    result = poll_media_player_batch(players)
+    result = asyncio.run(poll_media_player_batch(players))
 
     assert result["10.10.10.20"].is_online is True
     assert result["10.10.10.21"].is_online is False
+
+
+def test_poll_media_player_batch_shares_one_port_semaphore(monkeypatch) -> None:
+    players = [
+        MediaPlayer(device_type="nettop", name=f"A{i}", model="Nettop", ip_address=f"10.10.10.{i}")
+        for i in range(20, 24)
+    ]
+    seen_semaphores = []
+
+    async def fake_poll_one(player: MediaPlayer, *, port_scan_semaphore):
+        seen_semaphores.append(port_scan_semaphore)
+        await asyncio.sleep(0)
+        return player.ip_address, LightMediaPollResult(is_online=True)
+
+    monkeypatch.setattr("app.domains.inventory.media_polling.poll_one_media_player_async", fake_poll_one)
+
+    result = asyncio.run(poll_media_player_batch(players))
+
+    assert len(result) == len(players)
+    assert len({id(semaphore) for semaphore in seen_semaphores}) == 1

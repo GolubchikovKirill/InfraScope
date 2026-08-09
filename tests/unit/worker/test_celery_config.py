@@ -11,3 +11,5 @@ def test_celery_has_production_safety_defaults():
     assert celery_app.conf.task_acks_late is True
     assert celery_app.conf.worker_prefetch_multiplier == 1
     assert celery_app.conf.task_time_limit >= celery_app.conf.task_soft_time_limit
+    assert celery_app.conf.broker_transport_options["visibility_timeout"] >= 10_800
+    assert celery_app.conf.result_backend_transport_options["visibility_timeout"] >= 10_800

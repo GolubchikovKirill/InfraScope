@@ -30,6 +30,8 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     task_soft_time_limit=300,
     task_time_limit=600,
+    broker_transport_options={"visibility_timeout": settings.CELERY_VISIBILITY_TIMEOUT_SECONDS},
+    result_backend_transport_options={"visibility_timeout": settings.CELERY_VISIBILITY_TIMEOUT_SECONDS},
 )
 
 _beat_schedule: dict = {}

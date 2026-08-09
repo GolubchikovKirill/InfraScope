@@ -15,8 +15,8 @@ import platform
 import re as _re
 import socket
 import struct
-import time
 import warnings
+import weakref
 from dataclasses import dataclass, field
 
 warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
@@ -56,7 +56,10 @@ OID_IF_PHYS_ADDR = "1.3.6.1.2.1.2.2.1.6"
 
 SCAN_PORTS = [22, 80, 135, 139, 443, 445, 554, 3389, 5405, 8080, 8081, 9090]
 TCP_TIMEOUT = 2.0
-_PORT_SCAN_SEMAPHORE = asyncio.Semaphore(64)
+_PORT_SCAN_SEMAPHORES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    weakref.WeakKeyDictionary()
+)
+_PORT_SCAN_CONCURRENCY = 64
 _MAX_NETBIOS_TARGETS = 2048
 _PING_SWEEP_CONCURRENCY = 128
 
@@ -94,9 +97,25 @@ def _format_uptime(ticks: int) -> str:
     return " ".join(parts)
 
 
-async def _check_port(ip: str, port: int) -> int | None:
+def _get_loop_port_scan_semaphore() -> asyncio.Semaphore:
+    """Return a semaphore owned by the current event loop.
+
+    ``asyncio`` synchronization primitives cannot be shared by the temporary
+    event loops created by ``poll_device_sync``.  A weak per-loop cache keeps
+    direct/synchronous callers safe without retaining closed loops forever.
+    Batch callers pass one explicit semaphore to enforce a fleet-wide limit.
+    """
+    loop = asyncio.get_running_loop()
+    semaphore = _PORT_SCAN_SEMAPHORES.get(loop)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(_PORT_SCAN_CONCURRENCY)
+        _PORT_SCAN_SEMAPHORES[loop] = semaphore
+    return semaphore
+
+
+async def _check_port(ip: str, port: int, semaphore: asyncio.Semaphore) -> int | None:
     try:
-        async with _PORT_SCAN_SEMAPHORE:
+        async with semaphore:
             _, writer = await asyncio.wait_for(
                 asyncio.open_connection(ip, port),
                 timeout=TCP_TIMEOUT,
@@ -108,8 +127,9 @@ async def _check_port(ip: str, port: int) -> int | None:
         return None
 
 
-async def _scan_ports(ip: str) -> list[int]:
-    tasks = [_check_port(ip, port) for port in SCAN_PORTS]
+async def _scan_ports(ip: str, *, semaphore: asyncio.Semaphore | None = None) -> list[int]:
+    active_semaphore = semaphore or _get_loop_port_scan_semaphore()
+    tasks = [_check_port(ip, port, active_semaphore) for port in SCAN_PORTS]
     results = await asyncio.gather(*tasks)
     return sorted(p for p in results if p is not None)
 
@@ -401,7 +421,12 @@ def _resolve_host(address: str) -> str | None:
     return None
 
 
-async def poll_device(address: str, community: str = "public") -> DeviceStatus:
+async def poll_device(
+    address: str,
+    community: str = "public",
+    *,
+    port_scan_semaphore: asyncio.Semaphore | None = None,
+) -> DeviceStatus:
     """Poll a network device for status information.
 
     ``address`` can be an IP address or hostname.
@@ -414,7 +439,7 @@ async def poll_device(address: str, community: str = "public") -> DeviceStatus:
         status.is_online = False
         return status
 
-    ports_task = _scan_ports(ip)
+    ports_task = _scan_ports(ip, semaphore=port_scan_semaphore)
     snmp_task = _get_snmp_info(ip, community)
     mac_task = _get_snmp_mac(ip, community)
 

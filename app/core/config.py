@@ -103,6 +103,18 @@ class Settings(BaseSettings):
     # switch's own reboot cycle is dispatched as an independent task, offset
     # by this many seconds times its position in the (name-sorted) list.
     AUTO_REBOOT_AP_STAGGER_SECONDS: int = 90
+    # A switch cycle can spend almost an hour waiting for its staggered ETA
+    # and up to 30 minutes rebooting/verifying APs.  Keep the Redis lease
+    # longer than both phases so a broker redelivery cannot repeat live PoE
+    # actions while the original task is still active.
+    AUTO_REBOOT_AP_TASK_LOCK_SECONDS: int = 10_800
+    # Remember that a scheduled switch cycle was already attempted.  This is
+    # separate from the active lease: it protects against a late redelivery
+    # that arrives after the first task has already released its lock.
+    AUTO_REBOOT_AP_CYCLE_DEDUP_SECONDS: int = 86_400
+    # Redis' acknowledgement timeout must exceed the largest ETA plus the
+    # maximum task runtime.  Otherwise Celery can redeliver the same task ID.
+    CELERY_VISIBILITY_TIMEOUT_SECONDS: int = 10_800
     # An AP that fails to come back (or shows zero PoE draw) for this many
     # consecutive cycles almost certainly needs a physical/on-site fix that no
     # amount of retrying will solve - repeating the same power-cycle forever

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
@@ -22,7 +21,7 @@ from app.observability.metrics import (
     set_device_counts,
 )
 from app.services.cache import invalidate_entity_cache
-from app.services.device_poll import poll_device_sync
+from app.services.device_poll import poll_device, poll_device_sync
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_media_player_snapshot
@@ -87,6 +86,33 @@ def poll_one_media_player(player: MediaPlayer) -> tuple[str, object | None]:
         return player.ip_address, None
 
 
+async def poll_one_media_player_async(
+    player: MediaPlayer,
+    *,
+    port_scan_semaphore: asyncio.Semaphore,
+) -> tuple[str, object | None]:
+    """Poll one media player in the caller's event loop.
+
+    The old batch wrapped this synchronous helper in many threads, each of
+    which created an independent event loop.  Keeping the whole batch in one
+    loop makes the shared TCP limit valid and avoids false offline results
+    caused by event-loop-bound asyncio primitives.
+    """
+    try:
+        await asyncio.to_thread(poll_jitter_sync)
+        if player.device_type == "iconbit":
+            is_online = await asyncio.to_thread(check_port, player.ip_address, 8081, 2.5)
+            return player.ip_address, LightMediaPollResult(
+                is_online=is_online,
+                open_ports=[8081] if is_online else [],
+            )
+        result = await poll_device(player.ip_address, port_scan_semaphore=port_scan_semaphore)
+        return player.ip_address, result
+    except Exception as exc:
+        logger.warning("Poll failed for media player %s: %s", player.ip_address, exc)
+        return player.ip_address, None
+
+
 def apply_media_poll_result(player: MediaPlayer, result) -> None:
     if result is None or not result.is_online:
         player.is_online = False
@@ -110,7 +136,7 @@ async def poll_single_media_player_local(*, session: Session, player_id: uuid.UU
         raise MediaPlayerNotFoundError("Media player not found")
 
     was_online = player.is_online
-    _, result = await asyncio.to_thread(poll_one_media_player, player)
+    _, result = await poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(64))
     apply_media_poll_result(player, result)
     media_player_polls_total.labels(
         mode="single",
@@ -150,7 +176,7 @@ async def poll_single_media_player_local(*, session: Session, player_id: uuid.UU
                 ip_address=new_ip,
                 message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
             )
-            _, result = await asyncio.to_thread(poll_one_media_player, player)
+            _, result = await poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(64))
             apply_media_poll_result(player, result)
             media_player_polls_total.labels(
                 mode="single",
@@ -203,7 +229,7 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
                 continue
             poll_targets.append(player)
 
-        results = poll_media_player_batch(poll_targets) if poll_targets else {}
+        results = await poll_media_player_batch(poll_targets) if poll_targets else {}
         offline_with_mac: list[MediaPlayer] = []
         for player in players:
             if player.id in skipped_ids:
@@ -267,20 +293,20 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
                 pass
 
 
-def poll_media_player_batch(players: list[MediaPlayer]) -> dict[str, object | None]:
-    results: dict[str, object | None] = {}
-    max_workers = max(1, min(settings.MEDIA_POLL_MAX_WORKERS, len(players)))
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(poll_one_media_player, player): player.ip_address for player in players}
-        for future in as_completed(futures):
-            ip = futures[future]
-            try:
-                _, result = future.result()
-            except Exception as exc:
-                logger.warning("Poll failed for %s: %s", ip, exc)
-                result = None
-            results[ip] = result
-    return results
+async def poll_media_player_batch(players: list[MediaPlayer]) -> dict[str, object | None]:
+    """Poll a fleet in one event loop with bounded device and TCP concurrency."""
+    if not players:
+        return {}
+
+    device_semaphore = asyncio.Semaphore(max(1, min(settings.MEDIA_POLL_MAX_WORKERS, len(players))))
+    port_scan_semaphore = asyncio.Semaphore(64)
+
+    async def _poll(player: MediaPlayer) -> tuple[str, object | None]:
+        async with device_semaphore:
+            return await poll_one_media_player_async(player, port_scan_semaphore=port_scan_semaphore)
+
+    pairs = await asyncio.gather(*(_poll(player) for player in players))
+    return dict(pairs)
 
 
 async def rediscover_media_players_local(*, session: Session) -> MediaPlayersPublic:
@@ -326,7 +352,7 @@ async def rediscover_media_players_local(*, session: Session) -> MediaPlayersPub
                 ip_address=new_ip,
                 message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
             )
-            _, result = await asyncio.to_thread(poll_one_media_player, player)
+            _, result = await poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(64))
             apply_media_poll_result(player, result)
             player.last_polled_at = datetime.now(UTC)
             write_media_player_snapshot(session, player, source="rediscover")
@@ -391,7 +417,7 @@ async def _relocate_offline_media_players(session: Session, offline_with_mac: li
             ip_address=new_ip,
             message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
         )
-        _, result = await asyncio.to_thread(poll_one_media_player, player)
+        _, result = await poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(64))
         apply_media_poll_result(player, result)
         media_player_polls_total.labels(
             mode="all",
