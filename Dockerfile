@@ -14,7 +14,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --python /usr/local/bin/python
 
 
-FROM python:3.14-slim-bookworm
+# Reuse the same Python base as the build stage.  This is already present on
+# the production host and avoids a second registry download during rollout.
+FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
 WORKDIR /app
 
