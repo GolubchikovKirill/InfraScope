@@ -215,6 +215,44 @@ def test_set_ap_excluded_false_resets_escalation_state(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_reboot_cycle_opens_a_single_ssh_session(db_session, monkeypatch) -> None:
+    """Every step of a cycle used to open its own connection - the scan, the
+    PoE check, the power-cycle and each verification poll - so one AP could
+    cost more than twenty handshakes and threaten the switch's VTY limit."""
+    switch = NetworkSwitch(name="TestOneSession", ip_address="10.0.0.9", ap_vlan=20, auto_reboot_mode="live")
+    db_session.add(switch)
+    db_session.commit()
+    db_session.refresh(switch)
+
+    constructed: list = []
+
+    class _FakeSSH:
+        def __init__(self, *_args, **_kwargs):
+            self.closed = False
+            constructed.append(self)
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.CiscoSSH", _FakeSSH)
+
+    sessions_seen: list = []
+
+    def _scan(*args, **_kwargs):
+        sessions_seen.append(args[-1])
+        return []
+
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_access_points", _scan)
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.write_event_log", lambda _s, **_kw: None)
+
+    await run_ap_reboot_for_switch(db_session, switch)
+
+    assert len(constructed) == 1
+    assert sessions_seen == [constructed[0]]
+    assert constructed[0].closed is True
+
+
+@pytest.mark.asyncio
 async def test_switch_escalates_after_consecutive_unreachable_cycles(db_session, monkeypatch) -> None:
     monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.settings.AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES", 2)
     switch = NetworkSwitch(name="TestUnreachable", ip_address="10.0.0.2", ap_vlan=20, auto_reboot_mode="live")

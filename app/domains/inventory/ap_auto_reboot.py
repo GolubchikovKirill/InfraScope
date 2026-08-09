@@ -40,7 +40,7 @@ from app.domains.inventory.ap_registry import (
 )
 from app.domains.inventory.models import NetworkSwitch
 from app.observability.metrics import ap_auto_reboot_total
-from app.services.cisco_ssh import get_access_points, get_port_poe_power, poe_cycle_ap
+from app.services.cisco_ssh import CiscoSSH, get_access_points, get_port_poe_power, poe_cycle_ap
 from app.services.event_log import write_event_log
 
 logger = logging.getLogger(__name__)
@@ -71,13 +71,18 @@ def switch_eligible_for_auto_reboot(switch: NetworkSwitch, allowed_stores: set[s
     return True, None
 
 
-async def _verify_ap_back_online(switch: NetworkSwitch, mac_address: str) -> bool:
+async def _verify_ap_back_online(
+    switch: NetworkSwitch, mac_address: str, ssh: CiscoSSH | None = None
+) -> bool:
     """Poll for the AP to reappear via CDP instead of checking once.
 
     A single fixed pause was too short for real hardware: APs commonly take
     well over a minute to boot and start advertising CDP again, so a
     one-shot check right after the pause reported "failed" on recovered APs
     every time. This checks repeatedly up to a bounded total wait.
+
+    Pass `ssh` to reuse the cycle's existing connection; without it each poll
+    opens its own, which is up to twelve handshakes for a single AP.
     """
     max_wait = settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS
     interval = max(settings.AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS, 1)
@@ -93,6 +98,7 @@ async def _verify_ap_back_online(switch: NetworkSwitch, mac_address: str) -> boo
             switch.enable_password,
             switch.ssh_port,
             switch.ap_vlan,
+            ssh,
         )
         if aps and any(candidate.mac_address == mac_address for candidate in aps):
             return True
@@ -100,6 +106,29 @@ async def _verify_ap_back_online(switch: NetworkSwitch, mac_address: str) -> boo
 
 
 async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> dict:
+    """Run one switch's scheduled AP reboot cycle over a single SSH session.
+
+    Every step used to open and tear down its own connection: the CDP scan,
+    the PoE check, the power-cycle, and each of up to twelve verification
+    polls. One AP could therefore cost more than twenty handshakes to the
+    same switch - roughly a minute of pure connection setup - and risked
+    running into the switch's VTY session limit exactly when several tasks
+    overlapped.
+    """
+    ssh = CiscoSSH(
+        switch.ip_address,
+        switch.ssh_username,
+        switch.ssh_password,
+        switch.enable_password,
+        switch.ssh_port,
+    )
+    try:
+        return await _run_ap_reboot_cycle(session, switch, ssh)
+    finally:
+        await asyncio.to_thread(ssh.close)
+
+
+async def _run_ap_reboot_cycle(session: Session, switch: NetworkSwitch, ssh: CiscoSSH) -> dict:
     is_dry_run = switch.auto_reboot_mode != "live"
     mode_label = "dry_run" if is_dry_run else "live"
 
@@ -111,6 +140,7 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
         switch.enable_password,
         switch.ssh_port,
         switch.ap_vlan,
+        ssh,
     )
 
     if live_aps is None:
@@ -170,7 +200,7 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
 
     results: list[dict] = []
     for ap in targets:
-        result = await _handle_one_ap(session, switch, ap, is_dry_run=is_dry_run, mode_label=mode_label)
+        result = await _handle_one_ap(session, switch, ap, is_dry_run=is_dry_run, mode_label=mode_label, ssh=ssh)
         results.append(result)
 
         # Space this switch's AP reboots out over time instead of running
@@ -182,7 +212,13 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
 
 
 async def _handle_one_ap(
-    session: Session, switch: NetworkSwitch, ap: MergedAccessPoint, *, is_dry_run: bool, mode_label: str
+    session: Session,
+    switch: NetworkSwitch,
+    ap: MergedAccessPoint,
+    *,
+    is_dry_run: bool,
+    mode_label: str,
+    ssh: CiscoSSH | None = None,
 ) -> dict:
     hung_prefix = "" if ap.is_responding else "[HUNG] "
 
@@ -215,6 +251,7 @@ async def _handle_one_ap(
             switch.enable_password,
             switch.ssh_port,
             ap.port,
+            ssh,
         )
         if not power:
             write_event_log(
@@ -243,6 +280,7 @@ async def _handle_one_ap(
         switch.enable_password,
         switch.ssh_port,
         ap.port,
+        ssh,
     )
     write_event_log(
         session,
@@ -264,7 +302,7 @@ async def _handle_one_ap(
         # Polls repeatedly rather than a single fixed-delay check - see
         # _verify_ap_back_online for why (real APs take well over a minute
         # to reappear in CDP after a PoE cycle).
-        came_back = await _verify_ap_back_online(switch, ap.mac_address)
+        came_back = await _verify_ap_back_online(switch, ap.mac_address, ssh)
         if not came_back:
             write_event_log(
                 session,

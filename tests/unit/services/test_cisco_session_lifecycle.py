@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from app.models import NetworkSwitch
-from app.services.cisco_ssh import CiscoSSH
+from app.services import cisco_ssh as cisco_ssh_module
+from app.services.cisco_ssh import CiscoSSH, get_access_points
 from app.services.switches.cisco_provider import CiscoSwitchProvider
 
 
@@ -89,6 +90,80 @@ def test_set_poe_cycle_uses_single_session(monkeypatch):
     assert _FakeSSH.close_calls == 1
     assert "power inline never" in _FakeSSH.commands
     assert "power inline auto" in _FakeSSH.commands
+
+
+def test_connect_remembers_the_auth_method_that_worked(monkeypatch):
+    """The auth-method probe is a whole extra TCP+SSH handshake, and a switch
+    answers it identically every time. Paying it on every connect doubled the
+    connection cost of every operation."""
+    cisco_ssh_module._AUTH_METHOD_CACHE.clear()
+    probe_calls = 0
+
+    def _probe(_self):
+        nonlocal probe_calls
+        probe_calls += 1
+        return ["password"]
+
+    monkeypatch.setattr(CiscoSSH, "_query_auth_methods", _probe)
+    monkeypatch.setattr(CiscoSSH, "_connect_password", lambda _self: True)
+
+    assert CiscoSSH("10.0.0.10", "admin", "pass").connect() is True
+    assert probe_calls == 1
+
+    assert CiscoSSH("10.0.0.10", "admin", "pass").connect() is True
+    assert probe_calls == 1
+
+
+def test_connect_reprobes_when_the_remembered_method_stops_working(monkeypatch):
+    cisco_ssh_module._AUTH_METHOD_CACHE.clear()
+    cisco_ssh_module._AUTH_METHOD_CACHE[("10.0.0.11", 22, "admin")] = "password"
+    probe_calls = 0
+
+    def _probe(_self):
+        nonlocal probe_calls
+        probe_calls += 1
+        return ["keyboard-interactive"]
+
+    monkeypatch.setattr(CiscoSSH, "_query_auth_methods", _probe)
+    monkeypatch.setattr(CiscoSSH, "_connect_password", lambda _self: False)
+    monkeypatch.setattr(CiscoSSH, "_connect_keyboard_interactive", lambda _self: True)
+
+    assert CiscoSSH("10.0.0.11", "admin", "pass").connect() is True
+    assert probe_calls == 1
+    assert cisco_ssh_module._AUTH_METHOD_CACHE[("10.0.0.11", 22, "admin")] == "keyboard-interactive"
+    cisco_ssh_module._AUTH_METHOD_CACHE.clear()
+
+
+def test_get_access_points_reuses_a_caller_supplied_session(monkeypatch):
+    """A session handed in belongs to the caller's cycle: it must be reused as
+    it is and left open for the next operation, not replaced or torn down."""
+
+    class _Session:
+        def __init__(self):
+            self.ensure_calls = 0
+            self.closed = False
+
+        def ensure_connected(self):
+            self.ensure_calls += 1
+            return True
+
+        def execute(self, _cmd):
+            return ""
+
+        def close(self):
+            self.closed = True
+
+    def _must_not_construct(*_args, **_kwargs):
+        raise AssertionError("a caller-supplied session must not be replaced with a new connection")
+
+    monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", _must_not_construct)
+
+    shared = _Session()
+    result = get_access_points("10.0.0.10", "admin", "pass", "enable", 22, 20, shared)
+
+    assert result == []
+    assert shared.ensure_calls == 1
+    assert shared.closed is False
 
 
 def test_cisco_ssh_close_closes_channel_and_transport():

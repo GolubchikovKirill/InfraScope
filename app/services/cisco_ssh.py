@@ -64,6 +64,14 @@ class CameraPortInfo:
     poe_status: str | None = None
 
 
+# Which auth method actually worked, per (ip, port, username). A switch answers
+# the auth-method probe identically every time, so probing on every connect was
+# a whole extra TCP+SSH handshake spent learning something already known.
+# Entries are dropped the moment the remembered method stops working, so a
+# credential or config change re-probes on the next attempt.
+_AUTH_METHOD_CACHE: dict[tuple[str, int, str], str] = {}
+
+
 class CiscoSSH:
     """Manages an SSH session to a Cisco IOS device."""
 
@@ -76,7 +84,45 @@ class CiscoSSH:
         self.client: paramiko.SSHClient | None = None
         self.shell: paramiko.Channel | None = None
 
+    @property
+    def _auth_cache_key(self) -> tuple[str, int, str]:
+        return (self.ip, self.port, self.username)
+
+    def _strategy_for(self, name: str) -> Callable[[], bool] | None:
+        return {
+            "password": self._connect_password,
+            "keyboard-interactive": self._connect_keyboard_interactive,
+        }.get(name)
+
+    def is_alive(self) -> bool:
+        if not self.shell or not self.client:
+            return False
+        transport = self.client.get_transport()
+        return bool(transport and transport.is_active())
+
+    def ensure_connected(self) -> bool:
+        """Reopen a shared session that has gone away.
+
+        Cisco drops idle VTY sessions on its own exec-timeout (10 minutes by
+        default), and one switch cycle can outlive that: rebooting several APs
+        means a 45s pause plus up to 240s of verification for each of them.
+        """
+        if self.is_alive():
+            return True
+        self.close()
+        return self.connect()
+
     def connect(self) -> bool:
+        remembered = _AUTH_METHOD_CACHE.get(self._auth_cache_key)
+        if remembered:
+            method = self._strategy_for(remembered)
+            if method and method():
+                ssh_operations_total.labels(operation="connect", result="success", reason=remembered).inc()
+                return True
+            # Credentials or the switch's auth config changed - forget what we
+            # knew and fall through to a full probe.
+            _AUTH_METHOD_CACHE.pop(self._auth_cache_key, None)
+
         allowed = self._query_auth_methods()
         logger.info("SSH to %s: server allows auth methods: %s", self.ip, allowed)
 
@@ -95,6 +141,7 @@ class CiscoSSH:
             logger.info("SSH to %s: trying %s auth", self.ip, name)
             if method():
                 logger.info("SSH to %s: %s auth succeeded", self.ip, name)
+                _AUTH_METHOD_CACHE[self._auth_cache_key] = name
                 ssh_operations_total.labels(operation="connect", result="success", reason=name).inc()
                 return True
             logger.warning("SSH to %s: %s auth failed", self.ip, name)
@@ -254,6 +301,28 @@ class CiscoSSH:
         self.close()
 
 
+def _session_for(
+    session: CiscoSSH | None,
+    ip: str,
+    username: str,
+    password: str,
+    enable_password: str,
+    port: int,
+) -> tuple[CiscoSSH | None, bool]:
+    """Resolve the session an operation should run on.
+
+    Returns (session, owned). `owned` is True when this call opened the
+    connection and is therefore responsible for closing it; a session handed
+    in by the caller is left open so the next operation in the same cycle can
+    reuse it instead of paying for another handshake. Returns (None, ...) if
+    no usable connection could be established.
+    """
+    if session is not None:
+        return (session, False) if session.ensure_connected() else (None, False)
+    ssh = CiscoSSH(ip, username, password, enable_password, port)
+    return (ssh, True) if ssh.connect() else (None, True)
+
+
 def get_switch_info(ip: str, username: str, password: str, enable_password: str = "", port: int = 22) -> SwitchInfo:
     info = SwitchInfo()
     ssh = CiscoSSH(ip, username, password, enable_password, port)
@@ -297,7 +366,13 @@ def get_switch_info(ip: str, username: str, password: str, enable_password: str 
 
 
 def get_access_points(
-    ip: str, username: str, password: str, enable_password: str = "", port: int = 22, vlan: int = 20
+    ip: str,
+    username: str,
+    password: str,
+    enable_password: str = "",
+    port: int = 22,
+    vlan: int = 20,
+    session: CiscoSSH | None = None,
 ) -> list[APInfo] | None:
     """Discover access points on the given VLAN using CDP as primary source.
 
@@ -309,8 +384,8 @@ def get_access_points(
     on this switch just went silent", which is exactly what the auto-reboot
     hung-AP detection watches for.
     """
-    ssh = CiscoSSH(ip, username, password, enable_password, port)
-    if not ssh.connect():
+    ssh, owns_session = _session_for(session, ip, username, password, enable_password, port)
+    if ssh is None:
         switch_ops_total.labels(operation="access_points", result="error").inc()
         return None
 
@@ -356,7 +431,8 @@ def get_access_points(
         switch_ops_total.labels(operation="access_points", result="error").inc()
         return None
     finally:
-        ssh.close()
+        if owns_session:
+            ssh.close()
 
 
 def get_camera_ports(
@@ -534,10 +610,18 @@ def _try_restore_admin_up(ssh: CiscoSSH, ip: str, interface: str) -> None:
         )
 
 
-def poe_cycle_ap(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> bool:
+def poe_cycle_ap(
+    ip: str,
+    username: str,
+    password: str,
+    enable_password: str,
+    port: int,
+    interface: str,
+    session: CiscoSSH | None = None,
+) -> bool:
     """Reboot AP via PoE power cycle (cleaner than shutdown)."""
-    ssh = CiscoSSH(ip, username, password, enable_password, port)
-    if not ssh.connect():
+    ssh, owns_session = _session_for(session, ip, username, password, enable_password, port)
+    if ssh is None:
         switch_ops_total.labels(operation="reboot_ap_poe", result="error").inc()
         return False
 
@@ -563,7 +647,8 @@ def poe_cycle_ap(ip: str, username: str, password: str, enable_password: str, po
         switch_ops_total.labels(operation="reboot_ap_poe", result="error").inc()
         return False
     finally:
-        ssh.close()
+        if owns_session:
+            ssh.close()
 
 
 def _try_restore_poe_auto(ssh: CiscoSSH, ip: str, interface: str) -> None:
@@ -657,7 +742,15 @@ def _try_restore_poe_auto_bulk(ssh: CiscoSSH, ip: str, interfaces: list[str]) ->
         )
 
 
-def get_port_poe_power(ip: str, username: str, password: str, enable_password: str, port: int, interface: str) -> float | None:
+def get_port_poe_power(
+    ip: str,
+    username: str,
+    password: str,
+    enable_password: str,
+    port: int,
+    interface: str,
+    session: CiscoSSH | None = None,
+) -> float | None:
     """Return the PoE draw (watts) on a single port, or None if it's not
     currently powering anything (or the switch couldn't be reached).
 
@@ -666,8 +759,8 @@ def get_port_poe_power(ip: str, username: str, password: str, enable_password: s
     plugged in and powered before cycling the port - a port with nothing
     drawing power isn't a hung AP, it's an empty port.
     """
-    ssh = CiscoSSH(ip, username, password, enable_password, port)
-    if not ssh.connect():
+    ssh, owns_session = _session_for(session, ip, username, password, enable_password, port)
+    if ssh is None:
         return None
     try:
         output = ssh.execute(f"show power inline {interface}")
@@ -680,7 +773,8 @@ def get_port_poe_power(ip: str, username: str, password: str, enable_password: s
         logger.warning("PoE status check failed on %s port %s: %s", ip, interface, e)
         return None
     finally:
-        ssh.close()
+        if owns_session:
+            ssh.close()
 
 
 def get_switch_arp_mac_map(ip: str, username: str, password: str, enable_password: str, port: int) -> dict[str, str]:
