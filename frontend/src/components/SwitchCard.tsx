@@ -82,16 +82,16 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
             {ap.cdp_name || ap.mac_address}
           </span>
           {isHung && (
-            <span className="text-[10px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium" title={lastSeen ? `Последний раз отвечала: ${lastSeen}` : undefined}>
+            <span className="text-[11px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium" title={lastSeen ? `Последний раз отвечала: ${lastSeen}` : undefined}>
               не отвечает
             </span>
           )}
           {ap.cdp_platform && (
-            <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{ap.cdp_platform}</span>
+            <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{ap.cdp_platform}</span>
           )}
           {ap.needs_attention_since ? (
             <span
-              className="text-[10px] text-white bg-red-600 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 font-medium"
+              className="text-[11px] text-white bg-red-600 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 font-medium"
               title={
                 `Не восстанавливается автоматически с ${new Date(ap.needs_attention_since).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}` +
                 (ap.consecutive_no_power_skips > ap.consecutive_reboot_failures
@@ -104,7 +104,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
             </span>
           ) : (
             ap.exclude_from_auto_reboot && (
-              <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
+              <span className="text-[11px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
                 <EyeOff className="h-2.5 w-2.5" />искл. из автоперезагрузки
               </span>
             )
@@ -122,11 +122,14 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
         </div>
       </div>
       {isSuperuser && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+        // Stays visible rather than appearing on hover: these buttons power-cycle
+        // a live access point, and a control that only exists on hover is
+        // unreachable on touch and invisible to keyboard focus.
+        <div className="flex items-center gap-1 opacity-70 transition group-hover:opacity-100 focus-within:opacity-100">
           <button
             onClick={() => excludeMut.mutate(!ap.exclude_from_auto_reboot)}
             disabled={excludeMut.isPending}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 disabled:opacity-40"
+            className="app-icon-btn hover:bg-gray-100 text-gray-400 hover:text-gray-700 disabled:opacity-40"
             title={
               ap.exclude_from_auto_reboot
                 ? ap.needs_attention_since
@@ -134,14 +137,20 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
                   : "Вернуть в автоперезагрузку"
                 : "Исключить из автоперезагрузки"
             }
+            aria-label={
+              ap.exclude_from_auto_reboot
+                ? `Вернуть точку ${ap.cdp_name || ap.mac_address} в автоперезагрузку`
+                : `Исключить точку ${ap.cdp_name || ap.mac_address} из автоперезагрузки`
+            }
           >
             <EyeOff className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={handleReboot}
             disabled={rebooting}
-            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition disabled:opacity-40"
+            className="app-icon-btn hover:bg-red-50 text-gray-400 hover:text-red-600 transition disabled:opacity-40"
             title="Перезагрузить ТД (PoE cycle)"
+            aria-label={`Перезагрузить точку доступа на порту ${ap.port}`}
           >
             <RotateCcw className={`h-3.5 w-3.5 ${rebooting ? "animate-spin" : ""}`} />
           </button>
@@ -211,8 +220,8 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-rose-50 p-2">
-              <Network className="h-5 w-5 text-rose-600" />
+            <div className="app-entity-icon">
+              <Network className="h-5 w-5" />
             </div>
             <div>
               <div className="font-medium text-sm text-gray-900">{sw.name}</div>
@@ -221,7 +230,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           </div>
           <div className="flex flex-col items-end gap-1">
             <OnlineStatusBadge isOnline={sw.is_online} />
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700">
+            <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700">
               VLAN {sw.ap_vlan}
             </span>
           </div>

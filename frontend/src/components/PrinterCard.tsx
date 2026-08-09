@@ -124,8 +124,8 @@ export default function PrinterCard({
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-blue-50 p-2">
-              <PrinterIcon className="h-5 w-5 text-blue-600" />
+            <div className="app-entity-icon">
+              <PrinterIcon className="h-5 w-5" />
             </div>
             <div>
               <div className="font-medium text-sm text-gray-900">{printer.model}</div>
@@ -136,7 +136,7 @@ export default function PrinterCard({
             <OnlineStatusBadge isOnline={printer.is_online} />
             {isFlapping && (
               <span
-                className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700"
                 title="Принтер часто уходит в оффлайн и возвращается — возможна нестабильная связь на месте"
               >
                 Нестабильная связь · {printer.offline_count_24h} за 24 ч
@@ -249,7 +249,7 @@ export default function PrinterCard({
               <div className="mt-1.5 space-y-1.5">
                 {offlineRiskLevel && (
                   <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                       offlineRiskLevel === "high"
                         ? "bg-red-100 text-red-700"
                         : offlineRiskLevel === "medium"

@@ -131,7 +131,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
           ) : (
             <span className="text-gray-400 italic">Не воспроизводится</span>
           )}
-          {stateLabel && <span className="text-[10px] text-amber-600 bg-amber-50 px-1 py-0.5 rounded">{stateLabel}</span>}
+          {stateLabel && <span className="text-[11px] text-amber-600 bg-amber-50 px-1 py-0.5 rounded">{stateLabel}</span>}
         </div>
         {/* Progress bar — real progress or animated placeholder */}
         {isPlaying && (
@@ -144,9 +144,9 @@ function IconbitControls({ playerId }: { playerId: string }) {
               )}
             </div>
             {posStr && durStr ? (
-              <span className="text-[10px] text-gray-400 shrink-0">{posStr} / {durStr}</span>
+              <span className="text-[11px] text-gray-400 shrink-0">{posStr} / {durStr}</span>
             ) : (
-              <span className="text-[10px] text-rose-400 shrink-0">играет</span>
+              <span className="text-[11px] text-rose-400 shrink-0">играет</span>
             )}
           </div>
         )}
@@ -180,7 +180,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
         </button>
         <input ref={fileInputRef} type="file" accept="audio/*,video/*" className="hidden" onChange={handleUpload} />
         {ibStatus.free_space && (
-          <span className="text-[10px] text-gray-400 ml-auto">{ibStatus.free_space}</span>
+          <span className="text-[11px] text-gray-400 ml-auto">{ibStatus.free_space}</span>
         )}
       </div>
 
@@ -199,8 +199,9 @@ function IconbitControls({ playerId }: { playerId: string }) {
               </span>
               <button
                 onClick={async () => { if (await confirm(`Удалить ${f}?`, { danger: true, confirmText: "Удалить" })) deleteFileMut.mutate(f); }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition"
+                className="inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded opacity-70 transition hover:bg-red-50 text-gray-400 hover:text-red-500 group-hover:opacity-100 focus-visible:opacity-100"
                 title="Удалить файл"
+                aria-label={`Удалить файл ${f}`}
               >
                 <X className="h-3 w-3" />
               </button>
@@ -279,7 +280,7 @@ export default function MediaPlayerCard({
           </div>
           <div className="flex flex-col items-end gap-1">
             <OnlineStatusBadge isOnline={player.is_online} />
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${style.bg} ${style.iconColor}`}>
+            <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${style.bg} ${style.iconColor}`}>
               {deviceLabel}
             </span>
           </div>
@@ -299,7 +300,7 @@ export default function MediaPlayerCard({
                 {mediaAssignment?.title || "Медиа не назначено"}
               </span>
               {mediaAssignment && (
-                <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] text-gray-500">
+                <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[11px] text-gray-500">
                   {mediaAssignment.media_type}
                 </span>
               )}
@@ -326,7 +327,7 @@ export default function MediaPlayerCard({
               >
                 <Copy className="h-3 w-3" />
               </button>
-              {copiedDeviceId && <span className="text-[10px] text-emerald-600">скопировано</span>}
+              {copiedDeviceId && <span className="text-[11px] text-emerald-600">скопировано</span>}
             </div>
           )}
 
@@ -373,7 +374,7 @@ export default function MediaPlayerCard({
             <div className="flex items-center gap-1.5 text-xs text-gray-500 flex-wrap">
               <span className="text-gray-400">Порты:</span>
               {ports.map((p) => (
-                <span key={p} className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-mono">
+                <span key={p} className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[11px] font-mono">
                   {p}
                 </span>
               ))}

@@ -135,8 +135,8 @@ function CameraSwitchCard({
         className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-gray-50/50 transition"
       >
         <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-sky-50 p-2">
-            <Camera className="h-5 w-5 text-sky-600" />
+          <div className="app-entity-icon">
+            <Camera className="h-5 w-5" />
           </div>
           <div>
             <div className="font-medium text-sm text-gray-900">{switchName}</div>

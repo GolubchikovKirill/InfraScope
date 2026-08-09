@@ -1,58 +1,168 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   1. TOKENS
+   ----------------------------------------------------------------------------
+   Three groups, deliberately separate:
+     - brand      : InfraScope's crimson identity. Navigation, primary actions,
+                    entity accents. Carries no status meaning.
+     - status     : ok / warn / danger / info. These must NEVER be repainted to
+                    the brand colour - an amber "data is stale" hint rendered in
+                    crimson reads as an error, which is exactly the bug this
+                    file used to have.
+     - surface    : three stacked layers so depth survives in dark mode, where
+                    everything used to collapse into one flat colour.
+   ========================================================================== */
+
 :root {
   color-scheme: light;
-  --app-text: #1f2937;
-  --app-bg:
+
+  /* --- brand --- */
+  --brand-strong: #9f1239;
+  --brand: #be123c;
+  --brand-bright: #e11d48;
+  --brand-light: #f43f5e;
+  --brand-gradient: linear-gradient(135deg, #be123c, #e11d48);
+  --brand-soft: rgba(225, 29, 72, 0.1);
+  --brand-border: rgba(225, 29, 72, 0.32);
+  --brand-ring: rgba(225, 29, 72, 0.18);
+
+  /* --- status: meaning, not decoration --- */
+  --ok-fg: #047857;
+  --ok-bg: rgba(16, 185, 129, 0.12);
+  --ok-border: rgba(16, 185, 129, 0.35);
+  --ok-dot: #10b981;
+
+  --warn-fg: #b45309;
+  --warn-bg: rgba(245, 158, 11, 0.14);
+  --warn-border: rgba(245, 158, 11, 0.4);
+
+  --danger-fg: #be123c;
+  --danger-bg: rgba(244, 63, 94, 0.12);
+  --danger-border: rgba(244, 63, 94, 0.38);
+
+  --info-fg: #1d4ed8;
+  --info-bg: rgba(59, 130, 246, 0.12);
+  --info-border: rgba(59, 130, 246, 0.35);
+
+  /* --- surfaces --- */
+  --surface-page:
     linear-gradient(180deg, rgba(255, 255, 255, 0.68) 0%, rgba(255, 255, 255, 0) 260px),
     linear-gradient(180deg, #f7f8fa 0%, #eef1f5 100%);
-  --app-panel-bg: rgba(255, 255, 255, 0.96);
-  --app-panel-border: rgba(226, 232, 240, 0.95);
+  --surface-1: rgba(255, 255, 255, 0.96);
+  --surface-2: rgba(248, 250, 252, 0.92);
+  --surface-3: rgba(241, 245, 249, 0.94);
+  --surface-input: #ffffff;
+
+  --border-subtle: rgba(226, 232, 240, 0.95);
+  --border-strong: #cbd5e1;
+
+  /* --- text --- */
+  --text-strong: #0f172a;
+  --text-default: #1f2937;
+  --text-muted: #475569;
+  --text-faint: #64748b;
+
+  /* --- radius scale --- */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* --- elevation scale --- */
+  --elev-1: 0 6px 16px rgba(15, 23, 42, 0.05);
+  --elev-2: 0 8px 22px rgba(15, 23, 42, 0.06);
+  --elev-3: 0 14px 28px rgba(15, 23, 42, 0.12);
+
+  /* --- smallest readable size. Never go below this. --- */
+  --text-micro: 0.6875rem; /* 11px */
+
+  /* ---------------------------------------------------------------
+     Legacy aliases. Layout.tsx and others reference these directly
+     via var(--app-panel-border), so they stay as a thin mapping onto
+     the tokens above rather than being a second source of truth.
+     --------------------------------------------------------------- */
+  --app-text: var(--text-default);
+  --app-bg: var(--surface-page);
+  --app-panel-bg: var(--surface-1);
+  --app-panel-border: var(--border-subtle);
   --app-toolbar-bg: rgba(255, 255, 255, 0.94);
-  --app-input-bg: #ffffff;
-  --app-input-border: #cbd5e1;
+  --app-input-bg: var(--surface-input);
+  --app-input-border: var(--border-strong);
   --app-secondary-text: #374151;
   --app-secondary-bg: rgba(255, 255, 255, 0.95);
   --app-secondary-border: #d1d5db;
   --app-header-bg: rgba(255, 255, 255, 0.88);
-  --app-header-border: rgba(226, 232, 240, 0.95);
-  --app-nav-active-bg: rgba(225, 29, 72, 0.08);
+  --app-header-border: var(--border-subtle);
+  --app-nav-active-bg: var(--brand-soft);
   --app-nav-active-border: rgba(225, 29, 72, 0.35);
-  --app-nav-active-text: #be123c;
-  --app-sidebar-bg: rgba(255, 255, 255, 0.96);
-  --app-sidebar-border: rgba(226, 232, 240, 0.95);
-  --app-primary-gradient: linear-gradient(135deg, #be123c, #e11d48);
-  --app-accent-soft: rgba(225, 29, 72, 0.1);
-  --app-accent-border: rgba(225, 29, 72, 0.32);
-  --app-accent-text: #be123c;
+  --app-nav-active-text: var(--brand);
+  --app-sidebar-bg: var(--surface-1);
+  --app-sidebar-border: var(--border-subtle);
+  --app-primary-gradient: var(--brand-gradient);
+  --app-accent-soft: var(--brand-soft);
+  --app-accent-border: var(--brand-border);
+  --app-accent-text: var(--brand);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --app-text: #e5e7eb;
-  --app-bg:
+
+  --brand-soft: rgba(225, 29, 72, 0.2);
+  --brand-border: rgba(244, 63, 94, 0.45);
+  --brand-ring: rgba(244, 63, 94, 0.3);
+
+  --ok-fg: #6ee7b7;
+  --ok-bg: rgba(16, 185, 129, 0.16);
+  --ok-border: rgba(16, 185, 129, 0.4);
+  --ok-dot: #34d399;
+
+  --warn-fg: #fcd34d;
+  --warn-bg: rgba(245, 158, 11, 0.16);
+  --warn-border: rgba(245, 158, 11, 0.42);
+
+  --danger-fg: #fda4af;
+  --danger-bg: rgba(244, 63, 94, 0.18);
+  --danger-border: rgba(244, 63, 94, 0.45);
+
+  --info-fg: #93c5fd;
+  --info-bg: rgba(59, 130, 246, 0.16);
+  --info-border: rgba(59, 130, 246, 0.4);
+
+  --surface-page:
     linear-gradient(180deg, rgba(31, 41, 55, 0.55) 0%, rgba(31, 41, 55, 0) 260px),
     linear-gradient(180deg, #0b0f14 0%, #111827 100%);
-  --app-panel-bg: rgba(17, 24, 39, 0.9);
-  --app-panel-border: rgba(55, 65, 81, 0.85);
+  --surface-1: rgba(17, 24, 39, 0.9);
+  --surface-2: rgba(24, 33, 51, 0.9);
+  --surface-3: rgba(31, 41, 60, 0.92);
+  --surface-input: rgba(15, 23, 42, 0.88);
+
+  --border-subtle: rgba(55, 65, 81, 0.85);
+  --border-strong: #374151;
+
+  --text-strong: #f8fafc;
+  --text-default: #e5e7eb;
+  --text-muted: #cbd5e1;
+  --text-faint: #94a3b8;
+
+  --elev-1: 0 6px 16px rgba(0, 0, 0, 0.28);
+  --elev-2: 0 8px 22px rgba(0, 0, 0, 0.32);
+  --elev-3: 0 16px 32px rgba(0, 0, 0, 0.34);
+
   --app-toolbar-bg: rgba(17, 24, 39, 0.82);
-  --app-input-bg: rgba(15, 23, 42, 0.88);
-  --app-input-border: #374151;
   --app-secondary-text: #e5e7eb;
   --app-secondary-bg: rgba(17, 24, 39, 0.88);
   --app-secondary-border: #374151;
   --app-header-bg: rgba(12, 18, 30, 0.9);
-  --app-header-border: rgba(55, 65, 81, 0.8);
-  --app-nav-active-bg: rgba(225, 29, 72, 0.22);
-  --app-nav-active-border: rgba(244, 63, 94, 0.55);
   --app-nav-active-text: #fecdd3;
   --app-sidebar-bg: rgba(10, 14, 24, 0.94);
-  --app-sidebar-border: rgba(55, 65, 81, 0.85);
   --app-primary-gradient: linear-gradient(135deg, #9f1239, #e11d48);
-  --app-accent-soft: rgba(225, 29, 72, 0.2);
-  --app-accent-border: rgba(244, 63, 94, 0.45);
   --app-accent-text: #fecdd3;
 }
+
+/* ============================================================================
+   2. BASE
+   ========================================================================== */
 
 body {
   margin: 0;
@@ -70,96 +180,147 @@ body {
   min-height: 100vh;
 }
 
-@keyframes route-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.route-fade {
-  animation: route-fade-in 150ms ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .route-fade {
-    animation: none;
-  }
-}
-
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.toast-in {
-  animation: toast-in 150ms ease-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .toast-in {
-    animation: none;
-  }
-}
-
 ::selection {
   color: white;
-  background: #be123c;
+  background: var(--brand);
 }
+
+/* Every interactive element gets a visible keyboard focus ring. Previously
+   only .app-input had one, so tabbing through cards was invisible. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand-light);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================================
+   3. SURFACES & CONTAINERS
+   ========================================================================== */
 
 .app-shell {
   background: transparent;
 }
 
 .app-panel {
-  background: var(--app-panel-bg);
-  border: 1px solid var(--app-panel-border);
-  border-radius: 10px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-2);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
 
+/* Nested panel inside a card - one step down the surface stack so it reads as
+   contained rather than as another top-level card. Was used in PrinterCard
+   without ever being defined, so it rendered as an invisible box. */
+.app-soft-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+}
+
 .app-toolbar {
   background: var(--app-toolbar-bg);
-  border: 1px solid var(--app-panel-border);
-  border-radius: 10px;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1);
   position: relative;
   overflow: hidden;
 }
 
-.app-toolbar::after {
-  content: none;
+/* Page-level toolbar (filters/actions above a list). Used by QrGeneratorPage
+   and others; previously undefined. */
+.app-page-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
+.app-toolbar-title {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.app-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-stat {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--elev-1);
+}
+
+.app-empty {
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-1) 78%, transparent 22%);
+}
+
+.app-card {
+  position: relative;
+  transition:
+    transform 180ms ease,
+    box-shadow 220ms ease,
+    border-color 180ms ease;
+}
+
+.app-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elev-3);
+}
+
+.app-main-frame {
+  max-width: 1680px;
+}
+
+/* ============================================================================
+   4. ENTITY ACCENT
+   ----------------------------------------------------------------------------
+   The "icon in a tinted square" that heads every entity card. This used to be
+   written three different ways (bg-blue-50 / bg-sky-50 / bg-rose-50), which
+   rendered as three different colours depending on whether the colour happened
+   to appear in an override list. One class, one look.
+   ========================================================================== */
+
+.app-entity-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  color: var(--brand);
+  padding: 0.5rem;
+}
+
+:root[data-theme="dark"] .app-entity-icon {
+  color: #fda4af;
+}
+
+/* ============================================================================
+   5. CONTROLS
+   ========================================================================== */
+
 .app-input {
-  border-radius: 9px;
-  border: 1px solid var(--app-input-border);
-  background: var(--app-input-bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-input);
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
 }
 
 .app-input:focus {
-  border-color: #f43f5e;
-  box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.18);
+  border-color: var(--brand-light);
+  box-shadow: 0 0 0 3px var(--brand-ring);
   outline: none;
 }
 
 .app-btn-primary {
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   color: white;
   font-weight: 600;
   background: var(--app-primary-gradient);
@@ -177,7 +338,7 @@ body {
 }
 
 .app-btn-secondary {
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
   color: var(--app-secondary-text);
   border: 1px solid var(--app-secondary-border);
@@ -194,39 +355,26 @@ body {
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
 }
 
-.app-stat {
-  border: 1px solid var(--app-panel-border);
-  border-radius: 10px;
-  background: var(--app-panel-bg);
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
+/* Icon-only buttons sit at p-1.5 with a 14px glyph - about a 26px target.
+   This floors them at 32px so they stay comfortably tappable, without
+   changing any of the call sites. */
+.app-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  border-radius: var(--radius-sm);
 }
 
-.app-tabbar {
-  border-radius: 10px;
-  border: 1px solid var(--app-panel-border);
-  background: var(--app-toolbar-bg);
-}
+/* ============================================================================
+   6. NAVIGATION & CHROME
+   ========================================================================== */
 
-.app-tab {
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.app-tab.active {
-  color: var(--app-nav-active-text);
-  background: var(--app-nav-active-bg);
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.12);
-}
-
-.app-header {
+.app-header,
+.app-topbar {
   border-color: var(--app-header-border);
   background: var(--app-header-bg);
-}
-
-.app-nav-active {
-  background: var(--app-nav-active-bg) !important;
-  border-color: var(--app-nav-active-border) !important;
-  color: var(--app-nav-active-text) !important;
 }
 
 .app-sidebar {
@@ -236,72 +384,139 @@ body {
   -webkit-backdrop-filter: blur(12px);
 }
 
-.app-topbar {
-  border-color: var(--app-header-border);
-  background: var(--app-header-bg);
+.app-nav-active {
+  background: var(--app-nav-active-bg) !important;
+  border-color: var(--app-nav-active-border) !important;
+  color: var(--app-nav-active-text) !important;
 }
 
-.app-main-frame {
-  max-width: 1680px;
+/* Idle nav item - referenced throughout Layout.tsx but never defined, so the
+   idle state had no styling of its own at all. */
+.app-nav-idle {
+  color: var(--text-muted);
 }
 
-.app-page-title {
-  color: #0f172a;
+.app-nav-idle:hover {
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+
+/* Brand mark in the sidebar / mobile header. Also previously undefined. */
+.app-logo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 180ms ease, box-shadow 200ms ease;
+}
+
+.app-logo-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(190, 24, 93, 0.35);
+}
+
+.app-logo-live {
+  position: relative;
+}
+
+.app-tabbar {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--app-toolbar-bg);
+}
+
+.app-tab {
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.app-tab.active {
+  color: var(--app-nav-active-text);
+  background: var(--app-nav-active-bg);
+  box-shadow: var(--elev-1);
+}
+
+/* ============================================================================
+   7. TYPOGRAPHY ROLES
+   ========================================================================== */
+
+.app-page-title,
+.app-brand-title {
+  color: var(--text-strong);
   letter-spacing: 0;
 }
 
 .app-page-subtitle {
-  color: #64748b;
+  color: var(--text-faint);
 }
 
-.app-brand-title {
-  color: #0f172a;
-}
-
-.app-brand-subtitle {
-  color: #475569;
-  font-weight: 500;
-}
-
-.app-account-name {
-  color: #111827;
-}
-
+.app-brand-subtitle,
 .app-account-subtitle {
-  color: #475569;
+  color: var(--text-muted);
   font-weight: 500;
+}
+
+.app-account-name,
+.app-user-name {
+  color: var(--text-strong);
 }
 
 .app-session-pill {
-  color: #334155;
+  color: var(--text-muted);
 }
 
-.app-sidebar .text-slate-500 {
-  color: #475569;
+.app-user-email {
+  color: var(--text-faint);
 }
 
-.app-sidebar .text-slate-700 {
-  color: #1f2937;
+.app-user-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
 }
 
-.app-topbar .text-slate-500 {
-  color: #475569;
+/* ============================================================================
+   8. STATUS CHIPS
+   ----------------------------------------------------------------------------
+   ml-chip-* drive the toner-forecast severity chips. They were referenced in
+   PrinterCard but never defined, so "7 days left" and "90 days left" looked
+   identical - the severity signal was invisible.
+   ========================================================================== */
+
+.ml-chip {
+  border-color: var(--border-subtle);
+  background: var(--surface-2);
+  color: var(--text-muted);
 }
 
-.app-topbar .text-slate-700 {
-  color: #1f2937;
+.ml-chip-ok {
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+  color: var(--ok-fg);
 }
 
-.app-empty {
-  border: 1px dashed var(--app-panel-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--app-panel-bg) 78%, transparent 22%);
+.ml-chip-warning {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn-fg);
 }
+
+.ml-chip-critical {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-fg);
+}
+
+.app-status-dot {
+  box-shadow: 0 0 0 3px var(--ok-bg);
+}
+
+/* ============================================================================
+   9. FEEDBACK: skeletons, toasts, route transitions
+   ========================================================================== */
 
 .app-skeleton {
   position: relative;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(148, 163, 184, 0.16);
 }
 
@@ -314,78 +529,34 @@ body {
   animation: skeleton-sweep 1.25s ease-in-out infinite;
 }
 
-.app-status-dot {
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+@keyframes route-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.app-user-card {
-  background: color-mix(in srgb, var(--app-panel-bg) 88%, white 12%);
-  border: 1px solid var(--app-panel-border);
+.route-fade {
+  animation: route-fade-in 150ms ease-out;
 }
 
-.app-user-name {
-  color: #111827;
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.app-user-email {
-  color: #6b7280;
-}
-
-:root[data-theme="dark"] .app-user-card {
-  background: color-mix(in srgb, var(--app-panel-bg) 92%, transparent 8%);
-}
-
-:root[data-theme="dark"] .app-user-name {
-  color: #f3f4f6;
-}
-
-:root[data-theme="dark"] .app-user-email {
-  color: #9ca3af;
-}
-
-.app-card {
-  position: relative;
-  transition:
-    transform 180ms ease,
-    box-shadow 220ms ease,
-    border-color 180ms ease;
-}
-
-.app-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
-}
-
-:root[data-theme="dark"] .app-card:hover {
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.34);
-}
-
-:root[data-theme="dark"] .app-page-title {
-  color: #f8fafc;
-}
-
-:root[data-theme="dark"] .app-page-subtitle {
-  color: #94a3b8;
-}
-
-:root[data-theme="dark"] .app-brand-title {
-  color: #f1f5f9;
-}
-
-:root[data-theme="dark"] .app-brand-subtitle {
-  color: #94a3b8;
-}
-
-:root[data-theme="dark"] .app-account-name {
-  color: #f1f5f9;
-}
-
-:root[data-theme="dark"] .app-account-subtitle {
-  color: #94a3b8;
-}
-
-:root[data-theme="dark"] .app-session-pill {
-  color: #e2e8f0;
+.toast-in {
+  animation: toast-in 150ms ease-out;
 }
 
 .app-compact-scroll {
@@ -400,12 +571,138 @@ body {
 
 .app-compact-scroll::-webkit-scrollbar-thumb {
   background: rgba(190, 24, 93, 0.45);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .app-compact-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ============================================================================
+   10. DARK MODE UTILITY MAPPING
+   ----------------------------------------------------------------------------
+   Components use Tailwind's light-mode greys directly. Rather than collapsing
+   all of them into one flat colour (which is what used to happen and killed
+   every sense of depth), map each to its matching surface layer so the
+   original light/dark ordering is preserved.
+   ========================================================================== */
+
+:root[data-theme="dark"] .bg-white {
+  background-color: var(--surface-1) !important;
+}
+
+:root[data-theme="dark"] .bg-gray-50,
+:root[data-theme="dark"] .bg-slate-50 {
+  background-color: var(--surface-2) !important;
+}
+
+:root[data-theme="dark"] .bg-gray-100,
+:root[data-theme="dark"] .bg-slate-100 {
+  background-color: var(--surface-3) !important;
+}
+
+:root[data-theme="dark"] .text-slate-900,
+:root[data-theme="dark"] .text-gray-900 {
+  color: var(--text-strong) !important;
+}
+
+:root[data-theme="dark"] .text-slate-700,
+:root[data-theme="dark"] .text-gray-700,
+:root[data-theme="dark"] .text-slate-600,
+:root[data-theme="dark"] .text-gray-600 {
+  color: var(--text-muted) !important;
+}
+
+:root[data-theme="dark"] .text-slate-500,
+:root[data-theme="dark"] .text-gray-500,
+:root[data-theme="dark"] .text-gray-400 {
+  color: var(--text-faint) !important;
+}
+
+:root[data-theme="dark"] .border-slate-200,
+:root[data-theme="dark"] .border-slate-200\/70,
+:root[data-theme="dark"] .border-gray-200,
+:root[data-theme="dark"] .border-gray-100 {
+  border-color: var(--border-subtle) !important;
+}
+
+/* ============================================================================
+   11. BRAND MAPPING
+   ----------------------------------------------------------------------------
+   Components reach for assorted "generic UI blue" shades as filler when what
+   they actually mean is "the app's accent". Those are folded into the brand
+   here so the interface stays one colour family.
+
+   Deliberately NOT included: amber, orange, yellow, emerald, red, rose. Those
+   carry status meaning. Folding amber into crimson - which this file used to
+   do - turned every "heads up" into what looked like a failure.
+   ========================================================================== */
+
+.text-blue-600,
+.text-blue-700,
+.text-sky-600,
+.text-sky-700,
+.text-indigo-600,
+.text-indigo-700,
+.text-purple-600,
+.text-purple-700,
+.text-teal-600,
+.text-teal-700,
+.text-cyan-600,
+.text-violet-600 {
+  color: var(--app-accent-text) !important;
+}
+
+.bg-blue-50,
+.bg-sky-50,
+.bg-indigo-50,
+.bg-purple-50,
+.bg-teal-50,
+.bg-violet-50 {
+  background-color: var(--brand-soft) !important;
+}
+
+.border-blue-200,
+.border-blue-300,
+.border-sky-200,
+.border-indigo-200,
+.border-purple-200,
+.border-teal-200 {
+  border-color: var(--brand-border) !important;
+}
+
+.bg-blue-500,
+.bg-blue-600,
+.bg-sky-500,
+.bg-purple-600 {
+  background-color: var(--brand) !important;
+}
+
+.hover\:bg-blue-700:hover,
+.hover\:bg-purple-700:hover {
+  background-color: var(--brand-strong) !important;
+}
+
+.border-blue-500 {
+  border-color: var(--brand) !important;
+}
+
+.focus\:border-blue-500:focus {
+  border-color: var(--brand) !important;
+}
+
+.focus\:ring-blue-500:focus,
+.peer-focus\:ring-blue-300:focus {
+  --tw-ring-color: var(--brand-ring) !important;
+}
+
+.peer:checked ~ .peer-checked\:bg-blue-600 {
+  background-color: var(--brand) !important;
+}
+
+/* ============================================================================
+   12. RESPONSIVE & MOTION PREFERENCES
+   ========================================================================== */
 
 @supports not (
   (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
@@ -419,9 +716,17 @@ body {
   }
 }
 
+@media (min-width: 640px) {
+  .app-page-toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
 @media (max-width: 1024px) {
   .app-toolbar {
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
   }
 }
 
@@ -441,114 +746,20 @@ body {
     scroll-behavior: auto !important;
   }
 
-  .app-card:hover {
+  .app-card:hover,
+  .app-logo-btn:hover {
     transform: none;
+  }
+
+  .route-fade,
+  .toast-in {
+    animation: none;
   }
 }
 
-:root[data-theme="dark"] .app-tabbar {
-  border-color: var(--app-panel-border);
-  background: var(--app-toolbar-bg);
-}
-
-:root[data-theme="dark"] .app-tab.active {
-  color: var(--app-nav-active-text);
-  background: var(--app-nav-active-bg);
-  box-shadow: 0 3px 10px rgba(2, 6, 23, 0.3);
-}
-
-:root[data-theme="dark"] .app-stat {
-  border-color: var(--app-panel-border);
-  background: var(--app-panel-bg);
-}
-
-:root[data-theme="dark"] .text-slate-900,
-:root[data-theme="dark"] .text-gray-900 {
-  color: #e5e7eb !important;
-}
-
-:root[data-theme="dark"] .text-slate-600,
-:root[data-theme="dark"] .text-slate-500,
-:root[data-theme="dark"] .text-gray-500,
-:root[data-theme="dark"] .text-gray-400 {
-  color: #9ca3af !important;
-}
-
-:root[data-theme="dark"] .bg-white,
-:root[data-theme="dark"] .bg-gray-50,
-:root[data-theme="dark"] .bg-gray-100,
-:root[data-theme="dark"] .bg-slate-50 {
-  background-color: rgba(17, 24, 39, 0.84) !important;
-}
-
-:root[data-theme="dark"] .border-slate-200,
-:root[data-theme="dark"] .border-slate-200\/70,
-:root[data-theme="dark"] .border-gray-200 {
-  border-color: rgba(55, 65, 81, 0.7) !important;
-}
-
-/* Unified accent language: use one red accent, keep green for OK/online only */
-.text-blue-600,
-.text-blue-700,
-.text-indigo-600,
-.text-indigo-700,
-.text-purple-600,
-.text-purple-700,
-.text-teal-600,
-.text-teal-700,
-.text-orange-600,
-.text-amber-600,
-.text-cyan-600,
-.text-violet-600 {
-  color: var(--app-accent-text) !important;
-}
-
-.bg-blue-50,
-.bg-indigo-50,
-.bg-purple-50,
-.bg-teal-50,
-.bg-orange-50,
-.bg-amber-50,
-.bg-violet-50 {
-  background-color: var(--app-accent-soft) !important;
-}
-
-.border-blue-200,
-.border-blue-300,
-.border-indigo-200,
-.border-purple-200,
-.border-teal-200,
-.border-amber-200 {
-  border-color: var(--app-accent-border) !important;
-}
-
-.bg-blue-500,
-.bg-blue-600,
-.bg-purple-600 {
-  background-color: #be123c !important;
-}
-
-.hover\:bg-blue-700:hover,
-.hover\:bg-purple-700:hover {
-  background-color: #9f1239 !important;
-}
-
-.border-blue-500 {
-  border-color: #be123c !important;
-}
-
-.focus\:border-blue-500:focus {
-  border-color: #be123c !important;
-}
-
-.focus\:ring-blue-500:focus,
-.peer-focus\:ring-blue-300:focus {
-  --tw-ring-color: rgba(225, 29, 72, 0.25) !important;
-}
-
-.peer:checked ~ .peer-checked\:bg-blue-600 {
-  background-color: #be123c !important;
-}
+/* ============================================================================
+   13. KEYFRAMES & ANIMATION UTILITIES
+   ========================================================================== */
 
 @keyframes eq1 {
   0%,

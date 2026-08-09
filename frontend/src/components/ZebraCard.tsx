@@ -36,8 +36,8 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className={`rounded-lg p-2 ${isUsb ? "bg-violet-50" : "bg-amber-50"}`}>
-              {isUsb ? <Usb className="h-5 w-5 text-violet-600" /> : <Tag className="h-5 w-5 text-amber-600" />}
+            <div className="app-entity-icon">
+              {isUsb ? <Usb className="h-5 w-5" /> : <Tag className="h-5 w-5" />}
             </div>
             <div>
               <div className="font-medium text-sm text-gray-900">{printer.model}</div>

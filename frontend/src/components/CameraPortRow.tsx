@@ -51,9 +51,9 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className={`font-medium ${isDown ? "text-red-700" : "text-gray-800"}`}>{cam.description || cam.port}</span>
-          <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">VLAN {cam.vlan}</span>
+          <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">VLAN {cam.vlan}</span>
           {isDown && (
-            <span className="text-[10px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium">
+            <span className="text-[11px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium">
               нет линка
             </span>
           )}
@@ -68,12 +68,16 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
         </div>
       </div>
       {isSuperuser && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+        // Stays visible rather than appearing on hover: this button power-cycles
+        // a live camera, and a control that only exists on hover is unreachable
+        // on touch and invisible to keyboard focus.
+        <div className="flex items-center gap-1 opacity-70 transition group-hover:opacity-100 focus-within:opacity-100">
           <button
             onClick={handleReboot}
             disabled={rebooting}
-            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition disabled:opacity-40"
+            className="app-icon-btn hover:bg-red-50 text-gray-400 hover:text-red-600 transition disabled:opacity-40"
             title="Перезагрузить камеру (PoE cycle)"
+            aria-label={`Перезагрузить камеру на порту ${cam.port}`}
           >
             <RotateCcw className={`h-3.5 w-3.5 ${rebooting ? "animate-spin" : ""}`} />
           </button>
