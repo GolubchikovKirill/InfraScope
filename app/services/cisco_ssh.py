@@ -18,7 +18,13 @@ from dataclasses import dataclass
 
 import paramiko
 
-from app.observability.metrics import ssh_operations_total, switch_ops_total
+from app.observability.metrics import (
+    observe_duration,
+    ssh_connect_duration_seconds,
+    ssh_operations_total,
+    ssh_session_reuse_total,
+    switch_ops_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,40 +119,44 @@ class CiscoSSH:
         return self.connect()
 
     def connect(self) -> bool:
-        remembered = _AUTH_METHOD_CACHE.get(self._auth_cache_key)
-        if remembered:
-            method = self._strategy_for(remembered)
-            if method and method():
-                ssh_operations_total.labels(operation="connect", result="success", reason=remembered).inc()
-                return True
-            # Credentials or the switch's auth config changed - forget what we
-            # knew and fall through to a full probe.
-            _AUTH_METHOD_CACHE.pop(self._auth_cache_key, None)
+        # Duration of the whole method, cache hit or not: even the cached-
+        # method path still pays for a real TCP+auth handshake, it just skips
+        # the extra probe connection that used to precede it.
+        with observe_duration(ssh_connect_duration_seconds):
+            remembered = _AUTH_METHOD_CACHE.get(self._auth_cache_key)
+            if remembered:
+                method = self._strategy_for(remembered)
+                if method and method():
+                    ssh_operations_total.labels(operation="connect", result="success", reason=remembered).inc()
+                    return True
+                # Credentials or the switch's auth config changed - forget what
+                # we knew and fall through to a full probe.
+                _AUTH_METHOD_CACHE.pop(self._auth_cache_key, None)
 
-        allowed = self._query_auth_methods()
-        logger.info("SSH to %s: server allows auth methods: %s", self.ip, allowed)
+            allowed = self._query_auth_methods()
+            logger.info("SSH to %s: server allows auth methods: %s", self.ip, allowed)
 
-        strategies: list[tuple[str, Callable[[], bool]]] = []
-        if "password" in allowed:
-            strategies.append(("password", self._connect_password))
-        if "keyboard-interactive" in allowed:
-            strategies.append(("keyboard-interactive", self._connect_keyboard_interactive))
-        if not strategies:
-            strategies = [
-                ("password", self._connect_password),
-                ("keyboard-interactive", self._connect_keyboard_interactive),
-            ]
+            strategies: list[tuple[str, Callable[[], bool]]] = []
+            if "password" in allowed:
+                strategies.append(("password", self._connect_password))
+            if "keyboard-interactive" in allowed:
+                strategies.append(("keyboard-interactive", self._connect_keyboard_interactive))
+            if not strategies:
+                strategies = [
+                    ("password", self._connect_password),
+                    ("keyboard-interactive", self._connect_keyboard_interactive),
+                ]
 
-        for name, method in strategies:
-            logger.info("SSH to %s: trying %s auth", self.ip, name)
-            if method():
-                logger.info("SSH to %s: %s auth succeeded", self.ip, name)
-                _AUTH_METHOD_CACHE[self._auth_cache_key] = name
-                ssh_operations_total.labels(operation="connect", result="success", reason=name).inc()
-                return True
-            logger.warning("SSH to %s: %s auth failed", self.ip, name)
-            ssh_operations_total.labels(operation="connect", result="error", reason=name).inc()
-        return False
+            for name, method in strategies:
+                logger.info("SSH to %s: trying %s auth", self.ip, name)
+                if method():
+                    logger.info("SSH to %s: %s auth succeeded", self.ip, name)
+                    _AUTH_METHOD_CACHE[self._auth_cache_key] = name
+                    ssh_operations_total.labels(operation="connect", result="success", reason=name).inc()
+                    return True
+                logger.warning("SSH to %s: %s auth failed", self.ip, name)
+                ssh_operations_total.labels(operation="connect", result="error", reason=name).inc()
+            return False
 
     def _query_auth_methods(self) -> list[str]:
         """Ask the server which auth methods it supports."""
@@ -316,11 +326,25 @@ def _session_for(
     in by the caller is left open so the next operation in the same cycle can
     reuse it instead of paying for another handshake. Returns (None, ...) if
     no usable connection could be established.
+
+    Every call classifies itself into ssh_session_reuse_total - this is the
+    metric that shows the reuse win actually holding cycle over cycle, rather
+    than being something only visible by re-reading raw connection logs.
     """
     if session is not None:
-        return (session, False) if session.ensure_connected() else (None, False)
+        was_alive = session.is_alive()
+        if not session.ensure_connected():
+            ssh_session_reuse_total.labels(outcome="connect_failed").inc()
+            return None, False
+        ssh_session_reuse_total.labels(outcome="reused" if was_alive else "new_connection").inc()
+        return session, False
+
     ssh = CiscoSSH(ip, username, password, enable_password, port)
-    return (ssh, True) if ssh.connect() else (None, True)
+    if ssh.connect():
+        ssh_session_reuse_total.labels(outcome="new_connection").inc()
+        return ssh, True
+    ssh_session_reuse_total.labels(outcome="connect_failed").inc()
+    return None, True
 
 
 def get_switch_info(ip: str, username: str, password: str, enable_password: str = "", port: int = 22) -> SwitchInfo:

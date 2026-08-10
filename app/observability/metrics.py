@@ -83,6 +83,26 @@ ssh_operations_total = Counter(
     ["operation", "result", "reason"],
 )
 
+# Wall time to establish a brand-new SSH session (TCP + auth handshake), not
+# counting the command traffic that follows. Before session reuse, an AP
+# reboot cycle paid this on nearly every step - a full verification poll
+# alone could open a dozen connections to the same switch. Watching this
+# alongside ssh_session_reuse_total is how a regression that silently starts
+# opening a fresh connection per call again would actually get noticed,
+# instead of only being visible by re-reading raw logs by hand.
+ssh_connect_duration_seconds = Histogram(
+    "infrascope_ssh_connect_duration_seconds",
+    "Duration of establishing a new SSH connection to a switch.",
+    buckets=(0.25, 0.5, 1, 1.5, 2, 3, 5, 8, 12, 20, 30),
+)
+
+ssh_session_reuse_total = Counter(
+    "infrascope_ssh_session_reuse_total",
+    "Whether a switch operation reused an already-open SSH session or paid "
+    "for a new connection.",
+    ["outcome"],  # reused | new_connection | connect_failed
+)
+
 worker_tasks_enqueued_total = Counter(
     "infrascope_worker_tasks_enqueued_total",
     "Number of tasks enqueued for worker execution.",

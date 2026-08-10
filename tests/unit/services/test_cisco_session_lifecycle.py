@@ -142,6 +142,10 @@ def test_get_access_points_reuses_a_caller_supplied_session(monkeypatch):
         def __init__(self):
             self.ensure_calls = 0
             self.closed = False
+            self._alive = True
+
+        def is_alive(self):
+            return self._alive
 
         def ensure_connected(self):
             self.ensure_calls += 1
@@ -164,6 +168,63 @@ def test_get_access_points_reuses_a_caller_supplied_session(monkeypatch):
     assert result == []
     assert shared.ensure_calls == 1
     assert shared.closed is False
+
+
+def test_session_for_labels_a_live_shared_session_as_reused():
+    from app.services.cisco_ssh import _session_for
+
+    class _AliveSession:
+        def is_alive(self):
+            return True
+
+        def ensure_connected(self):
+            return True
+
+    before = _reuse_metric_value("reused")
+    session, owned = _session_for(_AliveSession(), "10.0.0.20", "admin", "pass", "enable", 22)
+
+    assert owned is False
+    assert session is not None
+    assert _reuse_metric_value("reused") == before + 1
+
+
+def test_session_for_labels_a_dead_shared_session_as_new_connection():
+    from app.services.cisco_ssh import _session_for
+
+    class _DeadThenReconnectedSession:
+        def is_alive(self):
+            return False
+
+        def ensure_connected(self):
+            return True
+
+    before = _reuse_metric_value("new_connection")
+    _session_for(_DeadThenReconnectedSession(), "10.0.0.21", "admin", "pass", "enable", 22)
+
+    assert _reuse_metric_value("new_connection") == before + 1
+
+
+def test_session_for_labels_a_failed_reconnect_as_connect_failed():
+    from app.services.cisco_ssh import _session_for
+
+    class _UnrecoverableSession:
+        def is_alive(self):
+            return False
+
+        def ensure_connected(self):
+            return False
+
+    before = _reuse_metric_value("connect_failed")
+    session, _owned = _session_for(_UnrecoverableSession(), "10.0.0.22", "admin", "pass", "enable", 22)
+
+    assert session is None
+    assert _reuse_metric_value("connect_failed") == before + 1
+
+
+def _reuse_metric_value(outcome: str) -> float:
+    from app.observability.metrics import ssh_session_reuse_total
+
+    return ssh_session_reuse_total.labels(outcome=outcome)._value.get()
 
 
 def test_cisco_ssh_close_closes_channel_and_transport():
