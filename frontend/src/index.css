@@ -66,6 +66,9 @@
 
   --border-subtle: #e7e0e1;
   --border-strong: #cfc6c8;
+  /* Row separators inside a table: present enough to guide the eye along a
+     line, faint enough that fifty of them don't read as a grid. */
+  --border-faint: #f0eaea;
 
   /* --- text ---
      Warm near-black rather than the blue-black #0f172a, and stopping short of
@@ -165,6 +168,7 @@
 
   --border-subtle: #322f38;
   --border-strong: #423e49;
+  --border-faint: #2a2830;
 
   --text-strong: #ece8e9;
   --text-default: #d7d2d4;
@@ -418,7 +422,11 @@ body {
 }
 
 .app-toner-track {
-  height: 6px;
+  /* Explicitly blockified. As an inline span it ignored height, which
+     collapsed the coloured fill inside it to nothing and left every cartridge
+     showing the same grey hairline. */
+  display: block;
+  height: 8px;
   border-radius: var(--radius-full);
   background: var(--surface-3);
   overflow: hidden;
@@ -431,6 +439,7 @@ body {
 }
 
 .app-toner-fill {
+  display: block;
   height: 100%;
   border-radius: var(--radius-full);
   transition: width 500ms ease;
