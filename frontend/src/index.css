@@ -23,6 +23,11 @@
   --brand-bright: #e11d48;
   --brand-light: #f43f5e;
   --brand-gradient: linear-gradient(135deg, #be123c, #e11d48);
+  /* Brand as a filled background carrying white text. Kept separate from
+     --brand, which is the text/accent value: in dark mode the accent has to
+     lighten to stay legible, and a lightened accent used as a fill would put
+     white text on a pale ground. */
+  --brand-fill: #be123c;
   --brand-soft: rgba(225, 29, 72, 0.1);
   --brand-border: rgba(225, 29, 72, 0.32);
   --brand-ring: rgba(225, 29, 72, 0.18);
@@ -37,31 +42,39 @@
   --warn-bg: rgba(245, 158, 11, 0.14);
   --warn-border: rgba(245, 158, 11, 0.4);
 
-  --danger-fg: #be123c;
-  --danger-bg: rgba(244, 63, 94, 0.12);
-  --danger-border: rgba(244, 63, 94, 0.38);
+  /* Pulled off the brand crimson deliberately: when danger and brand are the
+     same colour, an ordinary primary button and a real failure look alike. */
+  --danger-fg: #b02b1f;
+  --danger-bg: rgba(176, 43, 31, 0.1);
+  --danger-border: rgba(176, 43, 31, 0.3);
 
   --info-fg: #1d4ed8;
   --info-bg: rgba(59, 130, 246, 0.12);
   --info-border: rgba(59, 130, 246, 0.35);
 
-  /* --- surfaces --- */
+  /* --- surfaces ---
+     Neutrals carry a slight warm bias toward the brand crimson instead of the
+     usual cool slate, which was quietly fighting it. The page sits a step down
+     from the cards so panels lift without needing heavy shadow. */
   --surface-page:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.68) 0%, rgba(255, 255, 255, 0) 260px),
-    linear-gradient(180deg, #f7f8fa 0%, #eef1f5 100%);
-  --surface-1: rgba(255, 255, 255, 0.96);
-  --surface-2: rgba(248, 250, 252, 0.92);
-  --surface-3: rgba(241, 245, 249, 0.94);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 280px),
+    linear-gradient(180deg, #faf8f8 0%, #f2eeef 100%);
+  --surface-1: #fffdfd;
+  --surface-2: #f6f2f2;
+  --surface-3: #ede8e8;
   --surface-input: #ffffff;
 
-  --border-subtle: rgba(226, 232, 240, 0.95);
-  --border-strong: #cbd5e1;
+  --border-subtle: #e7e0e1;
+  --border-strong: #cfc6c8;
 
-  /* --- text --- */
-  --text-strong: #0f172a;
-  --text-default: #1f2937;
-  --text-muted: #475569;
-  --text-faint: #64748b;
+  /* --- text ---
+     Warm near-black rather than the blue-black #0f172a, and stopping short of
+     true black: pure black on pure white is the harshest pairing available and
+     reads as glare over a long shift. */
+  --text-strong: #221d1f;
+  --text-default: #3c3437;
+  --text-muted: #6a6064;
+  --text-faint: #8a7f84;
 
   /* --- radius scale --- */
   --radius-sm: 8px;
@@ -69,10 +82,12 @@
   --radius-lg: 14px;
   --radius-full: 999px;
 
-  /* --- elevation scale --- */
-  --elev-1: 0 6px 16px rgba(15, 23, 42, 0.05);
-  --elev-2: 0 8px 22px rgba(15, 23, 42, 0.06);
-  --elev-3: 0 14px 28px rgba(15, 23, 42, 0.12);
+  /* --- elevation scale ---
+     Warm-tinted rather than the usual blue-black, so shadows sit on the warm
+     ground instead of greying it. */
+  --elev-1: 0 2px 5px rgba(63, 48, 52, 0.05);
+  --elev-2: 0 4px 12px rgba(63, 48, 52, 0.07);
+  --elev-3: 0 10px 24px rgba(63, 48, 52, 0.12);
 
   /* --- smallest readable size. Never go below this. --- */
   --text-micro: 0.6875rem; /* 11px */
@@ -108,56 +123,69 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --brand-soft: rgba(225, 29, 72, 0.2);
-  --brand-border: rgba(244, 63, 94, 0.45);
-  --brand-ring: rgba(244, 63, 94, 0.3);
+  /* Dark mode is not the light palette inverted. Saturated hues that read as
+     confident on white turn neon against a dark ground, and near-white text
+     on near-black is the highest-contrast pairing there is - which is tiring
+     rather than crisp. So: surfaces lifted off pure black and warmed slightly
+     toward the brand, text softened well below #fff, and every status colour
+     desaturated rather than merely lightened. */
 
-  --ok-fg: #6ee7b7;
-  --ok-bg: rgba(16, 185, 129, 0.16);
-  --ok-border: rgba(16, 185, 129, 0.4);
-  --ok-dot: #34d399;
+  --brand: #d9718a;
+  --brand-bright: #e4879c;
+  --brand-light: #ec9dae;
+  --brand-fill: #a33350;
+  --brand-soft: rgba(217, 113, 138, 0.16);
+  --brand-border: rgba(217, 113, 138, 0.38);
+  --brand-ring: rgba(217, 113, 138, 0.28);
 
-  --warn-fg: #fcd34d;
-  --warn-bg: rgba(245, 158, 11, 0.16);
-  --warn-border: rgba(245, 158, 11, 0.42);
+  --ok-fg: #86b7a1;
+  --ok-bg: rgba(134, 183, 161, 0.13);
+  --ok-border: rgba(134, 183, 161, 0.32);
+  --ok-dot: #7cae98;
 
-  --danger-fg: #fda4af;
-  --danger-bg: rgba(244, 63, 94, 0.18);
-  --danger-border: rgba(244, 63, 94, 0.45);
+  --warn-fg: #cfa063;
+  --warn-bg: rgba(207, 160, 99, 0.13);
+  --warn-border: rgba(207, 160, 99, 0.32);
 
-  --info-fg: #93c5fd;
-  --info-bg: rgba(59, 130, 246, 0.16);
-  --info-border: rgba(59, 130, 246, 0.4);
+  --danger-fg: #d98b95;
+  --danger-bg: rgba(217, 139, 149, 0.14);
+  --danger-border: rgba(217, 139, 149, 0.34);
+
+  --info-fg: #93a9c9;
+  --info-bg: rgba(147, 169, 201, 0.13);
+  --info-border: rgba(147, 169, 201, 0.32);
 
   --surface-page:
-    linear-gradient(180deg, rgba(31, 41, 55, 0.55) 0%, rgba(31, 41, 55, 0) 260px),
-    linear-gradient(180deg, #0b0f14 0%, #111827 100%);
-  --surface-1: rgba(17, 24, 39, 0.9);
-  --surface-2: rgba(24, 33, 51, 0.9);
-  --surface-3: rgba(31, 41, 60, 0.92);
-  --surface-input: rgba(15, 23, 42, 0.88);
+    linear-gradient(180deg, rgba(46, 42, 46, 0.4) 0%, rgba(46, 42, 46, 0) 280px),
+    linear-gradient(180deg, #17161a 0%, #1b1a1f 100%);
+  --surface-1: #212026;
+  --surface-2: #26252c;
+  --surface-3: #2d2b33;
+  --surface-input: #1c1b21;
 
-  --border-subtle: rgba(55, 65, 81, 0.85);
-  --border-strong: #374151;
+  --border-subtle: #322f38;
+  --border-strong: #423e49;
 
-  --text-strong: #f8fafc;
-  --text-default: #e5e7eb;
-  --text-muted: #cbd5e1;
-  --text-faint: #94a3b8;
+  --text-strong: #ece8e9;
+  --text-default: #d7d2d4;
+  --text-muted: #a49ea2;
+  --text-faint: #837c81;
 
-  --elev-1: 0 6px 16px rgba(0, 0, 0, 0.28);
-  --elev-2: 0 8px 22px rgba(0, 0, 0, 0.32);
-  --elev-3: 0 16px 32px rgba(0, 0, 0, 0.34);
+  /* Shadow does almost no work on a dark ground; separation comes from the
+     surface steps above, so these stay restrained instead of muddying it. */
+  --elev-1: 0 2px 6px rgba(0, 0, 0, 0.3);
+  --elev-2: 0 4px 12px rgba(0, 0, 0, 0.34);
+  --elev-3: 0 10px 24px rgba(0, 0, 0, 0.4);
 
-  --app-toolbar-bg: rgba(17, 24, 39, 0.82);
-  --app-secondary-text: #e5e7eb;
-  --app-secondary-bg: rgba(17, 24, 39, 0.88);
-  --app-secondary-border: #374151;
-  --app-header-bg: rgba(12, 18, 30, 0.9);
-  --app-nav-active-text: #fecdd3;
-  --app-sidebar-bg: rgba(10, 14, 24, 0.94);
-  --app-primary-gradient: linear-gradient(135deg, #9f1239, #e11d48);
-  --app-accent-text: #fecdd3;
+  --app-toolbar-bg: #232128;
+  --app-secondary-text: #d7d2d4;
+  --app-secondary-bg: #26252c;
+  --app-secondary-border: #3a3742;
+  --app-header-bg: rgba(30, 29, 35, 0.92);
+  --app-nav-active-text: #e4879c;
+  --app-sidebar-bg: #1d1c21;
+  --app-primary-gradient: linear-gradient(135deg, #a33350, #c25069);
+  --app-accent-text: #d9718a;
 }
 
 /* ============================================================================
@@ -324,7 +352,9 @@ body {
   color: white;
   font-weight: 600;
   background: var(--app-primary-gradient);
-  box-shadow: 0 8px 18px rgba(190, 24, 93, 0.32);
+  /* A restrained lift, not a coloured glow - the old crimson halo read as a
+     neon rim once the surrounding neutrals stopped being cold. */
+  box-shadow: 0 2px 6px rgba(120, 30, 50, 0.2);
   transition:
     transform 0.18s ease,
     filter 0.2s ease,
@@ -332,9 +362,9 @@ body {
 }
 
 .app-btn-primary:hover {
-  filter: brightness(1.06);
+  filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(190, 24, 93, 0.36);
+  box-shadow: 0 5px 14px rgba(120, 30, 50, 0.26);
 }
 
 .app-btn-secondary {
@@ -350,9 +380,9 @@ body {
 }
 
 .app-btn-secondary:hover {
-  filter: brightness(1.06);
+  background: var(--surface-2);
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  box-shadow: var(--elev-1);
 }
 
 /* Icon-only buttons sit at p-1.5 with a 14px glyph - about a 26px target.
@@ -517,7 +547,7 @@ body {
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-sm);
-  background: rgba(148, 163, 184, 0.16);
+  background: var(--surface-3);
 }
 
 .app-skeleton::after {
@@ -525,8 +555,12 @@ body {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
   animation: skeleton-sweep 1.25s ease-in-out infinite;
+}
+
+:root[data-theme="dark"] .app-skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
 }
 
 @keyframes route-fade-in {
@@ -559,9 +593,11 @@ body {
   animation: toast-in 150ms ease-out;
 }
 
+/* A scrollbar is furniture, not an accent. The crimson one was the loudest
+   thing on a quiet page. */
 .app-compact-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(190, 24, 93, 0.45) transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .app-compact-scroll::-webkit-scrollbar {
@@ -570,8 +606,12 @@ body {
 }
 
 .app-compact-scroll::-webkit-scrollbar-thumb {
-  background: rgba(190, 24, 93, 0.45);
+  background: var(--border-strong);
   border-radius: var(--radius-full);
+}
+
+.app-compact-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--text-faint);
 }
 
 .app-compact-scroll::-webkit-scrollbar-track {
@@ -675,7 +715,7 @@ body {
 .bg-blue-600,
 .bg-sky-500,
 .bg-purple-600 {
-  background-color: var(--brand) !important;
+  background-color: var(--brand-fill) !important;
 }
 
 .hover\:bg-blue-700:hover,
@@ -697,7 +737,7 @@ body {
 }
 
 .peer:checked ~ .peer-checked\:bg-blue-600 {
-  background-color: var(--brand) !important;
+  background-color: var(--brand-fill) !important;
 }
 
 /* ============================================================================
