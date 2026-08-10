@@ -107,100 +107,98 @@ export default function CartridgeStockPanel({
           <div className="mt-1 text-sm">Заполните наименования картриджей в принтерах и нажмите синхронизацию</div>
         </div>
       ) : (
-        <div className="app-panel overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-100 text-sm">
-              <thead className="bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
-                <tr>
-                  <th className="px-4 py-3">Картридж</th>
-                  <th className="px-4 py-3">Цвет</th>
-                  <th className="px-4 py-3">Принтеры</th>
-                  <th className="px-4 py-3">Остаток</th>
-                  <th className="px-4 py-3">Минимум</th>
-                  <th className="px-4 py-3 text-right">Действия</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map((row) => {
-                  const draft = draftFor(row);
-                  const low = row.quantity_on_hand <= row.minimum_stock;
-                  return (
-                    <tr key={row.id} className={low ? "bg-amber-50/70" : "bg-white"}>
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900">{row.cartridge_name}</div>
-                        <div className="text-xs text-gray-500">{row.printer_count} принт.</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex min-w-7 justify-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                          {colorLabel(row.toner_color)}
-                        </span>
-                      </td>
-                      <td className="max-w-xs px-4 py-3 text-xs text-gray-500">
-                        <div className="line-clamp-2" title={row.compatible_printer_models}>
-                          {row.compatible_printer_models || "—"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          value={draft.quantity}
-                          onChange={(event) => updateDraft(row.id, { quantity: event.target.value })}
-                          disabled={!isSuperuser}
-                          inputMode="numeric"
-                          className="app-input w-20 px-2 py-1 text-sm tabular-nums disabled:bg-gray-50"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          value={draft.minimum}
-                          onChange={(event) => updateDraft(row.id, { minimum: event.target.value })}
-                          disabled={!isSuperuser}
-                          inputMode="numeric"
-                          className="app-input w-20 px-2 py-1 text-sm tabular-nums disabled:bg-gray-50"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => onSelect(row.id)}
-                            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-                            title="История"
-                            aria-label="История движений"
-                          >
-                            <History className="size-4" />
-                          </button>
-                          {isSuperuser && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => saveDraft(row)}
-                                disabled={savingId === row.id}
-                                className="rounded-lg p-1.5 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50"
-                                title="Сохранить остаток"
-                                aria-label="Сохранить остаток"
-                              >
-                                <Save className="size-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onIssue(row.id)}
-                                disabled={savingId === row.id || row.quantity_on_hand <= 0}
-                                className="rounded-lg p-1.5 text-gray-500 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40"
-                                title="Выдать 1 картридж"
-                                aria-label="Выдать 1 картридж"
-                              >
-                                <Minus className="size-4" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <div className="app-table-wrap">
+          <table className="app-table min-w-full">
+            <thead>
+              <tr>
+                <th>Картридж</th>
+                <th>Цвет</th>
+                <th>Принтеры</th>
+                <th>Остаток</th>
+                <th>Минимум</th>
+                <th className="text-right">Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const draft = draftFor(row);
+                const low = row.quantity_on_hand <= row.minimum_stock;
+                return (
+                  <tr key={row.id} className={low ? "bg-[var(--warn-bg)]" : undefined}>
+                    <td>
+                      <div className="app-card-title">{row.cartridge_name}</div>
+                      <div className="app-card-meta">{row.printer_count} принт.</div>
+                    </td>
+                    <td>
+                      <span className="inline-flex min-w-7 justify-center rounded-full bg-[var(--surface-3)] px-2 py-0.5 text-xs font-medium text-[var(--text-default)]">
+                        {colorLabel(row.toner_color)}
+                      </span>
+                    </td>
+                    <td className="max-w-xs app-card-meta">
+                      <div className="line-clamp-2" title={row.compatible_printer_models}>
+                        {row.compatible_printer_models || "—"}
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        value={draft.quantity}
+                        onChange={(event) => updateDraft(row.id, { quantity: event.target.value })}
+                        disabled={!isSuperuser}
+                        inputMode="numeric"
+                        className="app-input w-20 px-2 py-1 text-sm tabular-nums disabled:bg-[var(--surface-2)]"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        value={draft.minimum}
+                        onChange={(event) => updateDraft(row.id, { minimum: event.target.value })}
+                        disabled={!isSuperuser}
+                        inputMode="numeric"
+                        className="app-input w-20 px-2 py-1 text-sm tabular-nums disabled:bg-[var(--surface-2)]"
+                      />
+                    </td>
+                    <td>
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onSelect(row.id)}
+                          className="app-icon-btn text-[var(--text-faint)] hover:bg-[var(--surface-2)] hover:text-[var(--text-default)]"
+                          title="История"
+                          aria-label="История движений"
+                        >
+                          <History className="size-4" />
+                        </button>
+                        {isSuperuser && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => saveDraft(row)}
+                              disabled={savingId === row.id}
+                              className="app-icon-btn text-[var(--text-faint)] hover:bg-[var(--ok-bg)] hover:text-[var(--ok-fg)] disabled:opacity-50"
+                              title="Сохранить остаток"
+                              aria-label="Сохранить остаток"
+                            >
+                              <Save className="size-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onIssue(row.id)}
+                              disabled={savingId === row.id || row.quantity_on_hand <= 0}
+                              className="app-icon-btn text-[var(--text-faint)] hover:bg-[var(--danger-bg)] hover:text-[var(--danger-fg)] disabled:opacity-40"
+                              title="Выдать 1 картридж"
+                              aria-label="Выдать 1 картридж"
+                            >
+                              <Minus className="size-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 

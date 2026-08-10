@@ -21,6 +21,7 @@ import {
   type ScanProgress,
 } from "../client";
 import { useAuth } from "../auth";
+import DiscoveryStatusBadge from "./DiscoveryStatusBadge";
 
 export default function NetworkScanner() {
   const { user } = useAuth();
@@ -183,39 +184,25 @@ export default function NetworkScanner() {
 
       {/* Results */}
       {devices.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-sm font-medium text-gray-700">
+        <div className="app-table-wrap">
+          <div className="px-5 py-3 border-b border-[var(--border-subtle)] bg-[var(--surface-2)]">
+            <h3 className="app-card-title">
               Найденные устройства ({devices.length})
             </h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="app-table min-w-full">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    IP
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    MAC
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Порты
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Модель
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Статус
-                  </th>
-                  {isSuperuser && (
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                      Действия
-                    </th>
-                  )}
+                  <th>IP</th>
+                  <th>MAC</th>
+                  <th>Порты</th>
+                  <th>Модель</th>
+                  <th>Статус</th>
+                  {isSuperuser && <th className="text-right">Действия</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody>
                 {devices.map((dev) => (
                   <DeviceRow
                     key={dev.ip}
@@ -284,38 +271,14 @@ function DeviceRow({
   isAdding: boolean;
   isUpdating: boolean;
 }) {
-  const statusBadge = () => {
-    if (device.ip_changed) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-2.5 py-0.5 text-xs font-medium">
-          <ArrowRightLeft className="h-3 w-3" />
-          IP сменился
-        </span>
-      );
-    }
-    if (device.is_known) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-0.5 text-xs font-medium">
-          <CheckCircle2 className="h-3 w-3" />
-          Известен
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2.5 py-0.5 text-xs font-medium">
-        Новый
-      </span>
-    );
-  };
-
   return (
-    <tr className="hover:bg-gray-50 transition">
-      <td className="px-4 py-3 text-sm font-mono text-gray-900">{device.ip}</td>
-      <td className="px-4 py-3 text-sm font-mono text-gray-500">{device.mac || "—"}</td>
-      <td className="px-4 py-3 text-sm text-gray-500">
+    <tr>
+      <td className="app-mono">{device.ip}</td>
+      <td className="app-mono app-card-meta">{device.mac || "—"}</td>
+      <td className="app-card-meta">
         {device.open_ports.join(", ")}
       </td>
-      <td className="px-4 py-3 text-sm text-gray-700">
+      <td>
         {device.hostname ? (
           <span title={device.hostname}>
             {device.hostname.length > 40
@@ -323,17 +286,18 @@ function DeviceRow({
               : device.hostname}
           </span>
         ) : (
-          <span className="text-gray-400">—</span>
+          <span className="text-[var(--text-faint)]">—</span>
         )}
       </td>
-      <td className="px-4 py-3">{statusBadge()}</td>
+      <td><DiscoveryStatusBadge ipChanged={device.ip_changed} isKnown={device.is_known} /></td>
       {isSuperuser && (
-        <td className="px-4 py-3 text-right">
+        <td className="text-right">
           {device.ip_changed && device.known_printer_id && (
             <button
               onClick={() => onUpdateIp(device)}
               disabled={isUpdating}
-              className="inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition"
+              className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:opacity-50"
+              style={{ background: "var(--warn-bg)", borderColor: "var(--warn-border)", color: "var(--warn-fg)" }}
             >
               <ArrowRightLeft className="h-3 w-3" />
               Обновить IP
@@ -343,7 +307,7 @@ function DeviceRow({
             <button
               onClick={() => onAdd(device)}
               disabled={isAdding}
-              className="inline-flex items-center gap-1 rounded-lg bg-blue-50 border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition"
+              className="app-btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-xs"
             >
               <Plus className="h-3 w-3" />
               Добавить

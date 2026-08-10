@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* The app's theme is a manual toggle stamped as data-theme on <html>
+   (see theme.ts), not the OS preference. Tailwind's dark: variant defaults to
+   prefers-color-scheme, so every dark: utility in the app was silently
+   answering to the OS setting instead - a light-themed page with the OS set
+   to dark showed a jarring mix of both. Redefining the variant here fixes
+   every existing dark: usage app-wide instead of patching each call site. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ============================================================================
    1. TOKENS
    ----------------------------------------------------------------------------

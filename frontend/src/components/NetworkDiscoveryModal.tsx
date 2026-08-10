@@ -13,6 +13,7 @@ import {
   updateDiscoveredSwitchIp,
   type DiscoveredNetworkDevice,
 } from "../client";
+import DiscoveryStatusBadge from "./DiscoveryStatusBadge";
 
 type DiscoveryKind = "iconbit" | "switch";
 
@@ -161,43 +162,31 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
             </div>
           )}
         </div>
-        <div className="overflow-auto max-h-[60vh] app-compact-scroll">
-          <table className="w-full text-xs">
-            <thead className="bg-slate-50 sticky top-0 z-10">
-              <tr className="text-left text-slate-600">
-                <th className="px-3 py-2">IP</th>
-                <th className="px-3 py-2">MAC</th>
-                <th className="px-3 py-2">Порты</th>
-                <th className="px-3 py-2">Hostname</th>
-                <th className="px-3 py-2">Модель</th>
-                <th className="px-3 py-2">Vendor</th>
-                <th className="px-3 py-2">Статус</th>
-                <th className="px-3 py-2">Действия</th>
+        <div className="app-table-wrap app-compact-scroll max-h-[60vh] overflow-auto border-0 rounded-none">
+          <table className="app-table w-full">
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th>MAC</th>
+                <th>Порты</th>
+                <th>Hostname</th>
+                <th>Модель</th>
+                <th>Vendor</th>
+                <th>Статус</th>
+                <th>Действия</th>
               </tr>
             </thead>
             <tbody>
               {devices.map((d) => (
-                <tr key={d.ip} className="border-t border-slate-100 hover:bg-slate-50/60">
-                  <td className="px-3 py-2 font-mono">{d.ip}</td>
-                  <td className="px-3 py-2 font-mono">{d.mac || "—"}</td>
-                  <td className="px-3 py-2">{d.open_ports.join(", ")}</td>
-                  <td className="px-3 py-2">{d.hostname || "—"}</td>
-                  <td className="px-3 py-2">{d.model_info || "—"}</td>
-                  <td className="px-3 py-2">{d.vendor || "—"}</td>
-                  <td className="px-3 py-2">
-                    {d.ip_changed ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-2 py-0.5">
-                        <ArrowRightLeft className="h-3 w-3" /> IP сменился
-                      </span>
-                    ) : d.is_known ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">
-                        <CheckCircle2 className="h-3 w-3" /> Известен
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-rose-100 text-rose-700 px-2 py-0.5">Новый</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
+                <tr key={d.ip}>
+                  <td className="app-mono">{d.ip}</td>
+                  <td className="app-mono">{d.mac || "—"}</td>
+                  <td>{d.open_ports.join(", ")}</td>
+                  <td>{d.hostname || "—"}</td>
+                  <td>{d.model_info || "—"}</td>
+                  <td>{d.vendor || "—"}</td>
+                  <td><DiscoveryStatusBadge ipChanged={d.ip_changed} isKnown={d.is_known} /></td>
+                  <td>
                     {d.ip_changed && d.known_device_id ? (
                       <button
                         onClick={() => updateIpMut.mutate(d)}
@@ -215,7 +204,7 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
                         <Plus className="h-3 w-3" /> Добавить
                       </button>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-[var(--text-faint)]">—</span>
                     )}
                   </td>
                 </tr>
@@ -223,7 +212,7 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
             </tbody>
           </table>
           {progress.status === "done" && devices.length === 0 && (
-            <div className="p-8 text-sm text-slate-500 text-center">Устройства не найдены</div>
+            <div className="p-8 text-sm text-[var(--text-faint)] text-center">Устройства не найдены</div>
           )}
         </div>
       </div>

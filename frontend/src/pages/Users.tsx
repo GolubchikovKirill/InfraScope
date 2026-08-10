@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../auth";
 import UserForm from "../components/UserForm";
 import { useConfirm } from "../components/ConfirmDialog";
+import OnlineStatusBadge from "../components/OnlineStatusBadge";
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
@@ -114,17 +115,17 @@ export default function UsersPage() {
       </div>
 
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3">
-        <div className="app-stat bg-gray-100 px-4 py-3">
-          <div className="text-2xl font-bold text-gray-900">{users.length}</div>
-          <div className="text-xs text-gray-500 mt-0.5">Всего</div>
+        <div className="app-stat px-4 py-3">
+          <div className="text-2xl font-bold tabular-nums text-[var(--text-strong)]">{users.length}</div>
+          <div className="app-card-meta mt-0.5">Всего</div>
         </div>
-        <div className="app-stat bg-rose-50 px-4 py-3">
-          <div className="text-2xl font-bold text-rose-700">{users.filter((u) => u.is_superuser).length}</div>
-          <div className="text-xs text-gray-500 mt-0.5">Администраторы</div>
+        <div className="app-stat px-4 py-3 bg-[var(--brand-soft)]">
+          <div className="text-2xl font-bold tabular-nums text-[var(--brand)]">{users.filter((u) => u.is_superuser).length}</div>
+          <div className="app-card-meta mt-0.5">Администраторы</div>
         </div>
-        <div className="app-stat bg-emerald-50 px-4 py-3">
-          <div className="text-2xl font-bold text-emerald-700">{users.filter((u) => u.is_active).length}</div>
-          <div className="text-xs text-gray-500 mt-0.5">Активные</div>
+        <div className="app-stat px-4 py-3 bg-[var(--ok-bg)]">
+          <div className="text-2xl font-bold tabular-nums text-[var(--ok-fg)]">{users.filter((u) => u.is_active).length}</div>
+          <div className="app-card-meta mt-0.5">Активные</div>
         </div>
       </div>
 
@@ -137,56 +138,48 @@ export default function UsersPage() {
           <p className="text-lg">Нет пользователей</p>
         </div>
       ) : (
-        <div className="app-panel overflow-hidden app-compact-scroll">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="app-table-wrap app-compact-scroll">
+          <table className="app-table min-w-full">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Пользователь</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Онлайн</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Действия</th>
+                <th>Пользователь</th>
+                <th>Онлайн</th>
+                <th className="text-right">Действия</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody>
               {visibleUsers.map((u) => (
-                <tr key={u.id} className="hover:bg-gray-50 transition">
-                  <td className="px-4 py-3">
+                <tr key={u.id}>
+                  <td>
                     <div className="flex items-center gap-3">
-                      <div className={`flex items-center justify-center h-8 w-8 rounded-full ${u.is_superuser ? "bg-rose-100" : "bg-gray-100"}`}>
+                      <div className={`flex items-center justify-center h-8 w-8 rounded-full ${u.is_superuser ? "bg-[var(--brand-soft)]" : "bg-[var(--surface-3)]"}`}>
                         {u.is_superuser ? (
-                          <Shield className="h-4 w-4 text-rose-600" />
+                          <Shield className="h-4 w-4 text-[var(--brand)]" />
                         ) : (
-                          <UserIcon className="h-4 w-4 text-gray-500" />
+                          <UserIcon className="h-4 w-4 text-[var(--text-faint)]" />
                         )}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-gray-900 inline-flex items-center gap-1.5">
+                        <div className="app-card-title inline-flex items-center gap-1.5">
                           <span>{u.full_name || "—"}</span>
                           {u.is_superuser ? (
-                            <span title="Администратор"><Shield className="h-3.5 w-3.5 text-rose-600" /></span>
+                            <span title="Администратор"><Shield className="h-3.5 w-3.5 text-[var(--brand)]" /></span>
                           ) : (
-                            <span title="Пользователь"><UserIcon className="h-3.5 w-3.5 text-slate-500" /></span>
+                            <span title="Пользователь"><UserIcon className="h-3.5 w-3.5 text-[var(--text-faint)]" /></span>
                           )}
                         </div>
-                        <div className="text-xs text-gray-500">{u.email}</div>
+                        <div className="app-card-meta">{u.email}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    {u.is_active && isRecentlyOnline(u.last_seen_at) ? (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
-                        Онлайн
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-700">
-                        Оффлайн
-                      </span>
-                    )}
+                  <td>
+                    <OnlineStatusBadge isOnline={u.is_active && isRecentlyOnline(u.last_seen_at)} />
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => { setEditingUser(u); setFormError(null); setShowForm(true); }}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
+                        className="app-icon-btn text-[var(--text-faint)] hover:bg-[var(--surface-2)] hover:text-[var(--text-default)] transition"
                         title="Редактировать"
                       >
                         <Pencil className="h-4 w-4" />
@@ -194,7 +187,7 @@ export default function UsersPage() {
                       {u.id !== currentUser?.id && (
                         <button
                           onClick={() => handleDelete(u)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition"
+                          className="app-icon-btn text-[var(--text-faint)] hover:bg-[var(--danger-bg)] hover:text-[var(--danger-fg)] transition"
                           title="Удалить"
                         >
                           <Trash2 className="h-4 w-4" />

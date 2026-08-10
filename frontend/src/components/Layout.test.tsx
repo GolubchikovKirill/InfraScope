@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import type { ReactNode } from "react";
@@ -84,6 +84,34 @@ describe("Layout account block", () => {
 
     expect(localStorage.getItem("infrascope:theme-mode")).toBe("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+  });
+
+  it("can bring the sidebar back after hiding it", async () => {
+    // Regression: the restore button used to sit under .app-topbar in the
+    // stacking order (z-10 vs the topbar's z-20), so it rendered but ate no
+    // clicks - once hidden, the sidebar had no way back.
+    authState.user = {
+      email: "admin@infrascope.dev",
+      full_name: "Admin",
+      is_superuser: true,
+    };
+
+    renderLayout("/");
+
+    expect(screen.queryByTitle("Показать меню")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Свернуть/развернуть меню"));
+    expect(localStorage.getItem("infrascope_sidebar_hidden")).toBe("1");
+
+    const restoreButton = await screen.findByTitle("Показать меню");
+    fireEvent.click(restoreButton);
+
+    expect(localStorage.getItem("infrascope_sidebar_hidden")).toBe("0");
+    // The button unmounts via an AnimatePresence exit transition rather than
+    // instantly, so give it a moment instead of asserting synchronously.
+    await waitFor(() => {
+      expect(screen.queryByTitle("Показать меню")).not.toBeInTheDocument();
+    });
   });
 
   it("shows Honest Sign to any authenticated user", () => {

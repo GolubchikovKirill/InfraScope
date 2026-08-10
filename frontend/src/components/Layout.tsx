@@ -209,13 +209,17 @@ export default function Layout({ children }: { children: ReactNode }) {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="hidden md:flex px-3 sm:px-5 lg:px-8 pt-3 absolute z-10"
+              // z-40: was z-10, sitting UNDER .app-topbar's z-20 in the same
+              // stacking context. They overlap in the top-left corner, so the
+              // topbar was silently eating every click meant for this button
+              // - the sidebar had no way back once hidden.
+              className="hidden md:flex px-3 sm:px-5 lg:px-8 pt-3 absolute z-40"
             >
               <button
                 type="button"
                 onClick={handleToggleSidebar}
-                className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs app-btn-secondary app-logo-live backdrop-blur-md bg-white/70 dark:bg-slate-900/70"
-                title="Развернуть меню"
+                className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs app-btn-secondary app-logo-live backdrop-blur-md bg-[var(--surface-1)]/85"
+                title="Показать меню"
               >
                 <Server className="h-4 w-4" />
                 InfraScope
