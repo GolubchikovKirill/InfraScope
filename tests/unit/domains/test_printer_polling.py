@@ -8,6 +8,7 @@ from app.domains.inventory.models import Printer
 from app.domains.inventory.printer_polling import (
     _apply_full_printer_result,
     _apply_light_printer_result,
+    _subnets_with_total_failure,
     is_full_poll_cycle,
     poll_one_printer,
     poll_printer_batch,
@@ -147,6 +148,60 @@ def test_apply_light_printer_result_preserves_toner_levels() -> None:
     assert printer.is_online is True
     assert printer.toner_black == 42
     assert printer.mac_status == "verified"
+
+
+def test_whole_subnet_failing_at_once_is_flagged_as_a_path_problem(monkeypatch) -> None:
+    """Printers don't all fail inside one 15-minute window - the path does."""
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
+
+    results = {
+        "10.10.98.10": (None, None),
+        "10.10.98.11": (None, None),
+        "10.10.98.12": (None, None),
+        "10.10.98.13": (None, None),
+    }
+
+    assert _subnets_with_total_failure(results) == {"10.10.98"}
+
+
+def test_one_printer_down_among_healthy_neighbours_is_not_a_path_problem(monkeypatch) -> None:
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
+
+    results = {
+        "10.10.98.10": (None, None),
+        "10.10.98.11": ({"is_online": True}, None),
+        "10.10.98.12": ({"is_online": True}, None),
+        "10.10.98.13": ({"is_online": True}, None),
+    }
+
+    assert _subnets_with_total_failure(results) == set()
+
+
+def test_a_lone_printer_failing_is_never_treated_as_a_path_problem(monkeypatch) -> None:
+    """Below the device threshold there is no evidence to tell "the printer
+    broke" from "the path broke", so the normal per-device logic must run."""
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
+
+    assert _subnets_with_total_failure({"10.10.98.10": (None, None)}) == set()
+
+
+def test_subnets_are_judged_independently(monkeypatch) -> None:
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
+
+    results = {
+        "10.10.98.10": (None, None),
+        "10.10.98.11": (None, None),
+        "10.10.98.12": (None, None),
+        "10.10.99.10": ({"is_online": True}, None),
+        "10.10.99.11": ({"is_online": True}, None),
+        "10.10.99.12": ({"is_online": True}, None),
+    }
+
+    assert _subnets_with_total_failure(results) == {"10.10.98"}
 
 
 def test_apply_full_printer_result_stamps_toner_updated_at() -> None:

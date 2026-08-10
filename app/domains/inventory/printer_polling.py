@@ -64,6 +64,47 @@ def is_full_poll_cycle() -> bool:
     return (datetime.now(UTC).minute // 15) % n == 0
 
 
+def _subnet_of(ip: str) -> str:
+    return ip.rsplit(".", 1)[0]
+
+
+def _result_is_online(result: object | None) -> bool:
+    return bool(
+        result
+        and (
+            (isinstance(result, dict) and result.get("is_online"))
+            or (hasattr(result, "is_online") and result.is_online)
+        )
+    )
+
+
+def _subnets_with_total_failure(poll_results: dict[str, tuple[object | None, str | None]]) -> set[str]:
+    """Subnets where practically everything stopped answering in one cycle.
+
+    A store's worth of printers does not fail inside the same 15-minute
+    window - the link or the route to them does. Recording that as N
+    independent device outages produces N false offline badges and N false
+    events, and buries the one fact worth knowing: the path is down. When
+    this fires, the cycle leaves those printers' state alone rather than
+    guessing on evidence it doesn't have.
+    """
+    min_devices = max(settings.POLL_PATH_FAILURE_MIN_DEVICES, 2)
+    ratio = min(max(settings.POLL_PATH_FAILURE_RATIO, 0.0), 1.0)
+
+    by_subnet: dict[str, list[bool]] = {}
+    for ip, (result, _mac) in poll_results.items():
+        by_subnet.setdefault(_subnet_of(ip), []).append(_result_is_online(result))
+
+    suspect: set[str] = set()
+    for subnet, outcomes in by_subnet.items():
+        if len(outcomes) < min_devices:
+            continue
+        failed = sum(1 for online in outcomes if not online)
+        if failed / len(outcomes) >= ratio:
+            suspect.add(subnet)
+    return suspect
+
+
 def poll_one_printer(printer: Printer, *, full: bool = True) -> tuple[str, object | None, str | None]:
     if printer.connection_type == "usb" or not printer.ip_address:
         return "", None, None
@@ -258,16 +299,40 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
         poll_results = await asyncio.to_thread(poll_printer_batch, poll_targets, full=full) if poll_targets else {}
         offline_with_mac: list[Printer] = []
 
+        suspect_subnets = _subnets_with_total_failure(poll_results)
+        for subnet in sorted(suspect_subnets):
+            write_event_log(
+                session,
+                category="network",
+                event_type="poll_path_suspect",
+                severity="warning",
+                device_kind="printer",
+                device_name=f"{subnet}.0/24",
+                ip_address=None,
+                message=(
+                    f"Опрос: почти все принтеры подсети {subnet}.0/24 перестали отвечать в одном "
+                    "цикле - похоже на обрыв пути до подсети, а не на отказ каждого устройства. "
+                    "Их состояние оставлено без изменений до следующего цикла."
+                ),
+            )
+        if suspect_subnets:
+            session.commit()
+
         for ip, (result, current_mac) in poll_results.items():
             printer = printer_map[ip]
+
+            if _subnet_of(ip) in suspect_subnets:
+                # Deliberately touch nothing - not the state, and not
+                # last_polled_at either. Bumping the timestamp would make the
+                # card read as freshly confirmed when this cycle actually
+                # learned nothing about the printer.
+                printer_polls_total.labels(
+                    mode="all", printer_type=printer.printer_type, result="path_suspect"
+                ).inc()
+                continue
+
             previous_online = printer.is_online
-            raw_online = bool(
-                result
-                and (
-                    (isinstance(result, dict) and result.get("is_online"))
-                    or (hasattr(result, "is_online") and result.is_online)
-                )
-            )
+            raw_online = _result_is_online(result)
             effective_online = await apply_poll_outcome(
                 kind="printer",
                 entity_id=str(printer.id),

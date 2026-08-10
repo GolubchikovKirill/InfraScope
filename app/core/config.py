@@ -183,6 +183,12 @@ class Settings(BaseSettings):
     # declaring offline. Give it one quick retry before trusting a failure, so a
     # single transient SNMP timeout doesn't flip the status.
     PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS: float = 3.0
+    # When practically every device on one subnet stops answering within the
+    # same cycle, the path to them is far likelier to be down than all of them
+    # individually. Below this many devices on a subnet there isn't enough
+    # evidence to tell those two apart, so the normal per-device logic runs.
+    POLL_PATH_FAILURE_MIN_DEVICES: int = 3
+    POLL_PATH_FAILURE_RATIO: float = 0.8
     PRINTER_POLL_MAX_WORKERS: int = 16
     # Laser printers poll every 15 min (see celery_app.py), but only need a
     # full SNMP toner walk this rarely - cycle N of every M is "full", the
