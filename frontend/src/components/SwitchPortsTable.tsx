@@ -143,29 +143,29 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
           {isLoading ? (
             <div className="p-8 text-sm text-gray-500 text-center">Загрузка портов...</div>
           ) : (
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 sticky top-0 z-10">
+            <table className="app-table w-full">
+              <thead>
                 {activeTab === "current" ? (
-                  <tr className="text-left text-slate-600">
-                    <th className="px-3 py-2">Port</th>
-                    <th className="px-3 py-2">Name</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Vlan</th>
-                    <th className="px-3 py-2">Mode</th>
-                    <th className="px-3 py-2">Duplex</th>
-                    <th className="px-3 py-2">Speed</th>
-                    <th className="px-3 py-2">Type</th>
-                    <th className="px-3 py-2">PoE</th>
+                  <tr>
+                    <th>Port</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Vlan</th>
+                    <th>Mode</th>
+                    <th>Duplex</th>
+                    <th>Speed</th>
+                    <th>Type</th>
+                    <th>PoE</th>
                   </tr>
                 ) : (
-                  <tr className="text-left text-slate-600">
-                    <th className="px-3 py-2">Порт</th>
-                    <th className="px-3 py-2">Admin/Oper</th>
-                    <th className="px-3 py-2">Mode/VLAN</th>
-                    <th className="px-3 py-2">Speed</th>
-                    <th className="px-3 py-2">PoE</th>
-                    <th className="px-3 py-2">Описание</th>
-                    <th className="px-3 py-2">Операции</th>
+                  <tr>
+                    <th>Порт</th>
+                    <th>Admin/Oper</th>
+                    <th>Mode/VLAN</th>
+                    <th>Speed</th>
+                    <th>PoE</th>
+                    <th>Описание</th>
+                    <th>Операции</th>
                   </tr>
                 )}
               </thead>
@@ -198,15 +198,15 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                   if (activeTab === "current") {
                     return (
                       <tr key={row.port} className="border-t border-slate-100 align-top hover:bg-slate-50/60">
-                        <td className="px-3 py-2 font-mono">{row.port}</td>
-                        <td className="px-3 py-2 text-slate-700">{row.description || "—"}</td>
-                        <td className="px-3 py-2">{row.status_text ?? formatStatus(row.oper_status)}</td>
-                        <td className="px-3 py-2">{vlanValue}</td>
-                        <td className="px-3 py-2">{modeValue}</td>
-                        <td className="px-3 py-2">{duplexValue}</td>
-                        <td className="px-3 py-2">{speedValue}</td>
-                        <td className="px-3 py-2">{typeValue}</td>
-                        <td className="px-3 py-2">
+                        <td className="app-mono">{row.port}</td>
+                        <td>{row.description || "—"}</td>
+                        <td>{row.status_text ?? formatStatus(row.oper_status)}</td>
+                        <td>{vlanValue}</td>
+                        <td>{modeValue}</td>
+                        <td>{duplexValue}</td>
+                        <td>{speedValue}</td>
+                        <td>{typeValue}</td>
+                        <td>
                           <div>{row.poe_enabled === null ? "—" : row.poe_enabled ? "on" : "off"}</div>
                           <div className="text-gray-400">{row.poe_power_w ?? "—"} W</div>
                         </td>
@@ -216,9 +216,9 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
 
                   return (
                     <tr key={row.port} className="border-t border-slate-100 align-top hover:bg-slate-50/60">
-                      <td className="px-3 py-2 font-mono">{row.port}</td>
-                      <td className="px-3 py-2">{formatStatus(row.admin_status)} / {formatStatus(row.oper_status)}</td>
-                      <td className="px-3 py-2">
+                      <td className="app-mono">{row.port}</td>
+                      <td>{formatStatus(row.admin_status)} / {formatStatus(row.oper_status)}</td>
+                      <td>
                         <div className="space-y-1">
                           <div className="text-[11px] text-slate-500">
                             current: {row.port_mode ?? "unknown"}
@@ -268,12 +268,12 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2">{speedValue}</td>
-                      <td className="px-3 py-2">
+                      <td>{speedValue}</td>
+                      <td>
                         <div>{row.poe_enabled === null ? "—" : row.poe_enabled ? "on" : "off"}</div>
                         <div className="text-gray-400">{row.poe_power_w ?? "—"} W</div>
                       </td>
-                      <td className="px-3 py-2">
+                      <td>
                         <div className="flex items-center gap-1">
                           <input
                             value={descDraft[row.port] ?? row.description ?? ""}
@@ -290,7 +290,7 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2">
+                      <td>
                         {isSuperuser ? (
                           <div className="flex flex-wrap gap-1">
                             <button

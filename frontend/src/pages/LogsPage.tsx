@@ -111,27 +111,29 @@ export default function LogsPage() {
         ) : logs.length === 0 ? (
           <div className="text-center py-16 text-gray-400">Событий пока нет</div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
+          <table className="app-table min-w-full">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Время</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Уровень</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Устройство</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Событие</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Сообщение</th>
+                <th>Время</th>
+                <th>Уровень</th>
+                <th>Устройство</th>
+                <th>Событие</th>
+                <th>Сообщение</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody>
               {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-gray-50/80 transition">
-                  <td className="px-4 py-3 text-xs text-gray-500">{new Date(log.created_at).toLocaleString("ru-RU")}</td>
-                  <td className="px-4 py-3">{severityBadge(log.severity)}</td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm text-gray-700">{log.device_name || "—"}</div>
-                    <div className="text-xs text-gray-500">{log.ip_address || "—"}</div>
+                <tr key={log.id}>
+                  <td className="app-mono whitespace-nowrap text-[var(--text-faint)]">
+                    {new Date(log.created_at).toLocaleString("ru-RU")}
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{log.event_type}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{log.message}</td>
+                  <td>{severityBadge(log.severity)}</td>
+                  <td>
+                    <div>{log.device_name || "—"}</div>
+                    <div className="app-mono app-card-meta">{log.ip_address || "—"}</div>
+                  </td>
+                  <td className="app-mono text-[var(--text-faint)]">{log.event_type}</td>
+                  <td>{log.message}</td>
                 </tr>
               ))}
             </tbody>

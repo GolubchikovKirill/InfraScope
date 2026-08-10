@@ -4,7 +4,7 @@
    1. TOKENS
    ----------------------------------------------------------------------------
    Three groups, deliberately separate:
-     - brand      : InfraScope's crimson identity. Navigation, primary actions,
+     - brand      : InfraScope's blue identity. Navigation, primary actions,
                     entity accents. Carries no status meaning.
      - status     : ok / warn / danger / info. These must NEVER be repainted to
                     the brand colour - an amber "data is stale" hint rendered in
@@ -18,66 +18,65 @@
   color-scheme: light;
 
   /* --- brand --- */
-  --brand-strong: #9f1239;
-  --brand: #be123c;
-  --brand-bright: #e11d48;
-  --brand-light: #f43f5e;
-  --brand-gradient: linear-gradient(135deg, #be123c, #e11d48);
+  --brand-strong: #145a94;
+  --brand: #1d78c9;
+  --brand-bright: #2489dd;
+  --brand-light: #4ba0e8;
+  --brand-gradient: linear-gradient(135deg, #1d78c9, #2489dd);
   /* Brand as a filled background carrying white text. Kept separate from
      --brand, which is the text/accent value: in dark mode the accent has to
      lighten to stay legible, and a lightened accent used as a fill would put
      white text on a pale ground. */
-  --brand-fill: #be123c;
-  --brand-soft: rgba(225, 29, 72, 0.1);
-  --brand-border: rgba(225, 29, 72, 0.32);
-  --brand-ring: rgba(225, 29, 72, 0.18);
+  --brand-fill: #1d78c9;
+  --brand-soft: rgba(29, 120, 201, 0.1);
+  --brand-border: rgba(29, 120, 201, 0.3);
+  --brand-ring: rgba(29, 120, 201, 0.22);
 
   /* --- status: meaning, not decoration --- */
-  --ok-fg: #047857;
-  --ok-bg: rgba(16, 185, 129, 0.12);
-  --ok-border: rgba(16, 185, 129, 0.35);
-  --ok-dot: #10b981;
+  --ok-fg: #1f9d52;
+  --ok-bg: rgba(31, 157, 82, 0.12);
+  --ok-border: rgba(31, 157, 82, 0.32);
+  --ok-dot: #1f9d52;
 
-  --warn-fg: #b45309;
-  --warn-bg: rgba(245, 158, 11, 0.14);
-  --warn-border: rgba(245, 158, 11, 0.4);
+  --warn-fg: #a8650a;
+  --warn-bg: rgba(168, 101, 10, 0.12);
+  --warn-border: rgba(168, 101, 10, 0.3);
 
-  /* Pulled off the brand crimson deliberately: when danger and brand are the
-     same colour, an ordinary primary button and a real failure look alike. */
-  --danger-fg: #b02b1f;
-  --danger-bg: rgba(176, 43, 31, 0.1);
-  --danger-border: rgba(176, 43, 31, 0.3);
+  /* Kept clear of the brand blue: when danger and brand share a colour, an
+     ordinary primary button and a real failure look alike. */
+  --danger-fg: #c9432b;
+  --danger-bg: rgba(201, 67, 43, 0.11);
+  --danger-border: rgba(201, 67, 43, 0.3);
 
-  --info-fg: #1d4ed8;
-  --info-bg: rgba(59, 130, 246, 0.12);
-  --info-border: rgba(59, 130, 246, 0.35);
+  --info-fg: #1d78c9;
+  --info-bg: rgba(29, 120, 201, 0.11);
+  --info-border: rgba(29, 120, 201, 0.3);
 
   /* --- surfaces ---
-     Neutrals carry a slight warm bias toward the brand crimson instead of the
-     usual cool slate, which was quietly fighting it. The page sits a step down
-     from the cards so panels lift without needing heavy shadow. */
-  --surface-page:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 280px),
-    linear-gradient(180deg, #faf8f8 0%, #f2eeef 100%);
-  --surface-1: #fffdfd;
-  --surface-2: #f6f2f2;
-  --surface-3: #ede8e8;
+     Neutrals now sit on the same blue-grey axis as the accent rather than
+     against it, and the page stays a step below the panels so cards lift
+     without needing heavy shadow. */
+  --surface-page: linear-gradient(180deg, #f3f6f9 0%, #eef1f5 100%);
+  --surface-1: #ffffff;
+  --surface-2: #f4f7fa;
+  --surface-3: #e8edf3;
   --surface-input: #ffffff;
 
-  --border-subtle: #e7e0e1;
-  --border-strong: #cfc6c8;
+  /* Borders as tinted ink rather than flat grey, so they stay related to the
+     text they sit beside at any opacity. */
+  --border-subtle: rgba(18, 32, 44, 0.12);
+  --border-strong: rgba(18, 32, 44, 0.22);
   /* Row separators inside a table: present enough to guide the eye along a
      line, faint enough that fifty of them don't read as a grid. */
-  --border-faint: #f0eaea;
+  --border-faint: rgba(18, 32, 44, 0.07);
 
   /* --- text ---
-     Warm near-black rather than the blue-black #0f172a, and stopping short of
-     true black: pure black on pure white is the harshest pairing available and
-     reads as glare over a long shift. */
-  --text-strong: #221d1f;
-  --text-default: #3c3437;
-  --text-muted: #6a6064;
-  --text-faint: #8a7f84;
+     Deep blue-black rather than true black: pure black on white is the
+     harshest pairing available and reads as glare over a long shift. */
+  --text-strong: #12202c;
+  --text-default: #223341;
+  --text-muted: #5b6b7a;
+  --text-faint: #7d8b99;
 
   /* --- radius scale --- */
   --radius-sm: 8px;
@@ -86,11 +85,11 @@
   --radius-full: 999px;
 
   /* --- elevation scale ---
-     Warm-tinted rather than the usual blue-black, so shadows sit on the warm
-     ground instead of greying it. */
-  --elev-1: 0 2px 5px rgba(63, 48, 52, 0.05);
-  --elev-2: 0 4px 12px rgba(63, 48, 52, 0.07);
-  --elev-3: 0 10px 24px rgba(63, 48, 52, 0.12);
+     Tinted with the same blue-grey ink as the borders, so shadows read as
+     part of the palette rather than as neutral dirt on it. */
+  --elev-1: 0 1px 3px rgba(30, 45, 60, 0.07);
+  --elev-2: 0 3px 10px rgba(30, 45, 60, 0.09);
+  --elev-3: 0 8px 22px rgba(30, 45, 60, 0.13);
 
   /* --- smallest readable size. Never go below this. --- */
   --text-micro: 0.6875rem; /* 11px */
@@ -104,16 +103,16 @@
   --app-bg: var(--surface-page);
   --app-panel-bg: var(--surface-1);
   --app-panel-border: var(--border-subtle);
-  --app-toolbar-bg: rgba(255, 255, 255, 0.94);
+  --app-toolbar-bg: #ffffff;
   --app-input-bg: var(--surface-input);
   --app-input-border: var(--border-strong);
-  --app-secondary-text: #374151;
-  --app-secondary-bg: rgba(255, 255, 255, 0.95);
-  --app-secondary-border: #d1d5db;
-  --app-header-bg: rgba(255, 255, 255, 0.88);
+  --app-secondary-text: var(--text-default);
+  --app-secondary-bg: #ffffff;
+  --app-secondary-border: var(--border-strong);
+  --app-header-bg: rgba(255, 255, 255, 0.9);
   --app-header-border: var(--border-subtle);
   --app-nav-active-bg: var(--brand-soft);
-  --app-nav-active-border: rgba(225, 29, 72, 0.35);
+  --app-nav-active-border: var(--brand-border);
   --app-nav-active-text: var(--brand);
   --app-sidebar-bg: var(--surface-1);
   --app-sidebar-border: var(--border-subtle);
@@ -126,54 +125,51 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* Dark mode is not the light palette inverted. Saturated hues that read as
-     confident on white turn neon against a dark ground, and near-white text
-     on near-black is the highest-contrast pairing there is - which is tiring
-     rather than crisp. So: surfaces lifted off pure black and warmed slightly
-     toward the brand, text softened well below #fff, and every status colour
-     desaturated rather than merely lightened. */
+  /* Dark mode is not the light palette inverted. The accent lightens so it
+     stays legible on a dark ground, the ink stops short of #fff, and borders
+     are drawn as translucent light rather than as solid grey lines so they
+     sit at the same depth as whatever surface they land on. */
 
-  --brand: #d9718a;
-  --brand-bright: #e4879c;
-  --brand-light: #ec9dae;
-  --brand-fill: #a33350;
-  --brand-soft: rgba(217, 113, 138, 0.16);
-  --brand-border: rgba(217, 113, 138, 0.38);
-  --brand-ring: rgba(217, 113, 138, 0.28);
+  --brand: #35a8ff;
+  --brand-bright: #5cb9ff;
+  --brand-light: #7dc8ff;
+  --brand-fill: #1d6faa;
+  --brand-strong: #17587f;
+  --brand-soft: rgba(53, 168, 255, 0.14);
+  --brand-border: rgba(53, 168, 255, 0.34);
+  --brand-ring: rgba(53, 168, 255, 0.3);
 
-  --ok-fg: #86b7a1;
-  --ok-bg: rgba(134, 183, 161, 0.13);
-  --ok-border: rgba(134, 183, 161, 0.32);
-  --ok-dot: #7cae98;
+  --ok-fg: #4fbe83;
+  --ok-bg: rgba(79, 190, 131, 0.13);
+  --ok-border: rgba(79, 190, 131, 0.3);
+  --ok-dot: #4fbe83;
 
-  --warn-fg: #cfa063;
-  --warn-bg: rgba(207, 160, 99, 0.13);
-  --warn-border: rgba(207, 160, 99, 0.32);
+  --warn-fg: #d9a04a;
+  --warn-bg: rgba(217, 160, 74, 0.13);
+  --warn-border: rgba(217, 160, 74, 0.3);
 
-  --danger-fg: #d98b95;
-  --danger-bg: rgba(217, 139, 149, 0.14);
-  --danger-border: rgba(217, 139, 149, 0.34);
+  --danger-fg: #e8785f;
+  --danger-bg: rgba(232, 120, 95, 0.14);
+  --danger-border: rgba(232, 120, 95, 0.32);
 
-  --info-fg: #93a9c9;
-  --info-bg: rgba(147, 169, 201, 0.13);
-  --info-border: rgba(147, 169, 201, 0.32);
+  --info-fg: #35a8ff;
+  --info-bg: rgba(53, 168, 255, 0.13);
+  --info-border: rgba(53, 168, 255, 0.3);
 
-  --surface-page:
-    linear-gradient(180deg, rgba(46, 42, 46, 0.4) 0%, rgba(46, 42, 46, 0) 280px),
-    linear-gradient(180deg, #17161a 0%, #1b1a1f 100%);
-  --surface-1: #212026;
-  --surface-2: #26252c;
-  --surface-3: #2d2b33;
-  --surface-input: #1c1b21;
+  --surface-page: linear-gradient(180deg, #0d1720 0%, #0b141c 100%);
+  --surface-1: #101923;
+  --surface-2: #16202b;
+  --surface-3: #1d2733;
+  --surface-input: #0d1720;
 
-  --border-subtle: #322f38;
-  --border-strong: #423e49;
-  --border-faint: #2a2830;
+  --border-subtle: rgba(206, 229, 255, 0.14);
+  --border-strong: rgba(206, 229, 255, 0.28);
+  --border-faint: rgba(206, 229, 255, 0.08);
 
-  --text-strong: #ece8e9;
-  --text-default: #d7d2d4;
-  --text-muted: #a49ea2;
-  --text-faint: #837c81;
+  --text-strong: #eef6ff;
+  --text-default: #d3e0ec;
+  --text-muted: #a8b8c9;
+  --text-faint: #7d8fa2;
 
   /* Shadow does almost no work on a dark ground; separation comes from the
      surface steps above, so these stay restrained instead of muddying it. */
@@ -181,15 +177,15 @@
   --elev-2: 0 4px 12px rgba(0, 0, 0, 0.34);
   --elev-3: 0 10px 24px rgba(0, 0, 0, 0.4);
 
-  --app-toolbar-bg: #232128;
-  --app-secondary-text: #d7d2d4;
-  --app-secondary-bg: #26252c;
-  --app-secondary-border: #3a3742;
-  --app-header-bg: rgba(30, 29, 35, 0.92);
-  --app-nav-active-text: #e4879c;
-  --app-sidebar-bg: #1d1c21;
-  --app-primary-gradient: linear-gradient(135deg, #a33350, #c25069);
-  --app-accent-text: #d9718a;
+  --app-toolbar-bg: #16202b;
+  --app-secondary-text: var(--text-default);
+  --app-secondary-bg: #16202b;
+  --app-secondary-border: rgba(206, 229, 255, 0.22);
+  --app-header-bg: rgba(13, 23, 32, 0.92);
+  --app-nav-active-text: #5cb9ff;
+  --app-sidebar-bg: #0d1720;
+  --app-primary-gradient: linear-gradient(135deg, #1d6faa, #2489dd);
+  --app-accent-text: #35a8ff;
 }
 
 /* ============================================================================
@@ -453,6 +449,64 @@ body {
 }
 
 /* ============================================================================
+   3d. TABLES
+   ----------------------------------------------------------------------------
+   Six tables across the app had grown five different header treatments and
+   three different cell paddings. One shared shape instead, so a port list and
+   a log read the same way.
+   ========================================================================== */
+
+.app-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.app-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.app-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.5rem 0.875rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.app-table tbody td {
+  padding: 0.5rem 0.875rem;
+  border-bottom: 1px solid var(--border-faint);
+  font-size: 0.8125rem;
+  color: var(--text-default);
+  vertical-align: middle;
+}
+
+.app-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.app-table tbody tr:hover td {
+  background: var(--surface-2);
+}
+
+/* Figures that get compared down a column, so they line up and right-align */
+.app-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
    4. ENTITY ACCENT
    ----------------------------------------------------------------------------
    The "icon in a tinted square" that heads every entity card. This used to be
@@ -501,7 +555,7 @@ body {
   background: var(--app-primary-gradient);
   /* A restrained lift, not a coloured glow - the old crimson halo read as a
      neon rim once the surrounding neutrals stopped being cold. */
-  box-shadow: 0 2px 6px rgba(120, 30, 50, 0.2);
+  box-shadow: 0 2px 6px rgba(20, 90, 148, 0.24);
   transition:
     transform 0.18s ease,
     filter 0.2s ease,
@@ -511,7 +565,7 @@ body {
 .app-btn-primary:hover {
   filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 5px 14px rgba(120, 30, 50, 0.26);
+  box-shadow: 0 5px 14px rgba(20, 90, 148, 0.3);
 }
 
 .app-btn-secondary {
@@ -588,7 +642,7 @@ body {
 
 .app-logo-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(190, 24, 93, 0.35);
+  box-shadow: 0 8px 18px rgba(20, 90, 148, 0.32);
 }
 
 .app-logo-live {
