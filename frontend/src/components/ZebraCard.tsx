@@ -39,9 +39,9 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
             <div className="app-entity-icon">
               {isUsb ? <Usb className="h-5 w-5" /> : <Tag className="h-5 w-5" />}
             </div>
-            <div>
-              <div className="font-medium text-sm text-gray-900">{printer.model}</div>
-              <div className="text-xs text-gray-500">{printer.store_name}</div>
+            <div className="min-w-0">
+              <div className="app-card-title truncate">{printer.model}</div>
+              <div className="app-card-meta app-mono">{printer.store_name}</div>
             </div>
           </div>
           {statusBadge(printer)}

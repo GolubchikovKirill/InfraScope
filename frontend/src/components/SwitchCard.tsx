@@ -223,9 +223,9 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             <div className="app-entity-icon">
               <Network className="h-5 w-5" />
             </div>
-            <div>
-              <div className="font-medium text-sm text-gray-900">{sw.name}</div>
-              <div className="text-xs text-gray-500">{sw.model_info || sw.vendor.toUpperCase()}</div>
+            <div className="min-w-0">
+              <div className="app-card-title truncate">{sw.name}</div>
+              <div className="app-card-meta truncate">{sw.model_info || sw.vendor.toUpperCase()}</div>
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">

@@ -306,6 +306,144 @@ body {
 }
 
 /* ============================================================================
+   3b. CARD INTERNALS
+   ----------------------------------------------------------------------------
+   Cards were built almost entirely out of text-xs and text-sm, so a device
+   name, its address and its footer note all carried the same weight and the
+   eye had nothing to land on first. These give the card a spine.
+   ========================================================================== */
+
+.app-card-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.011em;
+  color: var(--text-strong);
+}
+
+.app-card-meta {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+/* Addresses, MACs, ports and interface names. Monospace is not decoration
+   here - these are values people compare character by character. */
+.app-mono {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.app-card-foot {
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   3c. STATUS PILL
+   ----------------------------------------------------------------------------
+   Colour alone is not enough: roughly one man in twelve cannot separate red
+   from green reliably. Each state carries a distinct silhouette as well - a
+   disc for healthy, a triangle for down, a hollow ring for never-checked - so
+   the state survives greyscale, dark mode and a glance from a metre away.
+   ========================================================================== */
+
+.app-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 7px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 550;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.app-status .mark {
+  width: 7px;
+  height: 7px;
+  flex: none;
+}
+
+.app-status-ok {
+  color: var(--ok-fg);
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+}
+.app-status-ok .mark {
+  background: currentColor;
+  border-radius: var(--radius-full);
+}
+
+.app-status-off {
+  color: var(--danger-fg);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+.app-status-off .mark {
+  background: currentColor;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.app-status-unknown {
+  color: var(--text-faint);
+  background: var(--surface-2);
+  border-color: var(--border-subtle);
+}
+.app-status-unknown .mark {
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius-full);
+}
+
+/* ---- toner level ---- */
+
+.app-toner-row {
+  display: grid;
+  grid-template-columns: 1.125rem 1fr 3.25rem 1rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-sm);
+  padding: 0.125rem 0.25rem;
+}
+
+.app-toner-label {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.app-toner-track {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--surface-3);
+  overflow: hidden;
+  /* A hairline keeps an almost-empty cartridge from reading as no bar at all */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+:root[data-theme="dark"] .app-toner-track {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.app-toner-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 500ms ease;
+}
+
+.app-toner-value {
+  text-align: right;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* ============================================================================
    4. ENTITY ACCENT
    ----------------------------------------------------------------------------
    The "icon in a tinted square" that heads every entity card. This used to be

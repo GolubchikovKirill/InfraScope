@@ -16,6 +16,7 @@ export default function TonerBar({ label, level, color, bgColor, tonerName, isCo
   const isUnknown = level === -2;
   const isSpecial = isNeverPolled || isSomeRemaining || isUnknown;
   const pct = isSpecial ? 0 : level;
+  const valueText = isNeverPolled ? "—" : isSomeRemaining ? "Есть" : isUnknown ? "Нет данных" : `${pct}%`;
   const canCopy = Boolean(tonerName && onCopy);
   const title = canCopy
     ? `Скопировать ${tonerName}`
@@ -30,38 +31,31 @@ export default function TonerBar({ label, level, color, bgColor, tonerName, isCo
       type="button"
       onClick={canCopy ? onCopy : undefined}
       disabled={!canCopy}
-      className="group flex w-full items-center gap-2 rounded-md text-xs outline-none transition enabled:cursor-copy enabled:px-1 enabled:py-0.5 enabled:hover:bg-slate-50 enabled:focus-visible:ring-2 enabled:focus-visible:ring-blue-500 disabled:cursor-default"
+      className="app-toner-row group w-full text-left outline-none transition enabled:cursor-copy enabled:hover:bg-[var(--surface-2)] disabled:cursor-default"
       title={title}
+      // Stated outright rather than left to the browser to stitch together from
+      // the label and value fragments, which produced "K12%" with no separator.
+      aria-label={`${label} ${valueText}${tonerName ? `, ${tonerName}` : ""}`}
     >
-      <span className="w-7 text-gray-500 font-medium shrink-0">{label}</span>
-      <div className={`flex-1 h-3 rounded-full ${bgColor} overflow-hidden`}>
-        {!isSpecial && (
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${color}`}
-            style={{ width: `${pct}%` }}
-          />
-        )}
-        {isSomeRemaining && (
-          <div className={`h-full w-[15%] rounded-full ${color} opacity-50`} />
-        )}
+      <span className="app-toner-label">{label}</span>
+      <span className={`app-toner-track ${isSpecial ? bgColor : ""}`}>
+        {!isSpecial && <span className={`app-toner-fill ${color}`} style={{ width: `${pct}%` }} />}
+        {isSomeRemaining && <span className={`app-toner-fill w-[15%] opacity-50 ${color}`} />}
         {(isUnknown || isNeverPolled) && (
-          <div className="h-full w-full bg-gray-200 flex items-center justify-center">
-            <span className="text-[9px] text-gray-400">?</span>
-          </div>
+          <span className="flex h-full w-full items-center justify-center bg-[var(--surface-3)] text-[9px] text-[var(--text-faint)]">
+            ?
+          </span>
         )}
-      </div>
-      <span className="w-14 text-right text-gray-500 shrink-0 truncate">
-        {isNeverPolled ? "—" : isSomeRemaining ? "Есть" : isUnknown ? "Нет данных" : `${pct}%`}
       </span>
-      {canCopy && (
-        <span className="flex w-4 shrink-0 justify-end">
-          {isCopied ? (
-            <Check className="h-3.5 w-3.5 text-emerald-600" />
+      <span className="app-toner-value truncate">{valueText}</span>
+      <span className="flex justify-end">
+        {canCopy &&
+          (isCopied ? (
+            <Check className="h-3.5 w-3.5 text-[var(--ok-fg)]" />
           ) : (
-            <Copy className="h-3.5 w-3.5 text-gray-400 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" />
-          )}
-        </span>
-      )}
+            <Copy className="h-3.5 w-3.5 text-[var(--text-faint)] opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" />
+          ))}
+      </span>
     </button>
   );
 }
