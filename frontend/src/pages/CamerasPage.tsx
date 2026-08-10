@@ -142,7 +142,7 @@ function CameraSwitchCard({
             <div className="font-medium text-sm text-gray-900">{switchName}</div>
             {isExpanded && cameraPorts && (
               <div className="text-xs text-gray-500">
-                {cameraPorts.length} камер{downCount > 0 && <span className="text-red-600"> · {downCount} без связи</span>}
+                {cameraPorts.length} камер{downCount > 0 && <span className="text-[var(--danger-fg)]"> · {downCount} без связи</span>}
               </div>
             )}
           </div>

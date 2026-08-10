@@ -272,7 +272,7 @@ export default function MediaPlayersPage() {
       <div className="grid gap-4 grid-cols-3">
         <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
         <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
-        <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
+        <Stat label="Оффлайн" value={offline} color="text-[var(--danger-fg)]" bg="bg-[var(--danger-bg)]" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
       </div>
 
       {/* Filter tabs */}
@@ -296,7 +296,7 @@ export default function MediaPlayersPage() {
       {/* Iconbit bulk controls */}
       {showIconbitBulk && (
         <div className="app-panel p-4 space-y-3">
-          <div className="text-sm font-semibold text-rose-800">Управление всеми Iconbit</div>
+          <div className="text-sm font-semibold text-[var(--brand)]">Управление всеми Iconbit</div>
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => replaceFileRef.current?.click()}
@@ -316,21 +316,21 @@ export default function MediaPlayersPage() {
             <button
               onClick={() => bulkStopMut.mutate()}
               disabled={bulkBusy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-40 transition"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-3 py-1.5 text-sm font-medium text-[var(--danger-fg)] hover:brightness-95 disabled:opacity-40 transition"
             >
               <Square className="h-3.5 w-3.5" /> Stop все
             </button>
             <button
               onClick={() => bulkFileRef.current?.click()}
               disabled={bulkBusy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 border border-rose-200 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40 transition"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand-soft)] border border-[var(--brand-border)] px-3 py-1.5 text-sm font-medium text-[var(--brand)] hover:brightness-95 disabled:opacity-40 transition"
             >
               <Upload className="h-3.5 w-3.5" /> {bulkUploadMut.isPending ? "..." : "Добавить файл на все"}
             </button>
             <input ref={bulkFileRef} type="file" accept="audio/*,video/*" className="hidden" onChange={handleBulkUpload} />
           </div>
           {bulkMsg && (
-            <div className="text-sm text-rose-700 bg-rose-100 rounded-lg px-3 py-1.5 w-fit">{bulkMsg}</div>
+            <div className="text-sm text-[var(--info-fg)] bg-[var(--info-bg)] rounded-lg px-3 py-1.5 w-fit">{bulkMsg}</div>
           )}
         </div>
       )}
@@ -431,7 +431,7 @@ function Stat({
     <button
       type="button"
       onClick={onClick}
-      className={`app-stat ${bg} w-full px-4 py-3 text-left transition ${isActive ? "ring-2 ring-rose-400/50" : "hover:-translate-y-0.5 hover:shadow-md"}`}
+      className={`app-stat ${bg} w-full px-4 py-3 text-left transition ${isActive ? "ring-2 ring-[var(--brand-border)]" : "hover:-translate-y-0.5 hover:shadow-md"}`}
     >
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>

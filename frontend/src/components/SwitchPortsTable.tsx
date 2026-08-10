@@ -301,7 +301,7 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
                             </button>
                             <button
                               onClick={() => adminMut.mutate({ port: row.port, state: "down" })}
-                              className="px-2 py-1 rounded border border-red-200 text-red-700 hover:bg-red-50"
+                              className="px-2 py-1 rounded border border-[var(--danger-border)] text-[var(--danger-fg)] hover:bg-[var(--danger-bg)]"
                             >
                               Down
                             </button>

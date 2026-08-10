@@ -116,7 +116,7 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
       <div className="app-panel w-full max-w-6xl max-h-[90vh] overflow-hidden border-slate-200/70 shadow-2xl">
         <div className="p-4 border-b border-slate-200 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Wifi className="h-5 w-5 text-rose-600" />
+            <Wifi className="h-5 w-5 text-[var(--brand)]" />
             <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           </div>
           <button onClick={onClose} className="app-btn-secondary px-3 py-2 text-sm">Закрыть</button>
@@ -151,12 +151,12 @@ export default function NetworkDiscoveryModal({ kind, onClose }: Props) {
                 <span>{pct}%</span>
               </div>
               <div className="w-full bg-slate-200 rounded-full h-2 mt-1">
-                <div className={`h-2 rounded-full ${progress.status === "done" ? "bg-emerald-500" : "bg-rose-500"}`} style={{ width: `${pct}%` }} />
+                <div className={`h-2 rounded-full ${progress.status === "done" ? "bg-emerald-500" : "bg-[var(--brand)]"}`} style={{ width: `${pct}%` }} />
               </div>
             </div>
           )}
           {progress.status === "error" && progress.message && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+            <div className="mt-3 flex items-center gap-2 rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-3 py-2 text-sm text-[var(--danger-fg)]">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               {progress.message}
             </div>

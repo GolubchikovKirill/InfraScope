@@ -208,7 +208,7 @@ export default function CartridgeStockPanel({
           <div className="mt-3 grid gap-2">
             {movements.map((movement) => (
               <div key={movement.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-xs">
-                <span className={movement.delta < 0 ? "font-medium text-rose-700" : "font-medium text-emerald-700"}>
+                <span className={movement.delta < 0 ? "font-medium text-[var(--danger-fg)]" : "font-medium text-emerald-700"}>
                   {movement.delta > 0 ? "+" : ""}{movement.delta}
                 </span>
                 <span className="flex-1 text-gray-600">{movementLabel(movement.reason)}{movement.note ? `: ${movement.note}` : ""}</span>

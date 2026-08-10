@@ -12,9 +12,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const baseClasses = "inline-flex items-center justify-center font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
 
     const variants = {
-      primary: "app-btn-primary focus:ring-rose-500",
+      primary: "app-btn-primary focus:ring-[var(--brand-ring)]",
       secondary: "app-btn-secondary focus:ring-slate-400",
-      danger: "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30 focus:ring-red-500 rounded-xl",
+      danger: "bg-[var(--danger-fg)] hover:brightness-90 text-white shadow-lg shadow-[var(--danger-fg)]/30 focus:ring-[var(--danger-fg)] rounded-xl",
       ghost: "hover:bg-slate-100 text-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 rounded-xl",
     };
 

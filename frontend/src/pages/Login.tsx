@@ -29,7 +29,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="rounded-xl bg-gradient-to-br from-red-700 to-rose-600 p-2 shadow-lg app-logo-live">
+          <div className="rounded-xl bg-gradient-to-br from-[var(--brand-strong)] to-[var(--brand-bright)] p-2 shadow-lg app-logo-live">
             <Server className="h-6 w-6 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">InfraScope</h1>
@@ -44,7 +44,7 @@ export default function Login() {
           </h2>
 
           {error && (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-4 py-3 text-sm text-[var(--danger-fg)]">
               {error}
             </div>
           )}

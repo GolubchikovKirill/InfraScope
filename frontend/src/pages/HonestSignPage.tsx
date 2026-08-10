@@ -125,7 +125,7 @@ export default function HonestSignPage() {
     return <div className="app-panel h-48 app-skeleton" />;
   }
   if (targetsQuery.isError) {
-    return <div className="app-panel p-8 text-center text-rose-600">Не удалось загрузить настройки Честного знака.</div>;
+    return <div className="app-panel p-8 text-center text-[var(--danger-fg)]">Не удалось загрузить настройки Честного знака.</div>;
   }
 
   return (
@@ -167,14 +167,14 @@ export default function HonestSignPage() {
       </section>
 
       {lastResult && (
-        <div className={`app-panel flex gap-3 p-4 text-sm ${lastResult.result === "READY" || lastResult.result === "ALREADY_READY" ? "text-emerald-700" : lastResult.result === "INIT_FAILED" || lastResult.result === "ERROR" ? "text-rose-700" : "text-sky-700"}`}>
+        <div className={`app-panel flex gap-3 p-4 text-sm ${lastResult.result === "READY" || lastResult.result === "ALREADY_READY" ? "text-emerald-700" : lastResult.result === "INIT_FAILED" || lastResult.result === "ERROR" ? "text-[var(--danger-fg)]" : "text-sky-700"}`}>
           <ResultIcon result={lastResult.result} />
           <div><div className="font-semibold">{lastResult.host}: {resultLabel(lastResult.result)}</div><div className="mt-1">{lastResult.message}</div></div>
         </div>
       )}
 
       {statusesQuery.isError && targetsQuery.data?.status_configured && (
-        <div className="app-panel p-5 text-sm text-rose-600">Не удалось выполнить проверку. Проверьте доступность сети сервера и настройки интеграции.</div>
+        <div className="app-panel p-5 text-sm text-[var(--danger-fg)]">Не удалось выполнить проверку. Проверьте доступность сети сервера и настройки интеграции.</div>
       )}
 
       <div className="app-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
@@ -214,7 +214,7 @@ export default function HonestSignPage() {
             <article key={target.original_host} className="app-panel p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
-                  <div className={`rounded-xl p-2.5 ${status?.ready ? "bg-emerald-100 text-emerald-700" : status?.reachable === false ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-600"}`}><ServerCog className="h-5 w-5" /></div>
+                  <div className={`rounded-xl p-2.5 ${status?.ready ? "bg-emerald-100 text-emerald-700" : status?.reachable === false ? "bg-[var(--danger-bg)] text-[var(--danger-fg)]" : "bg-slate-100 text-slate-600"}`}><ServerCog className="h-5 w-5" /></div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       {isEditingIp ? (
@@ -314,7 +314,7 @@ export default function HonestSignPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="app-panel w-full max-w-lg p-5">
             <div className="flex items-start gap-3"><div className="rounded-xl bg-amber-100 p-2 text-amber-700"><TriangleAlert className="h-5 w-5" /></div><div><h2 className="font-semibold text-slate-900">Инициализировать Local Module?</h2><p className="mt-2 text-sm text-slate-600">На кассу <strong>{targetToInitialize.host}</strong> будет отправлен запрос `/api/v2/init`. Перед запуском сервер ещё раз проверит текущий статус.</p></div></div>
-            {initializeMutation.isError && <div className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">Запрос инициализации завершился ошибкой.</div>}
+            {initializeMutation.isError && <div className="mt-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger-fg)]">Запрос инициализации завершился ошибкой.</div>}
             <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setTargetToInitialize(null)} disabled={initializeMutation.isPending} className="app-btn-secondary px-4 py-2 text-sm">Отмена</button><button type="button" onClick={() => initializeMutation.mutate(targetToInitialize.host)} disabled={initializeMutation.isPending} className="app-btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-50">{initializeMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}Подтвердить активацию</button></div>
           </div>
         </div>
@@ -326,13 +326,13 @@ export default function HonestSignPage() {
 function StatusBadge({ status }: { status?: HonestSignStatus }) {
   if (!status) return <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">не проверено</span>;
   if (status.ready) return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />готов</span>;
-  if (!status.reachable) return <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-1 text-xs font-medium text-rose-700"><CircleX className="h-3.5 w-3.5" />недоступен</span>;
+  if (!status.reachable) return <span className="inline-flex items-center gap-1 rounded-full bg-[var(--danger-bg)] px-2 py-1 text-xs font-medium text-[var(--danger-fg)]"><CircleX className="h-3.5 w-3.5" />недоступен</span>;
   if (status.status.toLocaleLowerCase("ru-RU") === "initialization") return <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-1 text-xs font-medium text-sky-700"><Loader2 className="h-3.5 w-3.5 animate-spin" />инициализация</span>;
   return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800"><CircleHelp className="h-3.5 w-3.5" />{status.status}</span>;
 }
 
 function StatCard({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "green" | "sky" | "red" }) {
-  const color = tone === "green" ? "text-emerald-700" : tone === "sky" ? "text-sky-700" : tone === "red" ? "text-rose-700" : "text-slate-900";
+  const color = tone === "green" ? "text-emerald-700" : tone === "sky" ? "text-sky-700" : tone === "red" ? "text-[var(--danger-fg)]" : "text-slate-900";
   return <div className="app-stat px-4 py-3"><div className={`text-2xl font-bold ${color}`}>{value}</div><div className="mt-0.5 text-xs text-slate-500">{label}</div></div>;
 }
 

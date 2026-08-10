@@ -182,7 +182,7 @@ export default function MediaAssignmentPanel({
             <span>{heartbeatLabel(heartbeat)}</span>
           </div>
           {heartbeat?.error_message && (
-            <div className="mt-1 text-xs text-rose-700 text-pretty">{heartbeat.error_message}</div>
+            <div className="mt-1 text-xs text-[var(--danger-fg)] text-pretty">{heartbeat.error_message}</div>
           )}
         </div>
 
@@ -295,12 +295,12 @@ export default function MediaAssignmentPanel({
               type="checkbox"
               checked={enabled}
               onChange={(event) => setEnabled(event.target.checked)}
-              className="size-4 accent-rose-600"
+              className="size-4 accent-[var(--brand)]"
             />
             Включено для агента
           </label>
 
-          {error && <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+          {error && <div className="rounded-lg bg-[var(--danger-bg)] px-3 py-2 text-sm text-[var(--danger-fg)]">{error}</div>}
         </div>
 
         <div className="mt-5 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">

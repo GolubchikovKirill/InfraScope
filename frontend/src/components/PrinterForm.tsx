@@ -77,7 +77,7 @@ export default function PrinterForm({ printer, printerType, onSave, onClose, loa
         </div>
 
         {error && (
-          <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2.5 text-sm text-red-700">
+          <div className="mb-4 flex items-start gap-2 rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-3 py-2.5 text-sm text-[var(--danger-fg)]">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>

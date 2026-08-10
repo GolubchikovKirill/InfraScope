@@ -292,7 +292,7 @@ export default function CashRegistersPage() {
       </div>
 
       {isError ? (
-        <div className="app-panel p-8 text-center text-rose-600">Не удалось загрузить список касс.</div>
+        <div className="app-panel p-8 text-center text-[var(--danger-fg)]">Не удалось загрузить список касс.</div>
       ) : isLoading ? (
         <div className="space-y-3">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="app-panel h-32 app-skeleton" />)}</div>
       ) : groups.length === 0 ? (
@@ -375,10 +375,10 @@ function CashRow({ item, isSuperuser, isPolling, onCopy, onPoll, onEdit, onDelet
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2"><div className="font-semibold text-slate-900">ККМ №{item.kkm_number}</div><StatusBadge item={item} /></div>
         <div className="flex flex-wrap gap-1.5"><Badge>{item.kkm_type === "retail" ? "РИТЕЙЛ" : "ШТРИХ"}</Badge>{item.cash_number && <Badge>касса {item.cash_number}</Badge>}{item.rosenzweig_number && <Badge>Розенцвайг {item.rosenzweig_number}</Badge>}</div>
-        {item.terminal_status && <div className="flex items-center gap-1.5 text-xs font-medium text-rose-700"><AlertTriangle className="h-3.5 w-3.5" />{item.terminal_status}</div>}
+        {item.terminal_status && <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--danger-fg)]"><AlertTriangle className="h-3.5 w-3.5" />{item.terminal_status}</div>}
       </div>
 
-      <div className="space-y-2 text-sm"><SectionLabel>Сеть</SectionLabel><CopyValue value={item.hostname} onCopy={onCopy} /><Field label="NetSupport" value={item.netsupport_target} compact /><Field label="Последний опрос" value={item.last_polled_at ? new Date(item.last_polled_at).toLocaleString("ru-RU") : "ещё не было"} compact />{item.is_online === false && <div className="text-xs text-rose-600">{offlineReason(item.reachability_reason)}</div>}</div>
+      <div className="space-y-2 text-sm"><SectionLabel>Сеть</SectionLabel><CopyValue value={item.hostname} onCopy={onCopy} /><Field label="NetSupport" value={item.netsupport_target} compact /><Field label="Последний опрос" value={item.last_polled_at ? new Date(item.last_polled_at).toLocaleString("ru-RU") : "ещё не было"} compact />{item.is_online === false && <div className="text-xs text-[var(--danger-fg)]">{offlineReason(item.reachability_reason)}</div>}</div>
 
       <div className="space-y-2 text-sm"><SectionLabel>Терминалы и коды</SectionLabel><div className="grid grid-cols-2 gap-x-4 gap-y-1"><Field label="Код ТТ РС" value={item.store_code} compact /><Field label="Код ТТ Сбер" value={item.sber_store_code} compact /><Field label="ID РС" value={item.terminal_id_rs} compact /><Field label="ID Сбер" value={item.terminal_id_sber} compact /><Field label="Серийный" value={item.serial_number} compact /><Field label="Инв. №" value={item.inventory_number} compact /></div></div>
 
@@ -413,7 +413,7 @@ function drawerTone(value: string | null): BadgeTone {
 }
 
 function CopyValue({ value, onCopy }: { value: string | null; onCopy: (value: string | null) => void }) {
-  return <div className="flex items-center gap-1.5"><span className="font-medium text-slate-800">{value || "—"}</span>{value && <button onClick={() => onCopy(value)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-rose-600" title="Скопировать"><Copy className="h-3.5 w-3.5" /></button>}</div>;
+  return <div className="flex items-center gap-1.5"><span className="font-medium text-slate-800">{value || "—"}</span>{value && <button onClick={() => onCopy(value)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-[var(--brand)]" title="Скопировать"><Copy className="h-3.5 w-3.5" /></button>}</div>;
 }
 
 function Field({ label, value, compact = false }: { label: string; value: string | null; compact?: boolean }) {
@@ -426,7 +426,7 @@ type BadgeTone = "default" | "green" | "red" | "amber" | "sky" | "violet";
 const badgeTone: Record<BadgeTone, string> = { default: "bg-slate-100 text-slate-600", green: "bg-emerald-100 text-emerald-700", red: "bg-rose-100 text-rose-700", amber: "bg-amber-100 text-amber-800", sky: "bg-sky-100 text-sky-700", violet: "bg-violet-100 text-violet-700" };
 function Badge({ children, tone = "default" }: { children: ReactNode; tone?: BadgeTone }) { return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${badgeTone[tone]}`}>{children}</span>; }
 
-function IconButton({ label, onClick, children, disabled = false, danger = false }: { label: string; onClick: () => void; children: ReactNode; disabled?: boolean; danger?: boolean }) { return <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={label} className={`app-btn-secondary inline-flex h-9 w-9 items-center justify-center disabled:opacity-40 ${danger ? "text-rose-600" : ""}`}>{children}</button>; }
+function IconButton({ label, onClick, children, disabled = false, danger = false }: { label: string; onClick: () => void; children: ReactNode; disabled?: boolean; danger?: boolean }) { return <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={label} className={`app-btn-secondary inline-flex h-9 w-9 items-center justify-center disabled:opacity-40 ${danger ? "text-[var(--danger-fg)]" : ""}`}>{children}</button>; }
 
 function FilterSelect({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode }) { return <label className="text-xs text-slate-500"><span className="mb-1 block">{label}</span><select className="app-input w-full px-3 py-2 text-sm text-slate-700" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select></label>; }
 

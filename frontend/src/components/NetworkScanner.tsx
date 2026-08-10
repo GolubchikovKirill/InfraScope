@@ -175,7 +175,7 @@ export default function NetworkScanner() {
         )}
 
         {progress.status === "error" && progress.message && (
-          <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+          <div className="flex items-center gap-2 rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-3 py-2 text-sm text-[var(--danger-fg)]">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             {progress.message}
           </div>

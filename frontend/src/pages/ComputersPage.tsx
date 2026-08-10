@@ -224,7 +224,7 @@ export default function ComputersPage() {
                         row.is_online === true
                           ? "bg-emerald-100 text-emerald-700"
                           : row.is_online === false
-                            ? "bg-rose-100 text-rose-700"
+                            ? "bg-[var(--danger-bg)] text-[var(--danger-fg)]"
                             : "bg-slate-100 text-slate-600"
                       }`}
                     >
@@ -244,7 +244,7 @@ export default function ComputersPage() {
                     <div>Проверка: {polledAt || "ещё не было"}</div>
                   </div>
                   {row.is_online === false && (
-                    <div className="text-xs text-rose-600">
+                    <div className="text-xs text-[var(--danger-fg)]">
                       Причина оффлайна: {row.reachability_reason === "dns_unresolved" ? "hostname не резолвится" : "порты недоступны"}
                     </div>
                   )}
@@ -344,7 +344,7 @@ function Stat({
   return (
     <button
       onClick={onClick}
-      className={`app-stat text-left px-4 py-3 transition ${active ? "ring-2 ring-rose-400/50" : "hover:shadow-sm"}`}
+      className={`app-stat text-left px-4 py-3 transition ${active ? "ring-2 ring-[var(--brand-border)]" : "hover:shadow-sm"}`}
       type="button"
     >
       <div className="text-2xl font-bold text-gray-900">{value}</div>

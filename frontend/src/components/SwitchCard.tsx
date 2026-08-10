@@ -70,19 +70,19 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
     : null;
 
   return (
-    <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group text-xs ${isHung ? "bg-red-50" : "hover:bg-gray-50"}`}>
+    <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group text-xs ${isHung ? "bg-[var(--danger-bg)]" : "hover:bg-[var(--surface-2)]"}`}>
       {isHung ? (
-        <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+        <AlertTriangle className="h-3.5 w-3.5 text-[var(--danger-fg)] shrink-0" />
       ) : (
-        <Radio className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+        <Radio className="h-3.5 w-3.5 text-[var(--brand)] shrink-0" />
       )}
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={`font-medium ${isHung ? "text-red-700" : "text-gray-800"}`}>
+          <span className={`font-medium ${isHung ? "text-[var(--danger-fg)]" : "text-[var(--text-default)]"}`}>
             {ap.cdp_name || ap.mac_address}
           </span>
           {isHung && (
-            <span className="text-[11px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium" title={lastSeen ? `Последний раз отвечала: ${lastSeen}` : undefined}>
+            <span className="text-[11px] text-[var(--danger-fg)] bg-[var(--danger-bg)] px-1.5 py-0.5 rounded font-medium" title={lastSeen ? `Последний раз отвечала: ${lastSeen}` : undefined}>
               не отвечает
             </span>
           )}
@@ -91,7 +91,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
           )}
           {ap.needs_attention_since ? (
             <span
-              className="text-[11px] text-white bg-red-600 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 font-medium"
+              className="text-[11px] text-white bg-[var(--danger-fg)] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 font-medium"
               title={
                 `Не восстанавливается автоматически с ${new Date(ap.needs_attention_since).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}` +
                 (ap.consecutive_no_power_skips > ap.consecutive_reboot_failures
@@ -148,7 +148,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
           <button
             onClick={handleReboot}
             disabled={rebooting}
-            className="app-icon-btn hover:bg-red-50 text-gray-400 hover:text-red-600 transition disabled:opacity-40"
+            className="app-icon-btn hover:bg-[var(--danger-bg)] text-gray-400 hover:text-[var(--danger-fg)] transition disabled:opacity-40"
             title="Перезагрузить ТД (PoE cycle)"
             aria-label={`Перезагрузить точку доступа на порту ${ap.port}`}
           >
@@ -230,7 +230,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           </div>
           <div className="flex flex-col items-end gap-1">
             <OnlineStatusBadge isOnline={sw.is_online} />
-            <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700">
+            <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium bg-[var(--brand-soft)] text-[var(--brand)]">
               VLAN {sw.ap_vlan}
             </span>
           </div>
@@ -238,7 +238,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
 
         {sw.switch_needs_attention_since && (
           <div
-            className="flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-2.5 py-1.5 text-xs text-red-700"
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-2.5 py-1.5 text-xs text-[var(--danger-fg)]"
             title={`С ${new Date(sw.switch_needs_attention_since).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })} автоперезагрузка точек доступа не может нормально отработать на этом свитче несколько циклов подряд — не отвечает по SSH или не находит ни одной точки на VLAN. Требует проверки (доступ/конфигурация).`}
           >
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -278,7 +278,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
         {/* Access Points toggle */}
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 transition mt-1"
+          className="flex items-center gap-1.5 text-xs font-medium text-[var(--brand)] hover:text-[var(--brand-strong)] transition mt-1"
         >
           <Radio className="h-3.5 w-3.5" />
           Точки доступа (VLAN {sw.ap_vlan})
@@ -287,7 +287,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
         </button>
         <button
           onClick={() => onOpenPorts(sw)}
-          className="flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 transition"
+          className="flex items-center gap-1.5 text-xs font-medium text-[var(--brand)] hover:text-[var(--brand-strong)] transition"
         >
           <ExternalLink className="h-3.5 w-3.5" />
           Порты свитча
@@ -311,7 +311,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
                 }
                 disabled={autoRebootMut.isPending}
                 className={`relative h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50 ${
-                  sw.auto_reboot_aps_enabled ? "bg-rose-600" : "bg-gray-300"
+                  sw.auto_reboot_aps_enabled ? "bg-[var(--brand-fill)]" : "bg-gray-300"
                 }`}
                 title="Автоперезагрузка Wi-Fi точек на VLAN 20 (07:30 и 19:30 МСК)"
               >
@@ -343,7 +343,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           <div className="border-t border-gray-100 pt-2 -mx-2">
             {loadingAPs ? (
               <div className="flex items-center justify-center py-4">
-                <RefreshCw className="h-4 w-4 animate-spin text-rose-500" />
+                <RefreshCw className="h-4 w-4 animate-spin text-[var(--brand)]" />
                 <span className="ml-2 text-xs text-gray-400">Загрузка...</span>
               </div>
             ) : aps && aps.length > 0 ? (
@@ -364,7 +364,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
         {isSuperuser && sw.vendor === "cisco" && sw.ap_vlan === 20 && (
           <button
             onClick={() => setHistoryExpanded(!historyExpanded)}
-            className="flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 transition"
+            className="flex items-center gap-1.5 text-xs font-medium text-[var(--brand)] hover:text-[var(--brand-strong)] transition"
           >
             <History className="h-3.5 w-3.5" />
             История автоперезагрузок
@@ -375,13 +375,13 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           <div className="border-t border-gray-100 pt-2 -mx-2">
             {loadingHistory ? (
               <div className="flex items-center justify-center py-4">
-                <RefreshCw className="h-4 w-4 animate-spin text-rose-500" />
+                <RefreshCw className="h-4 w-4 animate-spin text-[var(--brand)]" />
                 <span className="ml-2 text-xs text-gray-400">Загрузка...</span>
               </div>
             ) : history && history.length > 0 ? (
               <div className="space-y-0.5 max-h-64 overflow-y-auto">
                 {history.map((entry, i) => (
-                  <div key={i} className={`flex items-start gap-2 py-1.5 px-3 rounded-lg text-[11px] ${entry.severity === "error" ? "text-red-700" : "text-gray-600"}`}>
+                  <div key={i} className={`flex items-start gap-2 py-1.5 px-3 rounded-lg text-[11px] ${entry.severity === "error" ? "text-[var(--danger-fg)]" : "text-gray-600"}`}>
                     <span className="font-mono text-gray-400 shrink-0">
                       {new Date(entry.created_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
                     </span>
@@ -404,7 +404,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             <button
               onClick={() => onPoll(sw.id)}
               disabled={isPolling}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition disabled:opacity-40"
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[var(--brand)] transition disabled:opacity-40"
               title="Опросить"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />
@@ -429,7 +429,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
                     </button>
                     <button
                       onClick={() => { setIsActionsOpen(false); onDelete(sw.id); }}
-                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition"
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--danger-fg)] hover:bg-[var(--danger-bg)] transition"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Удалить

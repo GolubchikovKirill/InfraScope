@@ -131,7 +131,7 @@ export default function UsersPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--brand)] border-t-transparent" />
         </div>
       ) : visibleUsers.length === 0 ? (
         <div className="text-center py-20 text-gray-400">

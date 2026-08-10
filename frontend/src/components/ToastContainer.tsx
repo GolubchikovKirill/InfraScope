@@ -6,13 +6,13 @@ const AUTO_DISMISS_MS = 5000;
 
 const STYLES: Record<ToastMessage["type"], string> = {
   success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  error: "border-red-200 bg-red-50 text-red-800",
+  error: "border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger-fg)]",
   info: "border-gray-200 bg-white text-gray-800",
 };
 
 function ToastIcon({ type }: { type: ToastMessage["type"] }) {
   if (type === "success") return <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />;
-  if (type === "error") return <XCircle className="h-5 w-5 shrink-0 text-red-500" />;
+  if (type === "error") return <XCircle className="h-5 w-5 shrink-0 text-[var(--danger-fg)]" />;
   return <Info className="h-5 w-5 shrink-0 text-gray-400" />;
 }
 

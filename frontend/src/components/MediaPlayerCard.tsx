@@ -27,9 +27,9 @@ interface Props {
 }
 
 const DEVICE_STYLES: Record<string, { bg: string; iconBg: string; iconColor: string; icon: typeof Monitor }> = {
-  nettop: { bg: "bg-rose-50", iconBg: "bg-rose-50", iconColor: "text-rose-600", icon: Monitor },
-  iconbit: { bg: "bg-rose-50", iconBg: "bg-rose-50", iconColor: "text-rose-600", icon: Music },
-  twix: { bg: "bg-rose-50", iconBg: "bg-rose-50", iconColor: "text-rose-600", icon: Music },
+  nettop: { bg: "bg-[var(--brand-soft)]", iconBg: "bg-[var(--brand-soft)]", iconColor: "text-[var(--brand)]", icon: Monitor },
+  iconbit: { bg: "bg-[var(--brand-soft)]", iconBg: "bg-[var(--brand-soft)]", iconColor: "text-[var(--brand)]", icon: Music },
+  twix: { bg: "bg-[var(--brand-soft)]", iconBg: "bg-[var(--brand-soft)]", iconColor: "text-[var(--brand)]", icon: Music },
 };
 
 const DEVICE_LABELS: Record<string, string> = {
@@ -117,15 +117,15 @@ function IconbitControls({ playerId }: { playerId: string }) {
         <div className="flex items-center gap-1.5 text-xs">
           {isPlaying ? (
             <div className="flex items-end gap-[2px] h-3 w-3 shrink-0" title="Воспроизводится">
-              <span className="w-[3px] bg-rose-500 rounded-sm animate-eq1" />
-              <span className="w-[3px] bg-rose-500 rounded-sm animate-eq2" />
-              <span className="w-[3px] bg-rose-500 rounded-sm animate-eq3" />
+              <span className="w-[3px] bg-[var(--brand)] rounded-sm animate-eq1" />
+              <span className="w-[3px] bg-[var(--brand)] rounded-sm animate-eq2" />
+              <span className="w-[3px] bg-[var(--brand)] rounded-sm animate-eq3" />
             </div>
           ) : (
             <Volume2 className="h-3 w-3 text-gray-300 shrink-0" />
           )}
           {isPlaying ? (
-            <span className="text-rose-700 font-medium truncate" title={ibStatus.now_playing!}>
+            <span className="text-[var(--brand)] font-medium truncate" title={ibStatus.now_playing!}>
               {ibStatus.now_playing!.length > 35 ? ibStatus.now_playing!.slice(0, 35) + "..." : ibStatus.now_playing}
             </span>
           ) : (
@@ -138,15 +138,15 @@ function IconbitControls({ playerId }: { playerId: string }) {
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
               {progress != null ? (
-                <div className="h-full bg-rose-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                <div className="h-full bg-[var(--brand)] rounded-full transition-all" style={{ width: `${progress}%` }} />
               ) : (
-                <div className="h-full bg-rose-400 rounded-full animate-progress-sweep" />
+                <div className="h-full bg-[var(--brand-light)] rounded-full animate-progress-sweep" />
               )}
             </div>
             {posStr && durStr ? (
               <span className="text-[11px] text-gray-400 shrink-0">{posStr} / {durStr}</span>
             ) : (
-              <span className="text-[11px] text-rose-400 shrink-0">играет</span>
+              <span className="text-[11px] text-[var(--brand-light)] shrink-0">играет</span>
             )}
           </div>
         )}
@@ -165,7 +165,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
         <button
           onClick={withBusy(() => stopMut.mutateAsync())}
           disabled={busy}
-          className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-100 disabled:opacity-40 transition"
+          className="inline-flex items-center gap-1 rounded-md bg-[var(--danger-bg)] px-2 py-1 text-[11px] font-medium text-[var(--danger-fg)] hover:brightness-95 disabled:opacity-40 transition"
           title="Остановить"
         >
           <Square className="h-3 w-3" /> Stop
@@ -173,7 +173,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={busy || uploadMut.isPending}
-          className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40 transition"
+          className="inline-flex items-center gap-1 rounded-md bg-[var(--brand-soft)] px-2 py-1 text-[11px] font-medium text-[var(--brand)] hover:brightness-95 disabled:opacity-40 transition"
           title="Загрузить файл"
         >
           <Upload className="h-3 w-3" /> {uploadMut.isPending ? "..." : "Загрузить"}
@@ -191,7 +191,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
             <div key={f} className="flex items-center gap-1.5 text-[11px] group">
               <FileAudio className="h-3 w-3 text-gray-400 shrink-0" />
               <span
-                className="text-gray-600 truncate cursor-pointer hover:text-rose-700 transition flex-1"
+                className="text-gray-600 truncate cursor-pointer hover:text-[var(--brand)] transition flex-1"
                 title={`Воспроизвести: ${f}`}
                 onClick={() => playFileMut.mutate(f)}
               >
@@ -199,7 +199,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
               </span>
               <button
                 onClick={async () => { if (await confirm(`Удалить ${f}?`, { danger: true, confirmText: "Удалить" })) deleteFileMut.mutate(f); }}
-                className="inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded opacity-70 transition hover:bg-red-50 text-gray-400 hover:text-red-500 group-hover:opacity-100 focus-visible:opacity-100"
+                className="inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded opacity-70 transition hover:bg-[var(--danger-bg)] text-gray-400 hover:text-[var(--danger-fg)] group-hover:opacity-100 focus-visible:opacity-100"
                 title="Удалить файл"
                 aria-label={`Удалить файл ${f}`}
               >
@@ -292,7 +292,7 @@ export default function MediaPlayerCard({
             <button
               type="button"
               onClick={() => onManageMedia(player)}
-              className="flex w-full items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-2 text-left text-xs transition hover:border-rose-200 hover:bg-rose-50"
+              className="flex w-full items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-2 text-left text-xs transition hover:border-[var(--brand-border)] hover:bg-[var(--brand-soft)]"
               title="Настроить централизованное медиа"
             >
               <Radio className={`size-3.5 ${mediaHeartbeat?.player_state === "playing" ? "text-emerald-600" : "text-gray-400"}`} />
@@ -321,7 +321,7 @@ export default function MediaPlayerCard({
               <button
                 type="button"
                 onClick={copyDeviceId}
-                className="inline-flex items-center rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-rose-600 transition"
+                className="inline-flex items-center rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-[var(--brand)] transition"
                 title="Скопировать UUID для Windows-клиента"
                 aria-label="Скопировать UUID устройства"
               >
@@ -345,7 +345,7 @@ export default function MediaPlayerCard({
               {isNettop && netSupportTarget && (
                 <button
                   onClick={copyNetSupportTarget}
-                  className="inline-flex items-center rounded p-0.5 text-gray-400 hover:text-rose-600 hover:bg-gray-100 transition"
+                  className="inline-flex items-center rounded p-0.5 text-gray-400 hover:text-[var(--brand)] hover:bg-gray-100 transition"
                   title="Скопировать hostname для NetSupport"
                 >
                   <Copy className="h-3 w-3" />
@@ -393,7 +393,7 @@ export default function MediaPlayerCard({
             <button
               onClick={() => onPoll(player.id)}
               disabled={isPolling}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition disabled:opacity-40"
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[var(--brand)] transition disabled:opacity-40"
               title="Опросить"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isPolling ? "animate-spin" : ""}`} />
@@ -402,7 +402,7 @@ export default function MediaPlayerCard({
               <button
                 onClick={copyNetSupportTarget}
                 disabled={!netSupportTarget}
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition disabled:opacity-40"
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[var(--brand)] transition disabled:opacity-40"
                 title={netSupportTarget ? "Скопировать hostname для ручного подключения" : "Заполните hostname для подключения"}
               >
                 <Copy className="h-3.5 w-3.5" />
@@ -412,7 +412,7 @@ export default function MediaPlayerCard({
                 href={webPanelUrl(player)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-rose-600 transition"
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[var(--brand)] transition"
                 title="Веб-панель"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
@@ -446,7 +446,7 @@ export default function MediaPlayerCard({
                     </button>
                     <button
                       onClick={() => { setIsActionsOpen(false); onDelete(player.id); }}
-                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition"
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--danger-fg)] hover:bg-[var(--danger-bg)] transition"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Удалить

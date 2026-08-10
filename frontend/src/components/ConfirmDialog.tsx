@@ -46,7 +46,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3">
-              {state.danger && <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />}
+              {state.danger && <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--danger-fg)]" />}
               <p className="whitespace-pre-line text-sm text-gray-800">{state.message}</p>
             </div>
             <div className="mt-4 flex justify-end gap-2">
@@ -60,7 +60,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 onClick={() => settle(true)}
                 autoFocus
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white transition ${
-                  state.danger ? "bg-red-600 hover:bg-red-700" : "bg-rose-600 hover:bg-rose-700"
+                  state.danger ? "bg-[var(--danger-fg)] hover:brightness-90" : "bg-[var(--brand-fill)] hover:bg-[var(--brand-strong)]"
                 }`}
               >
                 {state.confirmText || "Подтвердить"}

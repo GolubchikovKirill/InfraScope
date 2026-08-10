@@ -287,7 +287,7 @@ export default function Dashboard() {
       <div className={`grid gap-4 ${printerTab === "laser" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
         <Stat label="Всего" value={total} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
         <Stat label="Онлайн" value={online} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
-        <Stat label="Оффлайн" value={offline} color="text-red-700" bg="bg-red-50" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
+        <Stat label="Оффлайн" value={offline} color="text-[var(--danger-fg)]" bg="bg-[var(--danger-bg)]" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
         {printerTab === "laser" && (
           <Stat
             label="Мало тонера (<=15%)"
@@ -447,7 +447,7 @@ function Stat({
     <button
       type="button"
       onClick={onClick}
-      className={`app-stat ${bg} w-full px-4 py-3 text-left transition ${isActive ? "ring-2 ring-rose-400/50" : "hover:-translate-y-0.5 hover:shadow-md"}`}
+      className={`app-stat ${bg} w-full px-4 py-3 text-left transition ${isActive ? "ring-2 ring-[var(--brand-border)]" : "hover:-translate-y-0.5 hover:shadow-md"}`}
     >
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-0.5">{label}</div>

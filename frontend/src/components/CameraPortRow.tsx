@@ -46,14 +46,14 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
   };
 
   return (
-    <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group text-xs ${isDown ? "bg-red-50" : "hover:bg-gray-50"}`}>
-      <Camera className={`h-3.5 w-3.5 shrink-0 ${isDown ? "text-red-500" : "text-sky-500"}`} />
+    <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group text-xs ${isDown ? "bg-[var(--danger-bg)]" : "hover:bg-[var(--surface-2)]"}`}>
+      <Camera className={`h-3.5 w-3.5 shrink-0 ${isDown ? "text-[var(--danger-fg)]" : "text-sky-500"}`} />
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={`font-medium ${isDown ? "text-red-700" : "text-gray-800"}`}>{cam.description || cam.port}</span>
+          <span className={`font-medium ${isDown ? "text-[var(--danger-fg)]" : "text-gray-800"}`}>{cam.description || cam.port}</span>
           <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">VLAN {cam.vlan}</span>
           {isDown && (
-            <span className="text-[11px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded font-medium">
+            <span className="text-[11px] text-[var(--danger-fg)] bg-[var(--danger-bg)] px-1.5 py-0.5 rounded font-medium">
               нет линка
             </span>
           )}
@@ -75,7 +75,7 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
           <button
             onClick={handleReboot}
             disabled={rebooting}
-            className="app-icon-btn hover:bg-red-50 text-gray-400 hover:text-red-600 transition disabled:opacity-40"
+            className="app-icon-btn hover:bg-[var(--danger-bg)] text-gray-400 hover:text-[var(--danger-fg)] transition disabled:opacity-40"
             title="Перезагрузить камеру (PoE cycle)"
             aria-label={`Перезагрузить камеру на порту ${cam.port}`}
           >

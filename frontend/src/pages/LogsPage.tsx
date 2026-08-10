@@ -21,10 +21,10 @@ const DEVICE_KINDS: Array<{ key: "all" | "printer" | "media_player" | "switch" |
 
 function severityBadge(severity: EventSeverity) {
   if (severity === "critical") {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"><Siren className="h-3 w-3" />critical</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-[var(--danger-fg)] px-2 py-0.5 text-xs font-medium text-white"><Siren className="h-3 w-3" />critical</span>;
   }
   if (severity === "error") {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700"><AlertOctagon className="h-3 w-3" />error</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-[var(--danger-bg)] px-2 py-0.5 text-xs font-medium text-[var(--danger-fg)]"><AlertOctagon className="h-3 w-3" />error</span>;
   }
   if (severity === "warning") {
     return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"><AlertTriangle className="h-3 w-3" />warning</span>;
@@ -54,8 +54,8 @@ export default function LogsPage() {
     <div className="space-y-6">
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         <div className="app-stat bg-gray-100 px-4 py-3"><div className="text-2xl font-bold text-gray-900">{total}</div><div className="text-xs text-gray-500 mt-0.5">Всего</div></div>
-        <div className="app-stat bg-red-50 px-4 py-3"><div className="text-2xl font-bold text-red-700">{counts.critical}</div><div className="text-xs text-gray-500 mt-0.5">Critical</div></div>
-        <div className="app-stat bg-rose-50 px-4 py-3"><div className="text-2xl font-bold text-rose-700">{counts.errors}</div><div className="text-xs text-gray-500 mt-0.5">Error</div></div>
+        <div className="app-stat bg-[var(--danger-bg)] px-4 py-3"><div className="text-2xl font-bold text-[var(--danger-fg)]">{counts.critical}</div><div className="text-xs text-gray-500 mt-0.5">Critical</div></div>
+        <div className="app-stat bg-[var(--danger-bg)]/70 px-4 py-3"><div className="text-2xl font-bold text-[var(--danger-fg)]">{counts.errors}</div><div className="text-xs text-gray-500 mt-0.5">Error</div></div>
         <div className="app-stat bg-amber-50 px-4 py-3"><div className="text-2xl font-bold text-amber-700">{counts.warnings}</div><div className="text-xs text-gray-500 mt-0.5">Warning</div></div>
       </div>
 
@@ -84,7 +84,7 @@ export default function LogsPage() {
             <button
               key={item.key}
               onClick={() => setSeverity(item.key)}
-              className={`app-btn-secondary px-3 py-1.5 text-xs ${severity === item.key ? "ring-2 ring-rose-400/50" : ""}`}
+              className={`app-btn-secondary px-3 py-1.5 text-xs ${severity === item.key ? "ring-2 ring-[var(--brand-border)]" : ""}`}
             >
               {item.label}
             </button>
@@ -95,7 +95,7 @@ export default function LogsPage() {
             <button
               key={item.key}
               onClick={() => setDeviceKind(item.key)}
-              className={`app-btn-secondary px-3 py-1.5 text-xs ${deviceKind === item.key ? "ring-2 ring-rose-400/50" : ""}`}
+              className={`app-btn-secondary px-3 py-1.5 text-xs ${deviceKind === item.key ? "ring-2 ring-[var(--brand-border)]" : ""}`}
             >
               {item.label}
             </button>
@@ -106,7 +106,7 @@ export default function LogsPage() {
       <div className="app-panel overflow-hidden app-compact-scroll">
         {isLoading ? (
           <div className="flex justify-center py-20">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--brand)] border-t-transparent" />
           </div>
         ) : logs.length === 0 ? (
           <div className="text-center py-16 text-gray-400">Событий пока нет</div>

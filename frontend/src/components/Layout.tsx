@@ -115,7 +115,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 onClick={handleToggleSidebar}
-                className="app-logo-btn app-logo-live rounded-xl bg-linear-to-br from-red-700 to-rose-600 p-2 shadow-md"
+                className="app-logo-btn app-logo-live rounded-xl bg-linear-to-br from-[var(--brand-strong)] to-[var(--brand-bright)] p-2 shadow-md"
                 title="Свернуть/развернуть меню"
               >
                 <Server className="h-5 w-5 text-white" />
@@ -232,7 +232,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div className="px-3 py-3 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-linear-to-br from-red-700 to-rose-600 p-1.5 shadow-sm">
+                <div className="rounded-lg bg-linear-to-br from-[var(--brand-strong)] to-[var(--brand-bright)] p-1.5 shadow-sm">
                   <Server className="h-4 w-4 text-white" />
                 </div>
                 <span className="font-semibold text-slate-900 dark:text-slate-100">InfraScope</span>

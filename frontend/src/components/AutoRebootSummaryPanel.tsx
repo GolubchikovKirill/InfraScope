@@ -4,7 +4,7 @@ import { getAutoRebootSummary } from "../client";
 
 function MiniStat({ value, label, tone }: { value: number; label: string; tone: "ok" | "danger" | "muted" }) {
   const toneClass =
-    tone === "ok" ? "text-emerald-700" : tone === "danger" ? "text-red-700" : "text-gray-500";
+    tone === "ok" ? "text-emerald-700" : tone === "danger" ? "text-[var(--danger-fg)]" : "text-gray-500";
   return (
     <div className="text-center">
       <div className={`text-lg font-bold ${toneClass}`}>{value}</div>
@@ -36,13 +36,13 @@ export default function AutoRebootSummaryPanel() {
   return (
     <div
       className={`app-panel rounded-xl border p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 ${
-        hasFailures ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"
+        hasFailures ? "border-[var(--danger-border)] bg-[var(--danger-bg)]" : "border-emerald-200 bg-emerald-50"
       }`}
     >
       <div className="flex items-center gap-3">
-        <div className={`rounded-lg p-2 ${hasFailures ? "bg-red-100" : "bg-emerald-100"}`}>
+        <div className={`rounded-lg p-2 ${hasFailures ? "bg-[var(--danger-bg)]" : "bg-emerald-100"}`}>
           {hasFailures ? (
-            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <AlertTriangle className="h-5 w-5 text-[var(--danger-fg)]" />
           ) : (
             <Wifi className="h-5 w-5 text-emerald-600" />
           )}
@@ -59,19 +59,19 @@ export default function AutoRebootSummaryPanel() {
         <MiniStat value={data.aps_rebooted_ok} label="перезагружено" tone="ok" />
         {data.aps_failed > 0 && (
           <div className="flex items-center gap-1.5">
-            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <AlertTriangle className="h-4 w-4 text-[var(--danger-fg)]" />
             <MiniStat value={data.aps_failed} label="не вернулись" tone="danger" />
           </div>
         )}
         {data.aps_needing_attention > 0 && (
           <div className="flex items-center gap-1.5" title="Точки, исключённые из автоперезагрузки после нескольких неудачных циклов подряд — нужна проверка на месте">
-            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <AlertTriangle className="h-4 w-4 text-[var(--danger-fg)]" />
             <MiniStat value={data.aps_needing_attention} label="точки требуют проверки" tone="danger" />
           </div>
         )}
         {data.switches_needing_attention > 0 && (
           <div className="flex items-center gap-1.5" title="Свитчи, у которых цикл авто-перезагрузки не может отработать несколько раз подряд — не отвечают по SSH или не находят точек на VLAN">
-            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <AlertTriangle className="h-4 w-4 text-[var(--danger-fg)]" />
             <MiniStat value={data.switches_needing_attention} label="свитчи требуют проверки" tone="danger" />
           </div>
         )}

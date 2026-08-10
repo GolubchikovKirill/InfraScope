@@ -216,7 +216,7 @@ export default function PrinterCard({
                     key={item.key}
                     type="button"
                     onClick={() => handleCopyToner(item.name)}
-                    className="group inline-flex min-h-8 items-center justify-between gap-2 rounded-md border border-transparent px-2 py-1 text-left hover:border-rose-200 hover:bg-white/70"
+                    className="group inline-flex min-h-8 items-center justify-between gap-2 rounded-md border border-transparent px-2 py-1 text-left hover:border-[var(--brand-border)] hover:bg-white/70"
                     title="Скопировать модель картриджа"
                   >
                     <span>
@@ -251,7 +251,7 @@ export default function PrinterCard({
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                       offlineRiskLevel === "high"
-                        ? "bg-red-100 text-red-700"
+                        ? "bg-[var(--danger-bg)] text-[var(--danger-fg)]"
                         : offlineRiskLevel === "medium"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-emerald-100 text-emerald-700"
@@ -357,7 +357,7 @@ export default function PrinterCard({
                     </button>
                     <button
                       onClick={() => { setIsActionsOpen(false); onDelete(printer.id); }}
-                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition"
+                      className="w-full inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--danger-fg)] hover:bg-[var(--danger-bg)] transition"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Удалить

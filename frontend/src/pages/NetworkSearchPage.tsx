@@ -356,7 +356,7 @@ export default function NetworkSearchPage() {
       </div>
 
       {error && (
-        <div className="app-panel p-4 text-sm text-rose-700 bg-rose-50 border-rose-200">
+        <div className="app-panel p-4 text-sm text-[var(--danger-fg)] bg-[var(--danger-bg)] border-[var(--danger-border)]">
           Ошибка: {error}
         </div>
       )}

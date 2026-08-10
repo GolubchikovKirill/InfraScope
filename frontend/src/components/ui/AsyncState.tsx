@@ -12,7 +12,7 @@ export function ErrorState({
   className = "",
   text = "Произошла ошибка. Попробуйте снова.",
 }: CommonProps & { text?: string }) {
-  return <div className={`text-sm text-rose-700 ${className}`}>{text}</div>;
+  return <div className={`text-sm text-[var(--danger-fg)] ${className}`}>{text}</div>;
 }
 
 export function EmptyState({

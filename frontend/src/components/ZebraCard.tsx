@@ -108,7 +108,7 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
                 </button>
                 <button
                   onClick={() => onDelete(printer.id)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-red-600 transition"
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[var(--danger-fg)] transition"
                   title="Удалить"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

@@ -27,7 +27,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--brand)] border-t-transparent" />
       </div>
     );
   }
@@ -44,7 +44,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function RouteLoader() {
   return (
     <div className="flex h-[45vh] items-center justify-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-500 border-t-transparent" />
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--brand)] border-t-transparent" />
     </div>
   );
 }
