@@ -26,30 +26,39 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
     """Query ifPhysAddress via SNMP to get MAC address."""
     engine = SnmpEngine()
     try:
-        target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception:
-        return None
+        try:
+            target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+        except Exception:
+            return None
 
-    comm = CommunityData(community)
-    try:
-        async for err, _, _, vb in walkCmd(
-            engine,
-            comm,
-            target,
-            ContextData(),
-            ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
-            lexicographicMode=False,
-        ):
-            if err:
-                break
-            for _, val in vb:
-                if hasattr(val, "asOctets"):
-                    octets = val.asOctets()
-                    if len(octets) == 6 and any(b != 0 for b in octets):
-                        return ":".join(f"{b:02x}" for b in octets)
-    except Exception:
-        pass
-    return None
+        comm = CommunityData(community)
+        try:
+            async for err, _, _, vb in walkCmd(
+                engine,
+                comm,
+                target,
+                ContextData(),
+                ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
+                lexicographicMode=False,
+            ):
+                if err:
+                    break
+                for _, val in vb:
+                    if hasattr(val, "asOctets"):
+                        octets = val.asOctets()
+                        if len(octets) == 6 and any(b != 0 for b in octets):
+                            return ":".join(f"{b:02x}" for b in octets)
+        except Exception:
+            pass
+        return None
+    finally:
+        # SnmpEngine opens a UDP socket lazily on first request and never
+        # closes it on its own - across enough polling cycles that leaked
+        # one file descriptor per call until the container hit its FD limit
+        # (Errno 24) and every poll endpoint started returning 500. Must run
+        # in the same event loop that issued the request; closing after
+        # asyncio.run() returns is a no-op against a loop that's already gone.
+        engine.closeDispatcher()
 
 
 def _get_mac_from_arp(ip_address: str) -> str | None:

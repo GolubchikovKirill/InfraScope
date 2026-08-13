@@ -126,6 +126,13 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
+    # See polling-service for why: defense in depth against the SNMP engine
+    # socket leak (fixed in code, app/services/snmp), shared here since this
+    # image is common to every service.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     networks:
       - internal
 
@@ -167,6 +174,11 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
+    # See polling-service for why.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     networks:
       - internal
 
@@ -190,6 +202,11 @@ services:
       # /app isn't writable by the non-root "app" user (only its contents are,
       # from the build's --chown COPY), so point the schedule file at /tmp.
       - celery -A app.worker.celery_app.celery_app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
+    # See polling-service for why.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     networks:
       - internal
 
@@ -224,6 +241,11 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
+    # See polling-service for why.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     networks:
       - internal
 
@@ -265,6 +287,15 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
+    # Defense in depth against the SNMP engine socket leak (fixed in code,
+    # see app/services/snmp): the default 1024 was exhausted in ~2 days of
+    # normal polling and every poll endpoint started returning 500
+    # (OSError: [Errno 24] Too many open files). A raised ceiling buys time
+    # to notice a future leak via monitoring instead of a hard outage.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     networks:
       - internal
 
@@ -305,6 +336,11 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
+    # See polling-service for why.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     networks:
       - internal
 
@@ -344,6 +380,11 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
+    # See polling-service for why.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     networks:
       - internal
 
@@ -388,6 +429,11 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
+    # See polling-service for why.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     networks:
       - internal
 

@@ -84,6 +84,15 @@ class SnmpSwitchProvider:
 
     async def _get_ports_async(self, switch: NetworkSwitch) -> list[SwitchPortState]:
         engine = SnmpEngine()
+        try:
+            return await self._get_ports_async_inner(engine, switch)
+        finally:
+            # See _fetch_basics for why this matters: SnmpEngine never closes
+            # its own UDP socket, and this call alone issues 8 SNMP walks
+            # per switch per port-snapshot cycle.
+            engine.closeDispatcher()
+
+    async def _get_ports_async_inner(self, engine: SnmpEngine, switch: NetworkSwitch) -> list[SwitchPortState]:
         target = await self._create_transport_target(switch.ip_address, 161, timeout=2, retries=1)
         community = CommunityData(switch.snmp_community_ro, mpModel=1)
         descr_rows = await self._snmp_walk(engine, target, community, _OID_IF_DESCR)
@@ -170,18 +179,25 @@ class SnmpSwitchProvider:
 
     async def _fetch_basics(self, host: str, community: str) -> dict[str, str] | None:
         engine = SnmpEngine()
-        target = await self._create_transport_target(host, 161, timeout=2, retries=1)
-        comm = CommunityData(community, mpModel=1)
-        sys_name = await self._snmp_get(engine, target, comm, _OID_SYS_NAME)
-        sys_descr = await self._snmp_get(engine, target, comm, _OID_SYS_DESCR)
-        sys_uptime = await self._snmp_get(engine, target, comm, _OID_SYS_UPTIME)
-        if not (sys_name or sys_descr):
-            return None
-        return {
-            "hostname": sys_name or host,
-            "model_info": sys_descr,
-            "uptime": _uptime_ticks_to_human(sys_uptime) or sys_uptime or "",
-        }
+        try:
+            target = await self._create_transport_target(host, 161, timeout=2, retries=1)
+            comm = CommunityData(community, mpModel=1)
+            sys_name = await self._snmp_get(engine, target, comm, _OID_SYS_NAME)
+            sys_descr = await self._snmp_get(engine, target, comm, _OID_SYS_DESCR)
+            sys_uptime = await self._snmp_get(engine, target, comm, _OID_SYS_UPTIME)
+            if not (sys_name or sys_descr):
+                return None
+            return {
+                "hostname": sys_name or host,
+                "model_info": sys_descr,
+                "uptime": _uptime_ticks_to_human(sys_uptime) or sys_uptime or "",
+            }
+        finally:
+            # SnmpEngine opens a UDP socket lazily on first request and never
+            # closes it on its own - across enough polling cycles that leaked
+            # one file descriptor per call until the container hit its FD
+            # limit (Errno 24) and every poll endpoint started returning 500.
+            engine.closeDispatcher()
 
     async def _snmp_get(
         self,
@@ -211,17 +227,20 @@ class SnmpSwitchProvider:
         value,
     ) -> None:
         engine = SnmpEngine()
-        target = await self._create_transport_target(host, 161, timeout=2, retries=1)
-        comm = CommunityData(community, mpModel=1)
-        error_indication, error_status, _error_index, _var_binds = await setCmd(
-            engine,
-            comm,
-            target,
-            ContextData(),
-            ObjectType(ObjectIdentity(oid), value),
-        )
-        if error_indication or error_status:
-            raise RuntimeError(f"SNMP set failed for {oid}")
+        try:
+            target = await self._create_transport_target(host, 161, timeout=2, retries=1)
+            comm = CommunityData(community, mpModel=1)
+            error_indication, error_status, _error_index, _var_binds = await setCmd(
+                engine,
+                comm,
+                target,
+                ContextData(),
+                ObjectType(ObjectIdentity(oid), value),
+            )
+            if error_indication or error_status:
+                raise RuntimeError(f"SNMP set failed for {oid}")
+        finally:
+            engine.closeDispatcher()
 
     async def _snmp_walk(
         self,

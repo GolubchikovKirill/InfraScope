@@ -26,6 +26,19 @@ logger = logging.getLogger(__name__)
 async def _poll_printer_async(ip_address: str, community: str = "public") -> PrinterStatus:
     engine = SnmpEngine()
     try:
+        return await _poll_printer_async_inner(engine, ip_address, community)
+    finally:
+        # SnmpEngine opens a UDP socket lazily on first request and never
+        # closes it on its own - across enough polling cycles that leaked
+        # one file descriptor per call until the container hit its FD limit
+        # (Errno 24) and every poll endpoint started returning 500. Must run
+        # in the same event loop that issued the request; closing after
+        # asyncio.run() returns is a no-op against a loop that's already gone.
+        engine.closeDispatcher()
+
+
+async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, community: str) -> PrinterStatus:
+    try:
         target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception as e:
         logger.debug("Cannot create SNMP target for %s: %s", ip_address, e)
@@ -159,6 +172,13 @@ def poll_printer(ip_address: str, community: str = "public") -> PrinterStatus:
 async def _poll_printer_light_async(ip_address: str, community: str = "public") -> PrinterStatus:
     """Online/offline only - one SNMP GET, no toner walk or HTTP scraping."""
     engine = SnmpEngine()
+    try:
+        return await _poll_printer_light_async_inner(engine, ip_address, community)
+    finally:
+        engine.closeDispatcher()
+
+
+async def _poll_printer_light_async_inner(engine: SnmpEngine, ip_address: str, community: str) -> PrinterStatus:
     try:
         target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception as e:
