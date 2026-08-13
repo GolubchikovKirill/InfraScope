@@ -23,6 +23,16 @@ class Printer(SQLModel, table=True):
 
     is_online: bool | None = Field(default=None)
     status: str | None = Field(default=None, max_length=50)
+    # Short machine-readable code for why is_online is False - same
+    # convention as NetworkSwitch/Computer/CashRegister.reachability_reason.
+    # SNMP over UDP can't distinguish "wrong community string" from "no
+    # route to host" the way SSH can (both just time out identically), so
+    # this is coarser than the switch classification: "no_response" covers
+    # both. The subnet-wide path-failure heuristic (printer_polling.
+    # _subnets_with_total_failure) is what actually catches the network-vs-
+    # device distinction for printers, by not touching state at all when a
+    # whole subnet fails together.
+    reachability_reason: str | None = Field(default=None, max_length=64)
     toner_black: int | None = Field(default=None)
     toner_cyan: int | None = Field(default=None)
     toner_magenta: int | None = Field(default=None)

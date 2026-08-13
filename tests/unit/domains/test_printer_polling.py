@@ -8,14 +8,50 @@ from app.domains.inventory.models import Printer
 from app.domains.inventory.printer_polling import (
     _apply_full_printer_result,
     _apply_light_printer_result,
+    _printer_offline_reason,
     _subnets_with_total_failure,
     is_full_poll_cycle,
+    poll_all_printers_local,
     poll_one_printer,
     poll_printer_batch,
     poll_single_printer_local,
     verify_printer_mac,
 )
 from app.services.snmp import PrinterStatus
+
+
+class _NoLockRedis:
+    """Just enough for poll_all_printers_local's lock acquire/release -
+    always grants the lock, never blocks a test on real Redis."""
+
+    async def set(self, *_a, **_kw):
+        return True
+
+    async def delete(self, *_a, **_kw):
+        return None
+
+
+class _FakeResilienceRedis:
+    """In-memory stand-in for poll_resilience.apply_poll_outcome's Redis
+    usage, so consecutive-failure state actually persists across calls
+    within a test instead of silently resetting (apply_poll_outcome treats
+    a Redis error as "no state yet", which would make every cycle look like
+    the first failure)."""
+
+    def __init__(self):
+        self.hashes: dict[str, dict[str, str]] = {}
+
+    async def hgetall(self, key):
+        return dict(self.hashes.get(key, {}))
+
+    async def hget(self, key, field):
+        return self.hashes.get(key, {}).get(field)
+
+    async def hset(self, key, mapping):
+        self.hashes.setdefault(key, {}).update({k: str(v) for k, v in mapping.items()})
+
+    async def expire(self, *_a, **_kw):
+        return None
 
 
 def test_verify_printer_mac_records_first_seen_mac() -> None:
@@ -287,3 +323,102 @@ async def test_poll_single_printer_local_marks_offline_after_two_failed_attempts
     assert calls["count"] == 2
     assert result.is_online is False
     assert result.status == "error"
+    assert result.reachability_reason == "poll_error"
+
+
+def test_printer_offline_reason_maps_target_creation_failure():
+    """From poller.py: target construction itself failed (malformed IP) -
+    distinct from a device that simply didn't answer."""
+    assert _printer_offline_reason("unreachable") == "target_invalid"
+
+
+def test_printer_offline_reason_defaults_to_no_response():
+    """SNMP over UDP can't distinguish a wrong community string from a dead
+    route the way SSH can - both time out identically, so every other
+    offline case collapses to one generic reason."""
+    assert _printer_offline_reason("offline") == "no_response"
+    assert _printer_offline_reason(None) == "no_response"
+
+
+def test_apply_full_printer_result_clears_a_stale_reachability_reason():
+    printer = Printer(
+        printer_type="laser",
+        connection_type="ip",
+        store_name="Store A",
+        model="HP",
+        ip_address="10.10.10.52",
+        reachability_reason="no_response",
+    )
+    result = PrinterStatus(is_online=True, status="online", sys_description="HP LaserJet")
+
+    _apply_full_printer_result(printer, result, current_mac=None)
+
+    assert printer.is_online is True
+    assert printer.reachability_reason is None
+
+
+@pytest.mark.asyncio
+async def test_bulk_poll_respects_the_offline_confirmation_grace_period(db_session, monkeypatch) -> None:
+    """Regression test: _apply_full_printer_result used to be called whenever
+    the resilience layer decided effective_online=True, but it unconditionally
+    copies result.is_online (False, on a failed probe) onto the printer -
+    silently overriding the "still within grace period" decision and
+    flipping the printer offline on its very first failed poll. A single
+    transient SNMP timeout should not immediately mark a previously-online
+    printer offline; POLL_OFFLINE_CONFIRMATIONS (default 2) failed cycles
+    are required first.
+    """
+    printer = Printer(
+        printer_type="laser",
+        connection_type="ip",
+        store_name="Store A",
+        model="HP",
+        ip_address="10.10.10.60",
+        is_online=True,
+        status="online",
+    )
+    db_session.add(printer)
+    db_session.commit()
+    db_session.refresh(printer)
+
+    async def _fake_lock_redis():
+        return _NoLockRedis()
+
+    fake_resilience_redis = _FakeResilienceRedis()
+
+    async def _fake_resilience_redis():
+        return fake_resilience_redis
+
+    async def _noop():
+        return None
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.get_redis", _fake_lock_redis)
+    monkeypatch.setattr("app.services.poll_resilience.get_redis", _fake_resilience_redis)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.invalidate_printer_cache", _noop)
+    monkeypatch.setattr(
+        "app.domains.inventory.printer_polling.is_circuit_open", lambda *_a, **_kw: _false_coro()
+    )
+
+    failing_result = {printer.ip_address: (PrinterStatus(is_online=False, status="offline"), None)}
+    monkeypatch.setattr(
+        "app.domains.inventory.printer_polling.poll_printer_batch", lambda *_a, **_kw: failing_result
+    )
+
+    # Cycle 1: first failure after being online - resilience should hold it
+    # online for the grace period, and this cycle should learn nothing new
+    # (no reason recorded) rather than declaring a cause for an offline
+    # state that was never actually applied.
+    await poll_all_printers_local(session=db_session, printer_type="laser")
+    db_session.refresh(printer)
+    assert printer.is_online is True
+    assert printer.reachability_reason is None
+
+    # Cycle 2: second consecutive failure - grace period exhausted.
+    await poll_all_printers_local(session=db_session, printer_type="laser")
+    db_session.refresh(printer)
+    assert printer.is_online is False
+    assert printer.reachability_reason == "no_response"
+
+
+async def _false_coro():
+    return False

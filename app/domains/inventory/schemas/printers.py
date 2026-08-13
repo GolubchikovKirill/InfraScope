@@ -195,6 +195,7 @@ class PrinterPublic(BaseModel):
     host_pc: str | None = None
     is_online: bool | None = None
     status: str | None = None
+    reachability_reason: str | None = None
     toner_black: int | None = None
     toner_cyan: int | None = None
     toner_magenta: int | None = None

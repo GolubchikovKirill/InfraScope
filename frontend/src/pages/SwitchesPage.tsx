@@ -7,6 +7,7 @@ import { getSwitches, createSwitch, updateSwitch, deleteSwitch, pollSwitch, poll
 import SwitchForm from "../components/SwitchForm";
 import SwitchCard from "../components/SwitchCard";
 import SwitchPortsTable from "../components/SwitchPortsTable";
+import PathSuspectBanner from "../components/PathSuspectBanner";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -91,6 +92,7 @@ export default function SwitchesPage() {
 
   return (
     <div className="space-y-6">
+      <PathSuspectBanner deviceKind="switch" />
       <div className="app-panel p-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full md:max-w-md">

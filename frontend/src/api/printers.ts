@@ -15,6 +15,7 @@ export interface Printer {
   host_pc: string | null;
   is_online: boolean | null;
   status: string | null;
+  reachability_reason: string | null;
   toner_black: number | null;
   toner_cyan: number | null;
   toner_magenta: number | null;

@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Copy,
   Check,
+  AlertTriangle,
 } from "lucide-react";
 import type { Printer } from "../client";
 import TonerBar from "./TonerBar";
@@ -148,6 +149,12 @@ export default function PrinterCard({
         {/* IP + MAC */}
         {printer.ip_address && (
           <div className="app-card-meta app-mono">{printer.ip_address}</div>
+        )}
+        {isOffline && printer.reachability_reason && (
+          <div className="flex items-center gap-1.5 text-xs text-[var(--danger-fg)]">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            <span>{offlineReason(printer.reachability_reason)}</span>
+          </div>
         )}
         {printer.host_pc && (
           <div className="text-xs text-gray-500">
@@ -372,4 +379,17 @@ export default function PrinterCard({
 
     </div>
   );
+}
+
+function offlineReason(reason: string): string {
+  switch (reason) {
+    case "target_invalid":
+      return "Некорректный адрес устройства";
+    case "poll_error":
+      return "Ошибка при опросе";
+    case "no_response":
+      return "Не отвечает по SNMP";
+    default:
+      return "Неизвестная причина";
+  }
 }

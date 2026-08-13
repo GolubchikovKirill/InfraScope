@@ -126,6 +126,15 @@ def poll_one_printer(printer: Printer, *, full: bool = True) -> tuple[str, objec
         return ip, None, None
 
 
+def _printer_offline_reason(result_status: str | None) -> str:
+    """SNMP over UDP can't distinguish "wrong community string" from "no
+    route to host" the way SSH can - both just time out identically, so this
+    is coarser than NetworkSwitch's classification. "unreachable" comes from
+    poller.py when target construction itself failed (malformed IP); every
+    other offline case is a plain no-response."""
+    return "target_invalid" if result_status == "unreachable" else "no_response"
+
+
 def verify_printer_mac(printer: Printer, current_mac: str | None) -> str | None:
     if current_mac is None:
         return "unavailable"
@@ -190,6 +199,7 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
             online = await asyncio.to_thread(check_port, printer.ip_address)
         printer.is_online = online
         printer.status = "online" if online else "offline"
+        printer.reachability_reason = None if online else "no_response"
         printer.mac_status = None
         printer_polls_total.labels(
             mode="single",
@@ -237,11 +247,13 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
             if result is None:
                 printer.is_online = False
                 printer.status = "error"
+                printer.reachability_reason = "poll_error"
                 printer.mac_status = "unavailable"
                 printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="error").inc()
             elif not result.is_online:
                 printer.is_online = False
                 printer.status = "offline"
+                printer.reachability_reason = _printer_offline_reason(result.status)
                 printer.mac_status = "unavailable"
                 printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="offline").inc()
             else:
@@ -343,6 +355,7 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
             if result is None:
                 printer.is_online = effective_online
                 printer.status = "error" if not effective_online else (printer.status or "online")
+                printer.reachability_reason = "poll_error" if not effective_online else None
                 printer.mac_status = "unavailable"
                 printer_polls_total.labels(
                     mode="all",
@@ -354,6 +367,7 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
             elif isinstance(result, dict):
                 printer.is_online = effective_online
                 printer.status = "online" if effective_online else "offline"
+                printer.reachability_reason = None if effective_online else "no_response"
                 printer.mac_status = None
                 printer_polls_total.labels(
                     mode="all",
@@ -364,14 +378,29 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
                     offline_with_mac.append(printer)
             else:
                 printer.is_online = effective_online
-                if effective_online:
+                if raw_online:
+                    # A real success this cycle - apply it regardless of the
+                    # resilience layer's decision (which, for a genuine
+                    # success, is always effective_online=True anyway).
                     if full:
                         _apply_full_printer_result(printer, result, current_mac)
                     else:
                         _apply_light_printer_result(printer, result)
-                else:
+                elif not effective_online:
                     printer.status = "offline"
+                    printer.reachability_reason = _printer_offline_reason(getattr(result, "status", None))
                     printer.mac_status = verify_printer_mac(printer, current_mac)
+                # else: raw_online is False but effective_online is True -
+                # this cycle's failure is still within the grace period
+                # (POLL_OFFLINE_CONFIRMATIONS). Bug this replaces: calling
+                # _apply_full_printer_result here used to unconditionally
+                # copy result.is_online (False) onto the printer, silently
+                # overriding the resilience decision and flipping the
+                # printer offline on its very first failed poll - the grace
+                # period never actually applied to the laser/full-poll path.
+                # Leaving status/toner/reachability_reason untouched instead
+                # mirrors how the `result is None` branch above already
+                # handles the same pending-confirmation state.
                 printer_polls_total.labels(
                     mode="all",
                     printer_type=printer.printer_type,
@@ -408,6 +437,10 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
 def _apply_full_printer_result(printer: Printer, result, current_mac: str | None) -> None:
     printer.is_online = result.is_online
     printer.status = result.status
+    # Only called when result.is_online is True (see callers), so there is
+    # nothing to explain - clear a reason that may be left over from before
+    # this printer recovered.
+    printer.reachability_reason = None
     printer.toner_black = result.toner_black
     printer.toner_cyan = result.toner_cyan
     printer.toner_magenta = result.toner_magenta
@@ -423,6 +456,7 @@ def _apply_light_printer_result(printer: Printer, result) -> None:
     """
     printer.is_online = result.is_online
     printer.status = result.status
+    printer.reachability_reason = None
 
 
 async def _relocate_offline_printers(session: Session, offline_with_mac: list[Printer]) -> None:
@@ -465,6 +499,7 @@ async def _relocate_offline_printers(session: Session, offline_with_mac: list[Pr
             if isinstance(new_result, dict):
                 printer.is_online = new_result["is_online"]
                 printer.status = "online"
+                printer.reachability_reason = None
             else:
                 _apply_full_printer_result(printer, new_result, new_mac)
             logger.info(
