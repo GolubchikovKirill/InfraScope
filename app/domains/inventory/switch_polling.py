@@ -63,6 +63,41 @@ def record_switch_status_change(session: Session, switch: NetworkSwitch, was_onl
     )
 
 
+def _subnet_of(ip: str) -> str:
+    return ip.rsplit(".", 1)[0]
+
+
+def _subnets_with_total_failure(
+    results: list[tuple[NetworkSwitch, SwitchPollInfo | None, str | None, Exception | None]],
+) -> set[str]:
+    """Subnets where practically every switch stopped answering in one cycle.
+
+    Same heuristic as printer_polling._subnets_with_total_failure, and the
+    same motivation: a store's worth of switches does not go dark in the
+    same poll cycle - the route to them does. This exact blind spot is what
+    turned a Docker network misconfiguration into 32 individual "device
+    offline" records instead of one "path to this subnet is down" warning,
+    and cost three days to diagnose. When this fires, the cycle leaves those
+    switches' state alone rather than guessing on evidence it doesn't have.
+    """
+    min_devices = max(settings.POLL_PATH_FAILURE_MIN_DEVICES, 2)
+    ratio = min(max(settings.POLL_PATH_FAILURE_RATIO, 0.0), 1.0)
+
+    by_subnet: dict[str, list[bool]] = {}
+    for switch, info, _mac, exc in results:
+        online = bool(info is not None and info.is_online and exc is None)
+        by_subnet.setdefault(_subnet_of(switch.ip_address), []).append(online)
+
+    suspect: set[str] = set()
+    for subnet, outcomes in by_subnet.items():
+        if len(outcomes) < min_devices:
+            continue
+        failed = sum(1 for online in outcomes if not online)
+        if failed / len(outcomes) >= ratio:
+            suspect.add(subnet)
+    return suspect
+
+
 def verify_switch_mac(switch: NetworkSwitch, current_mac: str | None) -> str | None:
     """Same convention as printer/media MAC verification: records the first
     MAC seen, flags a change as a mismatch worth a human look, and lets a
@@ -221,7 +256,33 @@ async def poll_all_switches_local(*, session: Session) -> Message:
         error_count = 0
         offline_with_mac: list[NetworkSwitch] = []
 
+        suspect_subnets = _subnets_with_total_failure(results)
+        for subnet in sorted(suspect_subnets):
+            write_event_log(
+                session,
+                category="network",
+                event_type="poll_path_suspect",
+                severity="warning",
+                device_kind="switch",
+                device_name=f"{subnet}.0/24",
+                ip_address=None,
+                message=(
+                    f"Опрос: почти все свитчи подсети {subnet}.0/24 перестали отвечать в одном "
+                    "цикле - похоже на обрыв пути до подсети, а не на отказ каждого устройства. "
+                    "Их состояние оставлено без изменений до следующего цикла."
+                ),
+            )
+        if suspect_subnets:
+            session.commit()
+
         for switch, info, current_mac, exc in results:
+            if _subnet_of(switch.ip_address) in suspect_subnets:
+                # Deliberately touch nothing - not the state, and not
+                # last_polled_at either. Bumping the timestamp would make the
+                # card read as freshly confirmed when this cycle actually
+                # learned nothing about the switch.
+                switch_ops_total.labels(operation="poll_all", result="path_suspect").inc()
+                continue
             try:
                 was_online = switch.is_online
                 if exc:

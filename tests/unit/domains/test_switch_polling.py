@@ -4,11 +4,16 @@ import pytest
 
 from app.domains.inventory.models import NetworkSwitch
 from app.domains.inventory.switch_polling import (
+    _subnets_with_total_failure,
     apply_switch_poll_info,
     poll_one_switch,
     record_switch_status_change,
 )
 from app.services.switches.base import SwitchPollInfo
+
+
+def _sw(ip: str) -> NetworkSwitch:
+    return NetworkSwitch(name=ip, ip_address=ip)
 
 
 def test_apply_switch_poll_info_updates_online_metadata() -> None:
@@ -113,6 +118,63 @@ def test_record_switch_status_change_omits_reason_suffix_when_none(monkeypatch) 
     record_switch_status_change(session=None, switch=switch, was_online=False)
 
     assert events[0]["message"] == "Network device 'Core Switch' is now online"
+
+
+def test_whole_switch_subnet_failing_at_once_is_flagged_as_a_path_problem(monkeypatch) -> None:
+    """Switches don't all fail inside one poll cycle - the path does. Same
+    heuristic, same rationale as printer_polling's, and the exact blind spot
+    that turned a Docker network misconfiguration into 32 separate "device
+    offline" records instead of one path warning."""
+    monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
+    monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
+
+    results = [
+        (_sw("172.19.17.10"), None, None, RuntimeError("unreachable")),
+        (_sw("172.19.17.11"), None, None, RuntimeError("unreachable")),
+        (_sw("172.19.17.12"), None, None, RuntimeError("unreachable")),
+        (_sw("172.19.17.13"), None, None, RuntimeError("unreachable")),
+    ]
+
+    assert _subnets_with_total_failure(results) == {"172.19.17"}
+
+
+def test_one_switch_down_among_healthy_neighbours_is_not_a_path_problem(monkeypatch) -> None:
+    monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
+    monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
+
+    results = [
+        (_sw("172.19.17.10"), None, None, RuntimeError("unreachable")),
+        (_sw("172.19.17.11"), SwitchPollInfo(is_online=True), None, None),
+        (_sw("172.19.17.12"), SwitchPollInfo(is_online=True), None, None),
+        (_sw("172.19.17.13"), SwitchPollInfo(is_online=True), None, None),
+    ]
+
+    assert _subnets_with_total_failure(results) == set()
+
+
+def test_a_lone_switch_failing_is_never_treated_as_a_path_problem(monkeypatch) -> None:
+    monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
+    monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
+
+    results = [(_sw("172.19.17.10"), None, None, RuntimeError("unreachable"))]
+
+    assert _subnets_with_total_failure(results) == set()
+
+
+def test_switch_subnets_are_judged_independently(monkeypatch) -> None:
+    monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
+    monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
+
+    results = [
+        (_sw("172.19.17.10"), None, None, RuntimeError("unreachable")),
+        (_sw("172.19.17.11"), None, None, RuntimeError("unreachable")),
+        (_sw("172.19.17.12"), None, None, RuntimeError("unreachable")),
+        (_sw("172.19.18.10"), SwitchPollInfo(is_online=True), None, None),
+        (_sw("172.19.18.11"), SwitchPollInfo(is_online=True), None, None),
+        (_sw("172.19.18.12"), SwitchPollInfo(is_online=True), None, None),
+    ]
+
+    assert _subnets_with_total_failure(results) == {"172.19.17"}
 
 
 @pytest.mark.asyncio
