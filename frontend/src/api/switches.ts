@@ -17,6 +17,7 @@ export interface NetworkSwitch {
   hostname: string | null;
   uptime: string | null;
   is_online: boolean | null;
+  reachability_reason: string | null;
   last_polled_at: string | null;
   mac_address: string | null;
   mac_status: string | null;

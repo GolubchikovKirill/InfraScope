@@ -13,6 +13,11 @@ class SwitchPollInfo:
     model_info: str | None = None
     ios_version: str | None = None
     uptime: str | None = None
+    # Set only when is_online is False. Short machine-readable code (e.g.
+    # "network_unreachable", "auth_rejected", "timeout") distinguishing why
+    # the switch is considered offline, so a routing/network problem doesn't
+    # render identically to a genuinely dead device or a rejected password.
+    offline_reason: str | None = None
 
 
 @dataclass

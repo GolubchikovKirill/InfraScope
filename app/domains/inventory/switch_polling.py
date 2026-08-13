@@ -32,9 +32,25 @@ class SwitchNotFoundError(LookupError):
     pass
 
 
+_REASON_LABELS = {
+    "auth_rejected": "неверные учётные данные",
+    "dns_failure": "не резолвится имя хоста",
+    "timeout": "нет ответа (таймаут)",
+    "connection_refused": "соединение отклонено",
+    "network_unreachable": "путь до устройства недоступен",
+    "no_response": "нет ответа по SNMP",
+    "protocol_error": "ошибка протокола SSH",
+    "other": "неизвестная причина",
+}
+
+
 def record_switch_status_change(session: Session, switch: NetworkSwitch, was_online: bool | None) -> None:
     if was_online is None or was_online == switch.is_online:
         return
+    reason_suffix = ""
+    if not switch.is_online and switch.reachability_reason:
+        label = _REASON_LABELS.get(switch.reachability_reason, switch.reachability_reason)
+        reason_suffix = f" ({label})"
     write_event_log(
         session,
         category="device",
@@ -43,7 +59,7 @@ def record_switch_status_change(session: Session, switch: NetworkSwitch, was_onl
         device_kind="switch",
         device_name=switch.name,
         ip_address=switch.ip_address,
-        message=f"Network device '{switch.name}' is now {'online' if switch.is_online else 'offline'}",
+        message=f"Network device '{switch.name}' is now {'online' if switch.is_online else 'offline'}{reason_suffix}",
     )
 
 
@@ -70,6 +86,7 @@ def apply_switch_poll_info(
     effective_online: bool | None = None,
 ) -> None:
     switch.is_online = info.is_online if effective_online is None else effective_online
+    switch.reachability_reason = None if switch.is_online else info.offline_reason
     switch.hostname = info.hostname or switch.hostname
     switch.model_info = info.model_info or switch.model_info
     switch.ios_version = info.ios_version or switch.ios_version
@@ -247,6 +264,10 @@ async def poll_all_switches_local(*, session: Session) -> Message:
                     probed_online=False,
                     probed_error=True,
                 )
+                # "other" rather than a specific network/auth code: this branch
+                # is an unexpected exception in the polling pipeline itself
+                # (e.g. a bug), not a classified SSH/SNMP connection failure.
+                switch.reachability_reason = None if switch.is_online else "other"
                 switch.last_polled_at = datetime.now(UTC)
                 write_switch_snapshot(session, switch, source="bulk_poll_error")
                 session.add(switch)

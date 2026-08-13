@@ -88,6 +88,12 @@ class NetworkSwitch(SQLModel, table=True):
     hostname: str | None = Field(default=None, max_length=255)
     uptime: str | None = Field(default=None, max_length=255)
     is_online: bool | None = Field(default=None)
+    # Short machine-readable code explaining why is_online is False - e.g.
+    # "network_unreachable", "auth_rejected", "timeout" (see
+    # app.services.cisco_ssh._classify_ssh_error). None while online, and
+    # None for a switch never polled yet. Same convention as Computer/
+    # CashRegister.reachability_reason.
+    reachability_reason: str | None = Field(default=None, max_length=64)
     last_polled_at: datetime | None = Field(default=None)
 
     # A stable identifier for MAC-based rediscovery if ip_address ever

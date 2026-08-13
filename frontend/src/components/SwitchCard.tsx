@@ -253,6 +253,13 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             <span className="font-mono">{sw.ip_address}:{sw.ssh_port}</span>
           </div>
 
+          {sw.is_online === false && sw.reachability_reason && (
+            <div className="flex items-center gap-1.5 text-xs text-[var(--danger-fg)]">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              <span>{offlineReason(sw.reachability_reason)}</span>
+            </div>
+          )}
+
           {sw.hostname && (
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
               <Network className="h-3 w-3 text-gray-400" />
@@ -443,4 +450,25 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
       </div>
     </div>
   );
+}
+
+function offlineReason(reason: string): string {
+  switch (reason) {
+    case "auth_rejected":
+      return "Неверные учётные данные";
+    case "dns_failure":
+      return "Не резолвится имя хоста";
+    case "timeout":
+      return "Нет ответа (таймаут)";
+    case "connection_refused":
+      return "Соединение отклонено";
+    case "network_unreachable":
+      return "Путь до устройства недоступен";
+    case "no_response":
+      return "Нет ответа по SNMP";
+    case "protocol_error":
+      return "Ошибка протокола SSH";
+    default:
+      return "Неизвестная причина";
+  }
 }

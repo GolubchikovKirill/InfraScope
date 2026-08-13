@@ -64,11 +64,11 @@ class SnmpSwitchProvider:
         except Exception as exc:
             logger.info("SNMP poll failed for %s: %s", switch.ip_address, exc)
             snmp_operations_total.labels(operation="switch_poll", result="error", reason="exception").inc()
-            return SwitchPollInfo(is_online=False)
+            return SwitchPollInfo(is_online=False, offline_reason="network_unreachable")
 
         if not data:
             snmp_operations_total.labels(operation="switch_poll", result="error", reason="no_data").inc()
-            return SwitchPollInfo(is_online=False)
+            return SwitchPollInfo(is_online=False, offline_reason="no_response")
 
         snmp_operations_total.labels(operation="switch_poll", result="success", reason="ok").inc()
         return SwitchPollInfo(

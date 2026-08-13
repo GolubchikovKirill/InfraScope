@@ -29,7 +29,13 @@ class CiscoSwitchProvider:
                 ios_version=info.ios_version,
                 uptime=info.uptime,
             )
-        return self.snmp_provider.poll_switch(switch)
+        result = self.snmp_provider.poll_switch(switch)
+        if not result.is_online:
+            # SSH's classification is more specific than SNMP's (a UDP
+            # timeout is indistinguishable from "wrong community string"),
+            # so prefer it when both paths failed.
+            result.offline_reason = info.offline_reason or result.offline_reason
+        return result
 
     def get_ports(self, switch: NetworkSwitch) -> list[SwitchPortState]:
         ports = self.snmp_provider.get_ports(switch)

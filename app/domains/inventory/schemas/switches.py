@@ -239,6 +239,7 @@ class NetworkSwitchPublic(BaseModel):
     hostname: str | None = None
     uptime: str | None = None
     is_online: bool | None = None
+    reachability_reason: str | None = None
     last_polled_at: datetime | None = None
     mac_address: str | None = None
     mac_status: str | None = None

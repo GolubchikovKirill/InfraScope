@@ -41,6 +41,11 @@ class SwitchInfo:
     ios_version: str | None = None
     uptime: str | None = None
     is_online: bool = False
+    # Set only when is_online is False. See _classify_ssh_error - this is what
+    # lets a caller (and the UI) tell "wrong password" apart from "switch
+    # unreachable", which the log used to collapse into the same generic
+    # "auth failed" regardless of which one actually happened.
+    offline_reason: str | None = None
 
 
 @dataclass
@@ -70,6 +75,34 @@ class CameraPortInfo:
     poe_status: str | None = None
 
 
+def _classify_ssh_error(exc: Exception) -> str:
+    """Classify a connect failure so callers can tell "wrong password" apart
+    from "switch unreachable" - both surface as a bare Exception from
+    paramiko/socket, and every path here used to collapse them into the same
+    "auth failed" log line. That mislabeling cost three days of misdiagnosis
+    once: a Docker network misconfiguration blackholed all switch traffic,
+    but the log said the password was wrong on every single switch.
+
+    Order matters: AuthenticationException must be checked before the
+    broader SSHException it subclasses, and OSError before Exception.
+    """
+    if isinstance(exc, paramiko.AuthenticationException):
+        return "auth_rejected"
+    if isinstance(exc, socket.gaierror):
+        return "dns_failure"
+    if isinstance(exc, (socket.timeout, TimeoutError)):
+        return "timeout"
+    if isinstance(exc, ConnectionRefusedError):
+        return "connection_refused"
+    if isinstance(exc, OSError):
+        # Covers "No route to host", "Network is unreachable", and similar -
+        # failures that never reach the SSH protocol at all.
+        return "network_unreachable"
+    if isinstance(exc, paramiko.SSHException):
+        return "protocol_error"
+    return "other"
+
+
 # Which auth method actually worked, per (ip, port, username). A switch answers
 # the auth-method probe identically every time, so probing on every connect was
 # a whole extra TCP+SSH handshake spent learning something already known.
@@ -89,6 +122,9 @@ class CiscoSSH:
         self.port = port
         self.client: paramiko.SSHClient | None = None
         self.shell: paramiko.Channel | None = None
+        # Classification of the most recent connect failure (see
+        # _classify_ssh_error). None until a connect attempt has failed.
+        self.last_failure_reason: str | None = None
 
     @property
     def _auth_cache_key(self) -> tuple[str, int, str]:
@@ -129,8 +165,17 @@ class CiscoSSH:
                 if method and method():
                     ssh_operations_total.labels(operation="connect", result="success", reason=remembered).inc()
                     return True
-                # Credentials or the switch's auth config changed - forget what
-                # we knew and fall through to a full probe.
+                # Credentials or the switch's auth config changed - OR the
+                # switch simply isn't reachable right now. Either way, forget
+                # what we knew and fall through to a full probe; that probe
+                # will fail the same way and give us a real classification
+                # below instead of assuming it was a credential problem.
+                logger.info(
+                    "SSH to %s: cached %s auth no longer works (%s), re-probing",
+                    self.ip,
+                    remembered,
+                    self.last_failure_reason,
+                )
                 _AUTH_METHOD_CACHE.pop(self._auth_cache_key, None)
 
             allowed = self._query_auth_methods()
@@ -154,8 +199,15 @@ class CiscoSSH:
                     _AUTH_METHOD_CACHE[self._auth_cache_key] = name
                     ssh_operations_total.labels(operation="connect", result="success", reason=name).inc()
                     return True
-                logger.warning("SSH to %s: %s auth failed", self.ip, name)
-                ssh_operations_total.labels(operation="connect", result="error", reason=name).inc()
+                reason = self.last_failure_reason or "other"
+                logger.warning("SSH to %s: %s auth failed (%s)", self.ip, name, reason)
+                # reason, not the auth method name: on a genuine auth
+                # rejection the two strategies fail for different reasons
+                # and both are worth seeing, but on a network-level failure
+                # (the common case that used to be mislabeled) both strategies
+                # fail identically, and the metric should say so rather than
+                # implying two separate credential problems were tried.
+                ssh_operations_total.labels(operation="connect", result="error", reason=reason).inc()
             return False
 
     def _query_auth_methods(self) -> list[str]:
@@ -194,7 +246,8 @@ class CiscoSSH:
             )
             return self._post_connect()
         except Exception as e:
-            logger.debug("SSH password connect to %s: %s", self.ip, e)
+            self.last_failure_reason = _classify_ssh_error(e)
+            logger.debug("SSH password connect to %s: %s (%s)", self.ip, e, self.last_failure_reason)
             self.close()
             return False
 
@@ -227,7 +280,8 @@ class CiscoSSH:
             self._recv_until_prompt()
             return True
         except Exception as e:
-            logger.debug("SSH keyboard-interactive to %s: %s", self.ip, e)
+            self.last_failure_reason = _classify_ssh_error(e)
+            logger.debug("SSH keyboard-interactive to %s: %s (%s)", self.ip, e, self.last_failure_reason)
             self.close()
             return False
         finally:
@@ -351,6 +405,7 @@ def get_switch_info(ip: str, username: str, password: str, enable_password: str 
     info = SwitchInfo()
     ssh = CiscoSSH(ip, username, password, enable_password, port)
     if not ssh.connect():
+        info.offline_reason = ssh.last_failure_reason or "other"
         switch_ops_total.labels(operation="poll_info", result="error").inc()
         return info
 
