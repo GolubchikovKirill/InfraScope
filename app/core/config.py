@@ -176,7 +176,17 @@ class Settings(BaseSettings):
     POLL_JITTER_MAX_MS: int = 120
     POLL_OFFLINE_CONFIRMATIONS: int = 2
     POLL_CIRCUIT_FAILURE_THRESHOLD: int = 4
+    # Base circuit-open window. Doubles per additional consecutive circuit
+    # failure past the threshold (see poll_resilience._circuit_open_seconds)
+    # up to POLL_CIRCUIT_MAX_OPEN_SECONDS - a flat 45s did nothing for a
+    # device polled on a 15-minute cron cadence: by the next scheduled poll
+    # the window had long since expired, so a switch stuck down forever kept
+    # getting re-attempted every single cycle. During the Aug 10-13 network
+    # outage this meant ~17,760 SSH auth attempts against 32 unreachable
+    # switches in 72 hours - against a real AAA backend that's an account
+    # lockout risk, not just wasted work.
     POLL_CIRCUIT_OPEN_SECONDS: int = 45
+    POLL_CIRCUIT_MAX_OPEN_SECONDS: int = 3600
     POLL_RESILIENCE_STATE_TTL_SECONDS: int = 7200
     # A manual single-printer poll only gets one shot at the network, unlike the
     # scheduled fleet poll which requires 2 consecutive cycle failures before

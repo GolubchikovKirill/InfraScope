@@ -65,6 +65,24 @@ def decide_poll_state(
     )
 
 
+def _circuit_open_seconds(circuit_failures: int, threshold: int, base_seconds: int, max_seconds: int) -> int:
+    """How long to pause further poll attempts once the circuit opens.
+
+    Doubles per consecutive circuit failure past the threshold, capped at
+    max_seconds. A flat base_seconds window is effectively a no-op for a
+    device polled on a slow cron cadence (minutes, not seconds) - see the
+    POLL_CIRCUIT_OPEN_SECONDS docstring in app.core.config for the incident
+    that motivated this. Capping rather than growing forever keeps a
+    chronically-down device on a (long) periodic check instead of silencing
+    it permanently - it should still be discovered if it comes back.
+    """
+    overshoot = max(circuit_failures - max(threshold, 1), 0)
+    # Cap the exponent, not just the result: 2**63 would overflow long
+    # before max_seconds does anything, and there is no reason to compute it.
+    seconds = base_seconds * (2 ** min(overshoot, 20))
+    return min(seconds, max(max_seconds, base_seconds))
+
+
 async def poll_jitter_async() -> None:
     jitter_max_ms = max(settings.POLL_JITTER_MAX_MS, 0)
     if jitter_max_ms <= 0:
@@ -133,7 +151,19 @@ async def apply_poll_outcome(
             "updated_at": now_ts,
         }
         if decision.event == "circuit_opened":
-            payload["circuit_open_until"] = now_ts + max(settings.POLL_CIRCUIT_OPEN_SECONDS, 5)
+            open_seconds = _circuit_open_seconds(
+                decision.circuit_failures,
+                settings.POLL_CIRCUIT_FAILURE_THRESHOLD,
+                max(settings.POLL_CIRCUIT_OPEN_SECONDS, 5),
+                settings.POLL_CIRCUIT_MAX_OPEN_SECONDS,
+            )
+            payload["circuit_open_until"] = now_ts + open_seconds
+            # The key isn't touched again while the circuit is open (this
+            # entity is skipped by is_circuit_open before apply_poll_outcome
+            # ever runs) - if the open window ever outlived a misconfigured
+            # shorter TTL, the state would vanish mid-pause and the entity
+            # would start getting hit again early, silently.
+            ttl = max(ttl, open_seconds + 60)
         elif probed_online:
             payload["circuit_open_until"] = 0
         try:
