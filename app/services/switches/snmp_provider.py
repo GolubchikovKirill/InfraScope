@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import warnings
 
-warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
 
 from pysnmp.hlapi.asyncio import (  # noqa: E402
     CommunityData,
@@ -14,7 +12,7 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
     SnmpEngine,
     UdpTransportTarget,
 )
-from pysnmp.hlapi.asyncio.cmdgen import getCmd, setCmd, walkCmd  # noqa: E402
+from pysnmp.hlapi.asyncio import get_cmd, set_cmd, walk_cmd  # noqa: E402
 from pysnmp.proto.rfc1902 import Integer, OctetString  # noqa: E402
 
 from app.domains.inventory.models import NetworkSwitch  # noqa: E402
@@ -206,7 +204,7 @@ class SnmpSwitchProvider:
         community: CommunityData,
         oid: str,
     ) -> str | None:
-        error_indication, error_status, _error_index, var_binds = await getCmd(
+        error_indication, error_status, _error_index, var_binds = await get_cmd(
             engine,
             community,
             target,
@@ -230,7 +228,7 @@ class SnmpSwitchProvider:
         try:
             target = await self._create_transport_target(host, 161, timeout=2, retries=1)
             comm = CommunityData(community, mpModel=1)
-            error_indication, error_status, _error_index, _var_binds = await setCmd(
+            error_indication, error_status, _error_index, _var_binds = await set_cmd(
                 engine,
                 comm,
                 target,
@@ -250,7 +248,7 @@ class SnmpSwitchProvider:
         oid: str,
     ) -> list[tuple[str, str]]:
         rows: list[tuple[str, str]] = []
-        async for error_indication, error_status, _error_index, var_binds in walkCmd(
+        async for error_indication, error_status, _error_index, var_binds in walk_cmd(
             engine,
             community,
             target,
@@ -299,7 +297,7 @@ class SnmpSwitchProvider:
         create = getattr(UdpTransportTarget, "create", None)
         if callable(create):
             return await create((host, port), timeout=timeout, retries=retries)
-        return UdpTransportTarget((host, port), timeout=timeout, retries=retries)
+        return await UdpTransportTarget.create((host, port), timeout=timeout, retries=retries)
 
     def set_admin_state(self, switch: NetworkSwitch, port: str, admin_state: str) -> None:
         idx = self._resolve_if_index(switch, port)

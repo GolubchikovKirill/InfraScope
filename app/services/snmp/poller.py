@@ -39,7 +39,7 @@ async def _poll_printer_async(ip_address: str, community: str = "public") -> Pri
 
 async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, community: str) -> PrinterStatus:
     try:
-        target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+        target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception as e:
         logger.debug("Cannot create SNMP target for %s: %s", ip_address, e)
         return PrinterStatus(is_online=False, status="unreachable")
@@ -180,7 +180,7 @@ async def _poll_printer_light_async(ip_address: str, community: str = "public") 
 
 async def _poll_printer_light_async_inner(engine: SnmpEngine, ip_address: str, community: str) -> PrinterStatus:
     try:
-        target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+        target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception as e:
         logger.debug("Cannot create SNMP target for %s: %s", ip_address, e)
         return PrinterStatus(is_online=False, status="unreachable")

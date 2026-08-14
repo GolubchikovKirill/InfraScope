@@ -13,7 +13,7 @@ from ._pysnmp_compat import (
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
-    walkCmd,
+    walk_cmd,
 )
 from .oids import SNMP_RETRIES, SNMP_TIMEOUT
 
@@ -27,13 +27,13 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
     engine = SnmpEngine()
     try:
         try:
-            target = UdpTransportTarget((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+            target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
         except Exception:
             return None
 
         comm = CommunityData(community)
         try:
-            async for err, _, _, vb in walkCmd(
+            async for err, _, _, vb in walk_cmd(
                 engine,
                 comm,
                 target,

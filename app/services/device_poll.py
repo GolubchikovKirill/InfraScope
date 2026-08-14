@@ -15,11 +15,9 @@ import platform
 import re as _re
 import socket
 import struct
-import warnings
 import weakref
 from dataclasses import dataclass, field
 
-warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
 
 from pysnmp.hlapi.asyncio import (  # noqa: E402
     CommunityData,
@@ -29,7 +27,7 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
     SnmpEngine,
     UdpTransportTarget,
 )
-from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd  # noqa: E402
+from pysnmp.hlapi.asyncio import get_cmd, walk_cmd  # noqa: E402
 
 from app.core.bounded_cache import BoundedTTLCache  # noqa: E402
 from app.observability.metrics import media_player_ops_total  # noqa: E402
@@ -149,7 +147,7 @@ async def _get_snmp_info(ip: str, community: str = "public") -> dict:
 
 async def _get_snmp_info_inner(engine: SnmpEngine, ip: str, community: str) -> dict:
     try:
-        target = UdpTransportTarget((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+        target = await UdpTransportTarget.create((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception:
         return {}
 
@@ -157,7 +155,7 @@ async def _get_snmp_info_inner(engine: SnmpEngine, ip: str, community: str) -> d
     result = {}
 
     try:
-        err_indication, err_status, _, var_binds = await getCmd(
+        err_indication, err_status, _, var_binds = await get_cmd(
             engine,
             comm,
             target,
@@ -200,13 +198,13 @@ async def _get_snmp_mac(ip: str, community: str = "public") -> str | None:
 
 async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> str | None:
     try:
-        target = UdpTransportTarget((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+        target = await UdpTransportTarget.create((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception:
         return None
 
     comm = CommunityData(community)
     try:
-        async for err, _, _, vb in walkCmd(
+        async for err, _, _, vb in walk_cmd(
             engine,
             comm,
             target,

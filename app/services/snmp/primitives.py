@@ -7,8 +7,8 @@ from ._pysnmp_compat import (
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
-    getCmd,
-    walkCmd,
+    get_cmd,
+    walk_cmd,
 )
 
 
@@ -33,7 +33,7 @@ async def _snmp_get(
     community: CommunityData,
     oid: str,
 ) -> str | None:
-    error_indication, error_status, _error_index, var_binds = await getCmd(
+    error_indication, error_status, _error_index, var_binds = await get_cmd(
         engine,
         community,
         target,
@@ -54,7 +54,7 @@ async def _snmp_walk(
     oid: str,
 ) -> list[tuple[str, str]]:
     results: list[tuple[str, str]] = []
-    async for error_indication, error_status, _error_index, var_binds in walkCmd(
+    async for error_indication, error_status, _error_index, var_binds in walk_cmd(
         engine,
         community,
         target,

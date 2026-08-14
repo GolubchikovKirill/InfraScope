@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import warnings
-
-warnings.filterwarnings("ignore", message=".*pysnmp-lextudio.*")
 
 from pysnmp.hlapi.asyncio import (  # noqa: E402
     CommunityData,
@@ -12,7 +9,7 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402
     SnmpEngine,
     UdpTransportTarget,
 )
-from pysnmp.hlapi.asyncio.cmdgen import getCmd, walkCmd  # noqa: E402
+from pysnmp.hlapi.asyncio import get_cmd, walk_cmd  # noqa: E402
 
 __all__ = [
     "CommunityData",
@@ -21,6 +18,6 @@ __all__ = [
     "ObjectType",
     "SnmpEngine",
     "UdpTransportTarget",
-    "getCmd",
-    "walkCmd",
+    "get_cmd",
+    "walk_cmd",
 ]
