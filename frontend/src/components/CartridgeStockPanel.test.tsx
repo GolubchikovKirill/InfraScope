@@ -42,9 +42,7 @@ describe("CartridgeStockPanel", () => {
         rows={rows}
         movements={[]}
         loading={false}
-        syncing={false}
         isSuperuser
-        onSync={vi.fn()}
         onSelect={vi.fn()}
         onAdjust={onAdjust}
         onIssue={onIssue}
@@ -65,10 +63,8 @@ describe("CartridgeStockPanel", () => {
         rows={rows}
         movements={movements}
         loading={false}
-        syncing={false}
         selectedId="stock-1"
         isSuperuser
-        onSync={vi.fn()}
         onSelect={vi.fn()}
         onAdjust={vi.fn()}
         onIssue={vi.fn()}
@@ -90,9 +86,7 @@ describe("CartridgeStockPanel", () => {
         rows={multiRows}
         movements={[]}
         loading={false}
-        syncing={false}
         isSuperuser
-        onSync={vi.fn()}
         onSelect={vi.fn()}
         onAdjust={vi.fn()}
         onIssue={vi.fn()}

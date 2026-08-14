@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, History, Minus, RefreshCw, Save } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, History, Minus, Save } from "lucide-react";
 import type { CartridgeStock, CartridgeStockMovement } from "../client";
 
 type SortKey = "name" | "color" | "printers" | "quantity" | "minimum";
@@ -12,7 +12,11 @@ function compareRows(a: CartridgeStock, b: CartridgeStock, key: SortKey): number
     case "color":
       return (COLOR_ORDER[a.toner_color ?? ""] ?? 99) - (COLOR_ORDER[b.toner_color ?? ""] ?? 99);
     case "printers":
-      return a.printer_count - b.printer_count;
+      // The cartridge catalog is maintained by hand now (see onSync removal),
+      // so printer_count never gets populated - sort by what this column
+      // actually displays (the compatible-models text) instead of a field
+      // that would otherwise permanently tie everything at 0.
+      return (a.compatible_printer_models || "").localeCompare(b.compatible_printer_models || "", "ru");
     case "quantity":
       return a.quantity_on_hand - b.quantity_on_hand;
     case "minimum":
@@ -27,11 +31,9 @@ interface Props {
   rows: CartridgeStock[];
   movements?: CartridgeStockMovement[];
   loading: boolean;
-  syncing: boolean;
   savingId?: string | null;
   selectedId?: string | null;
   isSuperuser: boolean;
-  onSync: () => void;
   onSelect: (id: string) => void;
   onAdjust: (id: string, quantity: number, minimum: number) => void;
   onIssue: (id: string) => void;
@@ -55,11 +57,9 @@ export default function CartridgeStockPanel({
   rows,
   movements = [],
   loading,
-  syncing,
   savingId,
   selectedId,
   isSuperuser,
-  onSync,
   onSelect,
   onAdjust,
   onIssue,
@@ -117,23 +117,8 @@ export default function CartridgeStockPanel({
       </div>
 
       <div className="app-panel p-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-sm font-semibold text-gray-900">Склад картриджей</div>
-            <div className="text-xs text-gray-500">Остатки ведутся по инвентаризации, совместимость — по моделям принтеров</div>
-          </div>
-          {isSuperuser && (
-            <button
-              type="button"
-              onClick={onSync}
-              disabled={syncing}
-              className="app-btn-primary inline-flex w-fit items-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
-            >
-              <RefreshCw className={`size-4 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "Синхронизация..." : "Синхронизировать"}
-            </button>
-          )}
-        </div>
+        <div className="text-sm font-semibold text-gray-900">Склад картриджей</div>
+        <div className="text-xs text-gray-500">Остатки и совместимость ведутся вручную по инвентаризации</div>
       </div>
 
       {loading ? (
@@ -141,7 +126,6 @@ export default function CartridgeStockPanel({
       ) : rows.length === 0 ? (
         <div className="app-panel p-8 text-center text-gray-500">
           <div className="text-base font-medium text-gray-700">Склад пока пуст</div>
-          <div className="mt-1 text-sm">Заполните наименования картриджей в принтерах и нажмите синхронизацию</div>
         </div>
       ) : (
         <div className="app-table-wrap">
@@ -164,7 +148,6 @@ export default function CartridgeStockPanel({
                   <tr key={row.id} className={low ? "bg-[var(--warn-bg)]" : undefined}>
                     <td>
                       <div className="app-card-title">{row.cartridge_name}</div>
-                      <div className="app-card-meta">{row.printer_count} принт.</div>
                     </td>
                     <td>
                       <span className="inline-flex min-w-7 justify-center rounded-full bg-[var(--surface-3)] px-2 py-0.5 text-xs font-medium text-[var(--text-default)]">

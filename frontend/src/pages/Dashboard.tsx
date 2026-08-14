@@ -10,7 +10,6 @@ import {
   pollAllPrinters,
   pollPrinter,
   createPrinter,
-  syncCartridgeStocks,
   updatePrinter,
   updateCartridgeStock,
   deletePrinter,
@@ -91,11 +90,6 @@ export default function Dashboard() {
   const pollAllMut = useMutation({
     mutationFn: () => pollAllPrinters(printerTab),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["printers"] }),
-  });
-
-  const syncStockMut = useMutation({
-    mutationFn: syncCartridgeStocks,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cartridge-stock"] }),
   });
 
   const updateStockMut = useMutation({
@@ -337,11 +331,9 @@ export default function Dashboard() {
           rows={cartridgeStocks}
           movements={selectedMovementsData?.data ?? []}
           loading={isStockLoading}
-          syncing={syncStockMut.isPending}
           savingId={savingStockId}
           selectedId={selectedStockId}
           isSuperuser={isSuperuser}
-          onSync={() => syncStockMut.mutate()}
           onSelect={(id) => setSelectedStockId((current) => (current === id ? null : id))}
           onAdjust={(id, quantity, minimum) => updateStockMut.mutate({ id, quantity, minimum })}
           onIssue={(id) => issueStockMut.mutate(id)}
