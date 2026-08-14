@@ -6,6 +6,7 @@ import Layout from "./components/Layout";
 import Login from "./pages/Login";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const OverviewPage = lazy(() => import("./pages/OverviewPage"));
 const MediaPlayersPage = lazy(() => import("./pages/MediaPlayersPage"));
 const SwitchesPage = lazy(() => import("./pages/SwitchesPage"));
 const LogsPage = lazy(() => import("./pages/LogsPage"));
@@ -55,7 +56,8 @@ function AnimatedRoutes() {
     <div key={location.pathname} className="h-full route-fade">
       <Suspense fallback={<RouteLoader />}>
         <Routes location={location}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<OverviewPage />} />
+          <Route path="/printers" element={<Dashboard />} />
           <Route path="/media-players" element={<MediaPlayersPage />} />
           <Route path="/switches" element={<SwitchesPage />} />
           <Route path="/cash-registers" element={<CashRegistersPage />} />

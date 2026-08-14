@@ -6,6 +6,7 @@ import {
   ChevronRight,
   LogOut,
   Server,
+  LayoutDashboard,
   Printer,
   Users,
   Monitor,
@@ -40,7 +41,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const accountEmail = user?.email ?? "";
   const isOnline = Boolean(user);
   const pageTitles: Array<{ match: (path: string) => boolean; title: string; subtitle: string }> = [
-    { match: (path) => path === "/", title: "Принтеры", subtitle: "Статусы, тонер и склад картриджей" },
+    { match: (path) => path === "/", title: "Обзор инфраструктуры", subtitle: "Приоритеты, доступность и последние сигналы" },
+    { match: (path) => path.startsWith("/printers"), title: "Принтеры", subtitle: "Статусы, тонер и склад картриджей" },
     { match: (path) => path.startsWith("/media-players"), title: "Медиаплееры", subtitle: "Управление воспроизведением и назначениями" },
     { match: (path) => path.startsWith("/switches"), title: "Сетевое оборудование", subtitle: "Свитчи, порты и точки доступа" },
     { match: (path) => path.startsWith("/cash-registers"), title: "Кассы", subtitle: "Доступность касс и учетные данные" },
@@ -68,7 +70,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   const [isEquipmentOpen, setEquipmentOpen] = useState(true);
   const equipmentItems = [
-    { to: "/", label: "Принтеры", icon: Printer, visible: true },
+    { to: "/printers", label: "Принтеры", icon: Printer, visible: true },
     { to: "/media-players", label: "Медиаплееры", icon: Monitor, visible: true },
     { to: "/switches", label: "Сетевое оборудование", icon: Network, visible: true },
     { to: "/cameras", label: "Камеры", icon: Camera, visible: true },
@@ -85,7 +87,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   ];
   const equipmentVisibleItems = equipmentItems.filter((item) => item.visible);
   const equipmentIsActive = equipmentVisibleItems.some((item) =>
-    item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to),
+    location.pathname.startsWith(item.to),
   );
 
   const handleToggleTheme = () => {
@@ -129,6 +131,20 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                isActive
+                  ? "app-nav-active"
+                  : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-700"
+              }`
+            }
+          >
+            <LayoutDashboard className="h-4 w-4 shrink-0" />
+            Обзор
+          </NavLink>
           <button
             type="button"
             onClick={() => setEquipmentOpen((prev) => !prev)}

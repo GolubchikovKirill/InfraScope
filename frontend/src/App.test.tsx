@@ -16,6 +16,7 @@ vi.mock("./components/Layout", () => ({
   default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("./pages/Dashboard", () => ({ default: () => <div>DashboardPage</div> }));
+vi.mock("./pages/OverviewPage", () => ({ default: () => <div>OverviewPage</div> }));
 vi.mock("./pages/MediaPlayersPage", () => ({ default: () => <div>MediaPlayersPage</div> }));
 vi.mock("./pages/SwitchesPage", () => ({ default: () => <div>SwitchesPage</div> }));
 vi.mock("./pages/Users", () => ({ default: () => <div>UsersPage</div> }));
@@ -58,9 +59,15 @@ describe("App routes", () => {
     expect(await screen.findByText("LoginPage")).toBeInTheDocument();
   });
 
-  it("shows dashboard for authenticated user", async () => {
+  it("shows infrastructure overview for authenticated user", async () => {
     authState.user = { email: "admin@example.com", is_superuser: true };
     renderWithProviders("/");
+    expect(await screen.findByText("OverviewPage")).toBeInTheDocument();
+  });
+
+  it("keeps printers on their dedicated route", async () => {
+    authState.user = { email: "admin@example.com", is_superuser: true };
+    renderWithProviders("/printers");
     expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
   });
 
@@ -73,7 +80,7 @@ describe("App routes", () => {
   it("does not run legacy global background poller", async () => {
     authState.user = { email: "admin@example.com", is_superuser: true };
     renderWithProviders("/");
-    expect(await screen.findByText("DashboardPage")).toBeInTheDocument();
+    expect(await screen.findByText("OverviewPage")).toBeInTheDocument();
 
     expect(api.pollAllPrinters).not.toHaveBeenCalled();
     expect(api.pollAllMediaPlayers).not.toHaveBeenCalled();
