@@ -92,7 +92,11 @@ def _query_rows(
     surname_list = [item.strip() for item in (surnames or "").split(",") if item.strip()]
 
     query = f"""
-        SELECT a.[LOGIN], a.[NAME], a.[PASSWORD], b.[NameExt]
+        -- No a.[PASSWORD] here on purpose: the badge encodes the LOGIN only,
+        -- so selecting it pulled every cashier's cleartext password into
+        -- application memory (and any traceback that printed a row) to be
+        -- discarded unread.
+        SELECT a.[LOGIN], a.[NAME], b.[NameExt]
         FROM [{safe_db}].[dbo].[MOL] AS a
         INNER JOIN [{safe_db}].[dbo].[MOLEXT] AS b ON b.[CODE] = a.[CODE]
         WHERE a.[LOGIN] LIKE %s
