@@ -1,4 +1,5 @@
 import api from "./http";
+import type { ReachabilityReason } from "../lib/offlineReason";
 
 export interface Computer {
   id: string;
@@ -6,7 +7,7 @@ export interface Computer {
   location: string | null;
   comment: string | null;
   is_online: boolean | null;
-  reachability_reason: "dns_unresolved" | "port_closed" | null;
+  reachability_reason: ReachabilityReason | null;
   last_polled_at: string | null;
   created_at: string;
 }

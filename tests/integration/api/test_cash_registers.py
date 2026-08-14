@@ -1,4 +1,5 @@
 from app.api.routes import cash_registers as cash_routes
+from app.domains.inventory.reachability import ReachabilityResult
 from app.domains.operations import cash_register_polling
 
 
@@ -58,7 +59,11 @@ def test_poll_all_cash_registers_uses_polling_service_when_enabled(client, admin
 
 
 def test_poll_cash_register_updates_reachability(client, admin_token: str, monkeypatch):
-    monkeypatch.setattr(cash_register_polling, "probe_cash_register", lambda _hostname: (False, "port_closed"))
+    monkeypatch.setattr(
+        cash_register_polling,
+        "probe_cash_register",
+        lambda _hostname: ReachabilityResult(is_online=False, reason="port_closed"),
+    )
 
     created = client.post(
         "/api/v1/cash-registers/",

@@ -15,6 +15,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useAuth } from "../auth";
+import { describeOfflineReason } from "../lib/offlineReason";
 import {
   createCashRegister,
   deleteCashRegister,
@@ -378,7 +379,7 @@ function CashRow({ item, isSuperuser, isPolling, onCopy, onPoll, onEdit, onDelet
         {item.terminal_status && <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--danger-fg)]"><AlertTriangle className="h-3.5 w-3.5" />{item.terminal_status}</div>}
       </div>
 
-      <div className="space-y-2 text-sm"><SectionLabel>Сеть</SectionLabel><CopyValue value={item.hostname} onCopy={onCopy} /><Field label="NetSupport" value={item.netsupport_target} compact /><Field label="Последний опрос" value={item.last_polled_at ? new Date(item.last_polled_at).toLocaleString("ru-RU") : "ещё не было"} compact />{item.is_online === false && <div className="text-xs text-[var(--danger-fg)]">{offlineReason(item.reachability_reason)}</div>}</div>
+      <div className="space-y-2 text-sm"><SectionLabel>Сеть</SectionLabel><CopyValue value={item.hostname} onCopy={onCopy} /><Field label="NetSupport" value={item.netsupport_target} compact /><Field label="Последний опрос" value={item.last_polled_at ? new Date(item.last_polled_at).toLocaleString("ru-RU") : "ещё не было"} compact />{item.is_online === false && <div className="text-xs text-[var(--danger-fg)]">{describeOfflineReason(item.reachability_reason)}</div>}</div>
 
       <div className="space-y-2 text-sm"><SectionLabel>Терминалы и коды</SectionLabel><div className="grid grid-cols-2 gap-x-4 gap-y-1"><Field label="Код ТТ РС" value={item.store_code} compact /><Field label="Код ТТ Сбер" value={item.sber_store_code} compact /><Field label="ID РС" value={item.terminal_id_rs} compact /><Field label="ID Сбер" value={item.terminal_id_sber} compact /><Field label="Серийный" value={item.serial_number} compact /><Field label="Инв. №" value={item.inventory_number} compact /></div></div>
 
@@ -393,12 +394,6 @@ function StatusBadge({ item }: { item: CashRegister }) {
   if (item.is_online === true) return <Badge tone="green"><CircleCheck className="h-3.5 w-3.5" />online</Badge>;
   if (item.is_online === false) return <Badge tone="red"><CircleX className="h-3.5 w-3.5" />offline</Badge>;
   return <Badge><CircleHelp className="h-3.5 w-3.5" />не опрошена</Badge>;
-}
-
-function offlineReason(reason: CashRegister["reachability_reason"]) {
-  if (reason === "dns_unresolved") return "Hostname не резолвится";
-  if (reason === "port_closed") return "Сетевые порты недоступны";
-  return "Хост недоступен";
 }
 
 function piotTone(value: string | null): BadgeTone {

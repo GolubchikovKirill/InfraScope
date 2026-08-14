@@ -13,6 +13,7 @@ import {
 } from "../client";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { describeOfflineReason } from "../lib/offlineReason";
 
 type StatusFilter = "all" | "online" | "offline";
 type ComputerForm = {
@@ -245,7 +246,7 @@ export default function ComputersPage() {
                   </div>
                   {row.is_online === false && (
                     <div className="text-xs text-[var(--danger-fg)]">
-                      Причина оффлайна: {row.reachability_reason === "dns_unresolved" ? "hostname не резолвится" : "порты недоступны"}
+                      Причина оффлайна: {describeOfflineReason(row.reachability_reason)}
                     </div>
                   )}
                   {row.comment && <div className="text-sm text-slate-600">Комментарий: {row.comment}</div>}

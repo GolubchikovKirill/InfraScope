@@ -131,9 +131,9 @@ async def delete_computer(session: SessionDep, computer_id: uuid.UUID) -> Messag
 async def poll_computer(computer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Computer:
     del current_user
     row = _get_computer_or_404(session, computer_id)
-    is_online, reason = await asyncio.to_thread(probe_computer, row.hostname)
-    row.is_online = is_online
-    row.reachability_reason = reason
+    probe = await asyncio.to_thread(probe_computer, row.hostname)
+    row.is_online = probe.is_online
+    row.reachability_reason = probe.reason
     row.last_polled_at = datetime.now(UTC)
     session.add(row)
     session.commit()

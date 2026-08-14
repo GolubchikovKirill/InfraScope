@@ -17,11 +17,16 @@ from app.services.cache import invalidate_entity_cache
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_printer_snapshots
-from app.services.ping import check_port
+from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 from app.services.snmp import get_snmp_mac, poll_printer, poll_printer_light
 
 logger = logging.getLogger(__name__)
+
+#: Raw-print (JetDirect) port. Zebra and the other label printers listen here
+#: and speak no SNMP, so an accepted connection is the whole health check.
+LABEL_PRINTER_PORT = 9100
+
 
 class PrinterNotFoundError(LookupError):
     pass
@@ -112,8 +117,9 @@ def poll_one_printer(printer: Printer, *, full: bool = True) -> tuple[str, objec
     try:
         poll_jitter_sync()
         if printer.printer_type == "label":
-            online = check_port(ip)
-            return ip, {"is_online": online}, None
+            # Label printers speak no SNMP - an open raw-print port is the
+            # only signal there is.
+            return ip, probe_tcp_endpoint(ip, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers"), None
         if full:
             result = poll_printer(ip, printer.snmp_community)
             current_mac = get_snmp_mac(ip, printer.snmp_community) if result.is_online else None
@@ -193,13 +199,21 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
         raise UnsupportedPrinterPollError("USB printers cannot be polled")
 
     if printer.printer_type == "label":
-        online = await asyncio.to_thread(check_port, printer.ip_address)
-        if not online:
+        probe = await asyncio.to_thread(
+            probe_tcp_endpoint, printer.ip_address, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers"
+        )
+        if not probe.is_online:
+            # A manual poll is someone standing there asking. The probe's own
+            # retries are milliseconds apart; this second look is seconds
+            # later, which is what catches a printer mid-reboot.
             await asyncio.sleep(settings.PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS)
-            online = await asyncio.to_thread(check_port, printer.ip_address)
+            probe = await asyncio.to_thread(
+                probe_tcp_endpoint, printer.ip_address, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers"
+            )
+        online = probe.is_online
         printer.is_online = online
         printer.status = "online" if online else "offline"
-        printer.reachability_reason = None if online else "no_response"
+        printer.reachability_reason = None if online else probe.reason
         printer.mac_status = None
         printer_polls_total.labels(
             mode="single",
@@ -350,7 +364,11 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
                 entity_id=str(printer.id),
                 previous_effective_online=previous_online,
                 probed_online=raw_online,
-                probed_error=result is None,
+                # A label printer that refused the connection is up and
+                # answering; only a dead name or route counts as the kind of
+                # failure the breaker should back off from.
+                probed_error=result is None
+                or (isinstance(result, ReachabilityResult) and result.is_path_failure),
             )
             if result is None:
                 printer.is_online = effective_online
@@ -364,10 +382,10 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
                 ).inc()
                 if (not effective_online) and printer.mac_address:
                     offline_with_mac.append(printer)
-            elif isinstance(result, dict):
+            elif isinstance(result, ReachabilityResult):
                 printer.is_online = effective_online
                 printer.status = "online" if effective_online else "offline"
-                printer.reachability_reason = None if effective_online else "no_response"
+                printer.reachability_reason = None if effective_online else result.reason
                 printer.mac_status = None
                 printer_polls_total.labels(
                     mode="all",

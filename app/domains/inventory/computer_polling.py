@@ -9,9 +9,15 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.domains.inventory.models import Computer
-from app.domains.inventory.reachability import build_dns_search_suffixes, probe_host_ports
+from app.domains.inventory.reachability import (
+    REASON_PROBE_ERROR,
+    ReachabilityResult,
+    build_dns_search_suffixes,
+    probe_host_ports,
+)
 from app.domains.inventory.schemas import ComputersPublic
 from app.services.cache import invalidate_entity_cache
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +28,10 @@ async def invalidate_computer_cache() -> None:
     await invalidate_entity_cache("computers")
 
 
-def probe_computer(hostname: str) -> tuple[bool, str | None]:
+def probe_computer(hostname: str) -> ReachabilityResult:
     suffixes = build_dns_search_suffixes(settings.DNS_SEARCH_SUFFIXES, settings.DOMAIN)
-    result = probe_host_ports(
+    poll_jitter_sync()
+    return probe_host_ports(
         hostname,
         ports=_COMPUTER_PROBE_PORTS,
         timeout=1.2,
@@ -35,7 +42,6 @@ def probe_computer(hostname: str) -> tuple[bool, str | None]:
         dns_search_suffixes=suffixes,
         dns_server=settings.DNS_SERVER,
     )
-    return result.is_online, result.reason
 
 
 async def probe_computers_bulk(rows: list[Computer]) -> dict:
@@ -64,12 +70,24 @@ async def poll_all_computers_local(*, session: Session) -> ComputersPublic:
         return ComputersPublic(data=rows, count=len(rows))
 
     try:
-        probe_results = await probe_computers_bulk(rows)
+        # A computer whose circuit is open keeps its last known state rather
+        # than being probed again - the whole point of the breaker is to stop
+        # spending a probe per cycle on a host that has been dead for hours.
+        poll_targets = [row for row in rows if not await is_circuit_open("computer", str(row.id))]
+        probe_results = await probe_computers_bulk(poll_targets)
         now = datetime.now(UTC)
         for row in rows:
-            is_online, reason = probe_results.get(row.id, (False, "probe_failed"))
-            row.is_online = is_online
-            row.reachability_reason = reason
+            probe = probe_results.get(row.id)
+            if probe is None:
+                continue
+            row.is_online = await apply_poll_outcome(
+                kind="computer",
+                entity_id=str(row.id),
+                previous_effective_online=bool(row.is_online),
+                probed_online=probe.is_online,
+                probed_error=probe.is_path_failure,
+            )
+            row.reachability_reason = None if row.is_online else (probe.reason or REASON_PROBE_ERROR)
             row.last_polled_at = now
             session.add(row)
         session.commit()

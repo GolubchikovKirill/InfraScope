@@ -13,6 +13,7 @@ import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useConfirm } from "./ConfirmDialog";
 import { showToast } from "../lib/toastBus";
+import { describeOfflineReason } from "../lib/offlineReason";
 import OnlineStatusBadge from "./OnlineStatusBadge";
 
 interface Props {
@@ -237,7 +238,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           {sw.is_online === false && sw.reachability_reason && (
             <div className="flex items-center gap-1.5 text-xs text-[var(--danger-fg)]">
               <AlertTriangle className="h-3 w-3 shrink-0" />
-              <span>{offlineReason(sw.reachability_reason)}</span>
+              <span>{describeOfflineReason(sw.reachability_reason)}</span>
             </div>
           )}
 
@@ -403,23 +404,3 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
   );
 }
 
-function offlineReason(reason: string): string {
-  switch (reason) {
-    case "auth_rejected":
-      return "Неверные учётные данные";
-    case "dns_failure":
-      return "Не резолвится имя хоста";
-    case "timeout":
-      return "Нет ответа (таймаут)";
-    case "connection_refused":
-      return "Соединение отклонено";
-    case "network_unreachable":
-      return "Путь до устройства недоступен";
-    case "no_response":
-      return "Нет ответа по SNMP";
-    case "protocol_error":
-      return "Ошибка протокола SSH";
-    default:
-      return "Неизвестная причина";
-  }
-}

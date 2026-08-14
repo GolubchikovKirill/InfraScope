@@ -9,6 +9,7 @@ from app.domains.inventory.media_polling import (
     poll_one_media_player,
 )
 from app.domains.inventory.models import MediaPlayer
+from app.domains.inventory.reachability import ReachabilityResult
 
 
 def test_apply_media_poll_result_updates_online_metadata() -> None:
@@ -59,7 +60,10 @@ def test_poll_one_iconbit_uses_8081_healthcheck(monkeypatch) -> None:
     )
 
     monkeypatch.setattr("app.domains.inventory.media_polling.poll_jitter_sync", lambda: None)
-    monkeypatch.setattr("app.domains.inventory.media_polling.check_port", lambda _ip, port, timeout: port == 8081)
+    monkeypatch.setattr(
+        "app.domains.inventory.media_polling.probe_tcp_endpoint",
+        lambda _ip, *, port, timeout, probe_scope: ReachabilityResult(is_online=port == 8081),
+    )
 
     def should_not_call_generic_poll(_address: str):
         raise AssertionError("generic poll should not be used for iconbit")

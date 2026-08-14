@@ -8,11 +8,17 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.redis import get_redis
-from app.domains.inventory.reachability import build_dns_search_suffixes, probe_host_ports
+from app.domains.inventory.reachability import (
+    REASON_PROBE_ERROR,
+    ReachabilityResult,
+    build_dns_search_suffixes,
+    probe_host_ports,
+)
 from app.domains.operations.models import CashRegister
 from app.domains.operations.schemas import CashRegistersPublic
 from app.services.cache import invalidate_entity_cache
 from app.services.event_log import write_event_log
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 
 
 class CashRegisterNotFoundError(LookupError):
@@ -23,9 +29,10 @@ async def invalidate_cash_register_cache() -> None:
     await invalidate_entity_cache("cash_registers")
 
 
-def probe_cash_register(hostname: str) -> tuple[bool, str | None]:
+def probe_cash_register(hostname: str) -> ReachabilityResult:
     suffixes = build_dns_search_suffixes(settings.DNS_SEARCH_SUFFIXES, settings.DOMAIN)
-    result = probe_host_ports(
+    poll_jitter_sync()
+    return probe_host_ports(
         hostname,
         ports=(3389, 445),
         timeout=1.5,
@@ -36,15 +43,19 @@ def probe_cash_register(hostname: str) -> tuple[bool, str | None]:
         dns_search_suffixes=suffixes,
         dns_server=settings.DNS_SERVER,
     )
-    return result.is_online, result.reason
+
+
+_OFFLINE_REASON_RU = {
+    "dns_unresolved": "hostname не резолвится",
+    "port_closed": "сетевые порты недоступны",
+    "no_route": "нет маршрута до хоста",
+    "no_response": "хост не отвечает",
+    "probe_error": "сбой самой проверки",
+}
 
 
 def cash_register_offline_reason_ru(reason: str | None) -> str:
-    if reason == "dns_unresolved":
-        return "hostname не резолвится"
-    if reason == "port_closed":
-        return "сетевые порты недоступны"
-    return "хост недоступен"
+    return _OFFLINE_REASON_RU.get(reason or "", "хост недоступен")
 
 
 def apply_cash_register_poll_result(cash: CashRegister, *, is_online: bool, reason: str | None) -> None:
@@ -53,10 +64,10 @@ def apply_cash_register_poll_result(cash: CashRegister, *, is_online: bool, reas
     cash.last_polled_at = datetime.now(UTC)
 
 
-async def _probe_cash_registers_bulk(rows: list[CashRegister]) -> dict[uuid.UUID, tuple[bool, str | None]]:
+async def _probe_cash_registers_bulk(rows: list[CashRegister]) -> dict[uuid.UUID, ReachabilityResult]:
     semaphore = asyncio.Semaphore(max(1, settings.CASH_REGISTER_POLL_CONCURRENCY))
 
-    async def _run(row: CashRegister) -> tuple[uuid.UUID, tuple[bool, str | None]]:
+    async def _run(row: CashRegister) -> tuple[uuid.UUID, ReachabilityResult]:
         async with semaphore:
             return row.id, await asyncio.to_thread(probe_cash_register, row.hostname)
 
@@ -103,8 +114,11 @@ async def poll_single_cash_register_local(*, session: Session, cash_id: uuid.UUI
         raise CashRegisterNotFoundError("Cash register not found")
 
     previous_online = cash.is_online
-    is_online, reason = await asyncio.to_thread(probe_cash_register, cash.hostname)
-    apply_cash_register_poll_result(cash, is_online=is_online, reason=reason)
+    # A manual poll is a person asking right now, so it bypasses the circuit
+    # breaker on purpose - that is also how someone confirms a register is
+    # back before the breaker's own window would have retried it.
+    probe = await asyncio.to_thread(probe_cash_register, cash.hostname)
+    apply_cash_register_poll_result(cash, is_online=probe.is_online, reason=probe.reason)
     record_cash_register_status_change(session, cash, previous_online)
     session.add(cash)
     session.commit()
@@ -127,13 +141,25 @@ async def poll_all_cash_registers_local(*, session: Session) -> CashRegistersPub
         return CashRegistersPublic(data=rows, count=len(rows))
 
     try:
-        probe_results = await _probe_cash_registers_bulk(rows)
+        poll_targets = [row for row in rows if not await is_circuit_open("cash_register", str(row.id))]
+        probe_results = await _probe_cash_registers_bulk(poll_targets)
         now = datetime.now(UTC)
         for row in rows:
+            probe = probe_results.get(row.id)
+            if probe is None:
+                # Circuit open: leave the row exactly as it was, including
+                # last_polled_at, so the UI shows the age of the real answer
+                # rather than the age of a poll that never happened.
+                continue
             previous_online = row.is_online
-            is_online, reason = probe_results.get(row.id, (False, "probe_failed"))
-            row.is_online = is_online
-            row.reachability_reason = reason
+            row.is_online = await apply_poll_outcome(
+                kind="cash_register",
+                entity_id=str(row.id),
+                previous_effective_online=bool(row.is_online),
+                probed_online=probe.is_online,
+                probed_error=probe.is_path_failure,
+            )
+            row.reachability_reason = None if row.is_online else (probe.reason or REASON_PROBE_ERROR)
             row.last_polled_at = now
             record_cash_register_status_change(session, row, previous_online)
             session.add(row)

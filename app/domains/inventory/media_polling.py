@@ -25,10 +25,15 @@ from app.services.device_poll import poll_device, poll_device_sync
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_media_player_snapshot
-from app.services.ping import check_port
+from app.domains.inventory.reachability import probe_tcp_endpoint
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 
 logger = logging.getLogger(__name__)
+
+#: iconbit players expose their control API here and nothing else useful.
+ICONBIT_PORT = 8081
+ICONBIT_PROBE_TIMEOUT = 2.5
+
 
 class MediaPlayerNotFoundError(LookupError):
     pass
@@ -42,6 +47,11 @@ class LightMediaPollResult:
     uptime: str | None = None
     open_ports: list[int] | None = None
     mac_address: str | None = None
+    #: The probe never reached the player (dead name or route) rather than
+    #: being refused by it. MediaPlayer has no reachability_reason column to
+    #: store the full verdict, so only the bit the circuit breaker needs is
+    #: carried here.
+    path_failure: bool = False
 
 
 def _media_player_mac_target(player: MediaPlayer) -> MacRediscoveryTarget:
@@ -73,12 +83,25 @@ def record_media_player_status_change(session: Session, player: MediaPlayer, was
     )
 
 
+def _probe_iconbit(ip_address: str) -> LightMediaPollResult:
+    probe = probe_tcp_endpoint(
+        ip_address,
+        port=ICONBIT_PORT,
+        timeout=ICONBIT_PROBE_TIMEOUT,
+        probe_scope="media_players",
+    )
+    return LightMediaPollResult(
+        is_online=probe.is_online,
+        open_ports=[ICONBIT_PORT] if probe.is_online else [],
+        path_failure=probe.is_path_failure,
+    )
+
+
 def poll_one_media_player(player: MediaPlayer) -> tuple[str, object | None]:
     try:
         poll_jitter_sync()
         if player.device_type == "iconbit":
-            is_online = check_port(player.ip_address, port=8081, timeout=2.5)
-            return player.ip_address, LightMediaPollResult(is_online=is_online, open_ports=[8081] if is_online else [])
+            return player.ip_address, _probe_iconbit(player.ip_address)
         result = poll_device_sync(player.ip_address)
         return player.ip_address, result
     except Exception as exc:
@@ -101,11 +124,7 @@ async def poll_one_media_player_async(
     try:
         await asyncio.to_thread(poll_jitter_sync)
         if player.device_type == "iconbit":
-            is_online = await asyncio.to_thread(check_port, player.ip_address, 8081, 2.5)
-            return player.ip_address, LightMediaPollResult(
-                is_online=is_online,
-                open_ports=[8081] if is_online else [],
-            )
+            return player.ip_address, await asyncio.to_thread(_probe_iconbit, player.ip_address)
         result = await poll_device(player.ip_address, port_scan_semaphore=port_scan_semaphore)
         return player.ip_address, result
     except Exception as exc:
@@ -244,7 +263,7 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
                 entity_id=str(player.id),
                 previous_effective_online=previous_online,
                 probed_online=raw_online,
-                probed_error=result is None,
+                probed_error=result is None or getattr(result, "path_failure", False),
             )
             apply_media_poll_result(player, result)
             player.is_online = effective_online

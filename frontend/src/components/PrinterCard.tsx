@@ -17,6 +17,7 @@ import TonerBar from "./TonerBar";
 import OnlineStatusBadge from "./OnlineStatusBadge";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { describeOfflineReason } from "../lib/offlineReason";
 
 interface Props {
   printer: Printer;
@@ -123,17 +124,17 @@ export default function PrinterCard({
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
       <div className="p-5 flex flex-col gap-4">
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="app-entity-icon">
               <PrinterIcon className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <div className="app-card-title truncate">{printer.model}</div>
-              <div className="app-card-meta app-mono">{printer.store_name}</div>
+              <div className="app-card-meta app-mono truncate">{printer.store_name}</div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-col items-end gap-1 shrink-0">
             <OnlineStatusBadge isOnline={printer.is_online} />
             {isFlapping && (
               <span
@@ -153,7 +154,7 @@ export default function PrinterCard({
         {isOffline && printer.reachability_reason && (
           <div className="flex items-center gap-1.5 text-xs text-[var(--danger-fg)]">
             <AlertTriangle className="h-3 w-3 shrink-0" />
-            <span>{offlineReason(printer.reachability_reason)}</span>
+            <span>{describeOfflineReason(printer.reachability_reason)}</span>
           </div>
         )}
         {printer.host_pc && (
@@ -381,15 +382,3 @@ export default function PrinterCard({
   );
 }
 
-function offlineReason(reason: string): string {
-  switch (reason) {
-    case "target_invalid":
-      return "Некорректный адрес устройства";
-    case "poll_error":
-      return "Ошибка при опросе";
-    case "no_response":
-      return "Не отвечает по SNMP";
-    default:
-      return "Неизвестная причина";
-  }
-}

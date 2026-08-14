@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes import media_players as media_routes
 from app.domains.inventory import media_polling
+from app.domains.inventory.reachability import ReachabilityResult
 
 
 @dataclass
@@ -169,7 +170,11 @@ def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token:
     )
     assert created.status_code == 200
 
-    monkeypatch.setattr(media_polling, "check_port", lambda _ip, port=8081, timeout=2.5: port == 8081)
+    monkeypatch.setattr(
+        media_polling,
+        "probe_tcp_endpoint",
+        lambda _ip, *, port, timeout, probe_scope: ReachabilityResult(is_online=port == 8081),
+    )
 
     async def _should_not_be_called(_address: str, **_kwargs):
         raise RuntimeError("generic poll should not be used for iconbit in bulk")
