@@ -108,45 +108,51 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
 
         info = SnmpInfo()
         engine = SnmpEngine()
-        target = UdpTransportTarget((ip, 161), timeout=2, retries=0)
-        comm = CommunityData("public")
-        ctx = ContextData()
-
-        # sysDescr
-        result = await getCmd(
-            engine,
-            comm,
-            target,
-            ctx,
-            ObjectType(ObjectIdentity(OID_SYS_DESCR)),
-        )
-        error_indication, _, _, var_binds = result
-        if not error_indication and var_binds:
-            val = str(var_binds[0][1])
-            if val:
-                info.hostname = val
-
-        # ifPhysAddress (walk to find first non-empty 6-byte MAC)
         try:
-            async for err, _, _, vb in walkCmd(
+            target = UdpTransportTarget((ip, 161), timeout=2, retries=0)
+            comm = CommunityData("public")
+            ctx = ContextData()
+
+            # sysDescr
+            result = await getCmd(
                 engine,
                 comm,
                 target,
                 ctx,
-                ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
-            ):
-                if err:
-                    break
-                for _, val in vb:
-                    if hasattr(val, "asOctets"):
-                        octets = val.asOctets()
-                        if len(octets) == 6 and any(b != 0 for b in octets):
-                            info.mac = ":".join(f"{b:02x}" for b in octets)
-                            raise StopAsyncIteration
-        except StopAsyncIteration:
-            pass
+                ObjectType(ObjectIdentity(OID_SYS_DESCR)),
+            )
+            error_indication, _, _, var_binds = result
+            if not error_indication and var_binds:
+                val = str(var_binds[0][1])
+                if val:
+                    info.hostname = val
 
-        return info
+            # ifPhysAddress (walk to find first non-empty 6-byte MAC)
+            try:
+                async for err, _, _, vb in walkCmd(
+                    engine,
+                    comm,
+                    target,
+                    ctx,
+                    ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
+                ):
+                    if err:
+                        break
+                    for _, val in vb:
+                        if hasattr(val, "asOctets"):
+                            octets = val.asOctets()
+                            if len(octets) == 6 and any(b != 0 for b in octets):
+                                info.mac = ":".join(f"{b:02x}" for b in octets)
+                                raise StopAsyncIteration
+            except StopAsyncIteration:
+                pass
+
+            return info
+        finally:
+            # SnmpEngine never closes its own UDP socket. A scan sweeps a
+            # whole subnet, so this is the highest-volume SNMP path in the
+            # app - see app/services/snmp/poller.py for the incident.
+            engine.closeDispatcher()
 
     try:
         return asyncio.run(_query())

@@ -138,6 +138,17 @@ async def _get_snmp_info(ip: str, community: str = "public") -> dict:
     """Retrieve sysDescr, sysName, sysUpTime via SNMP GET."""
     engine = SnmpEngine()
     try:
+        return await _get_snmp_info_inner(engine, ip, community)
+    finally:
+        # SnmpEngine opens a UDP socket lazily and never closes it on its
+        # own; see app/services/snmp/poller.py for the incident this guards
+        # against (FD exhaustion -> Errno 24 -> every poll returning 500).
+        # Must run in the same event loop that issued the request.
+        engine.closeDispatcher()
+
+
+async def _get_snmp_info_inner(engine: SnmpEngine, ip: str, community: str) -> dict:
+    try:
         target = UdpTransportTarget((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception:
         return {}
@@ -181,6 +192,13 @@ async def _get_snmp_info(ip: str, community: str = "public") -> dict:
 
 async def _get_snmp_mac(ip: str, community: str = "public") -> str | None:
     engine = SnmpEngine()
+    try:
+        return await _get_snmp_mac_inner(engine, ip, community)
+    finally:
+        engine.closeDispatcher()
+
+
+async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> str | None:
     try:
         target = UdpTransportTarget((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
     except Exception:

@@ -225,6 +225,11 @@ async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[s
         return values
     except Exception:
         return {}
+    finally:
+        # SnmpEngine never closes its own UDP socket - a discovery sweep
+        # fingerprints a whole subnet, so leaking one FD per host adds up
+        # fast. See app/services/snmp/poller.py for the incident.
+        engine.closeDispatcher()
 
 
 def _is_likely_iconbit_response(main_text: str, status_xml_text: str | None, now_text: str | None) -> bool:
