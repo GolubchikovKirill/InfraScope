@@ -58,7 +58,7 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
         # (Errno 24) and every poll endpoint started returning 500. Must run
         # in the same event loop that issued the request; closing after
         # asyncio.run() returns is a no-op against a loop that's already gone.
-        engine.closeDispatcher()
+        engine.close_dispatcher()
 
 
 def _get_mac_from_arp(ip_address: str) -> str | None:

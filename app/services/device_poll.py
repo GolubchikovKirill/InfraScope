@@ -142,7 +142,7 @@ async def _get_snmp_info(ip: str, community: str = "public") -> dict:
         # own; see app/services/snmp/poller.py for the incident this guards
         # against (FD exhaustion -> Errno 24 -> every poll returning 500).
         # Must run in the same event loop that issued the request.
-        engine.closeDispatcher()
+        engine.close_dispatcher()
 
 
 async def _get_snmp_info_inner(engine: SnmpEngine, ip: str, community: str) -> dict:
@@ -193,7 +193,7 @@ async def _get_snmp_mac(ip: str, community: str = "public") -> str | None:
     try:
         return await _get_snmp_mac_inner(engine, ip, community)
     finally:
-        engine.closeDispatcher()
+        engine.close_dispatcher()
 
 
 async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> str | None:

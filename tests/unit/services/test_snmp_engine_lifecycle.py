@@ -6,7 +6,7 @@ container's 1024 FD limit (OSError: [Errno 24] Too many open files),
 turning every printer/media-player/cash-register poll into a 500.
 
 Each test here fakes SnmpEngine itself (never touches a real socket) and
-asserts closeDispatcher() ran exactly once, on both the success path and
+asserts close_dispatcher() ran exactly once, on both the success path and
 the exception path - the leak only mattered under real polling load, where
 failures (unreachable/misconfigured devices) are the common case, not the
 exception.
@@ -24,8 +24,18 @@ class _FakeEngine:
         self.close_calls = 0
         _FakeEngine.instances.append(self)
 
-    def closeDispatcher(self):
+    def close_dispatcher(self):
         self.close_calls += 1
+
+
+class _FakeTarget:
+    """pysnmp 7 builds transport targets through an async factory
+    (`await UdpTransportTarget.create(...)`) rather than the constructor, so
+    a plain stand-in callable is not enough here."""
+
+    @staticmethod
+    async def create(*_args, **_kwargs):
+        return object()
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +55,7 @@ async def test_get_snmp_mac_closes_engine_on_success(monkeypatch):
         return
         yield  # pragma: no cover - makes this an async generator
 
-    monkeypatch.setattr(mac_module, "walkCmd", _fake_walk)
+    monkeypatch.setattr(mac_module, "walk_cmd", _fake_walk)
 
     result = await mac_module._get_snmp_mac_async("10.0.0.5")
 
@@ -63,7 +73,7 @@ async def test_get_snmp_mac_closes_engine_when_walk_raises(monkeypatch):
     def _raising_walk(*_a, **_kw):
         raise RuntimeError("device unreachable")
 
-    monkeypatch.setattr(mac_module, "walkCmd", _raising_walk)
+    monkeypatch.setattr(mac_module, "walk_cmd", _raising_walk)
 
     await mac_module._get_snmp_mac_async("10.0.0.6")
 
@@ -74,7 +84,7 @@ async def test_get_snmp_mac_closes_engine_when_walk_raises(monkeypatch):
 async def test_poll_printer_closes_engine_when_target_creation_fails(monkeypatch):
     """Regression case for the pre-fix bug: this branch returns before any
     SNMP traffic is even attempted, which is exactly the kind of early
-    return that silently skipped closeDispatcher() before the fix wrapped
+    return that silently skipped close_dispatcher() before the fix wrapped
     the whole function body in try/finally."""
     from app.services.snmp import poller as poller_module
 
@@ -96,7 +106,7 @@ async def test_poll_printer_closes_engine_when_snmp_get_raises(monkeypatch):
     from app.services.snmp import poller as poller_module
 
     monkeypatch.setattr(poller_module, "SnmpEngine", _FakeEngine)
-    monkeypatch.setattr(poller_module, "UdpTransportTarget", lambda *a, **kw: object())
+    monkeypatch.setattr(poller_module, "UdpTransportTarget", _FakeTarget)
 
     async def _raising_get(*_a, **_kw):
         raise RuntimeError("timeout")
@@ -114,7 +124,7 @@ async def test_poll_printer_light_closes_engine_on_success(monkeypatch):
     from app.services.snmp import poller as poller_module
 
     monkeypatch.setattr(poller_module, "SnmpEngine", _FakeEngine)
-    monkeypatch.setattr(poller_module, "UdpTransportTarget", lambda *a, **kw: object())
+    monkeypatch.setattr(poller_module, "UdpTransportTarget", _FakeTarget)
 
     async def _fake_get(*_a, **_kw):
         return "Some Printer Descr"

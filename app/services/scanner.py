@@ -151,7 +151,7 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
             # SnmpEngine never closes its own UDP socket. A scan sweeps a
             # whole subnet, so this is the highest-volume SNMP path in the
             # app - see app/services/snmp/poller.py for the incident.
-            engine.closeDispatcher()
+            engine.close_dispatcher()
 
     try:
         return asyncio.run(_query())

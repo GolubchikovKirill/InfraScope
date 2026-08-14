@@ -34,7 +34,7 @@ async def _poll_printer_async(ip_address: str, community: str = "public") -> Pri
         # (Errno 24) and every poll endpoint started returning 500. Must run
         # in the same event loop that issued the request; closing after
         # asyncio.run() returns is a no-op against a loop that's already gone.
-        engine.closeDispatcher()
+        engine.close_dispatcher()
 
 
 async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, community: str) -> PrinterStatus:
@@ -175,7 +175,7 @@ async def _poll_printer_light_async(ip_address: str, community: str = "public") 
     try:
         return await _poll_printer_light_async_inner(engine, ip_address, community)
     finally:
-        engine.closeDispatcher()
+        engine.close_dispatcher()
 
 
 async def _poll_printer_light_async_inner(engine: SnmpEngine, ip_address: str, community: str) -> PrinterStatus:

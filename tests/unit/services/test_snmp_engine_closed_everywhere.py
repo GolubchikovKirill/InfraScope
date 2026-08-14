@@ -35,7 +35,7 @@ def _closes_dispatcher(node: ast.AST) -> bool:
         if (
             isinstance(child, ast.Call)
             and isinstance(child.func, ast.Attribute)
-            and child.func.attr == "closeDispatcher"
+            and child.func.attr in ("close_dispatcher", "closeDispatcher")
         ):
             return True
     return False
@@ -70,7 +70,7 @@ def _functions_creating_engines() -> list[tuple[str, str, int, bool]]:
 def test_every_snmp_engine_is_closed_by_its_creator():
     offenders = [(f, fn, line) for f, fn, line, closed in _functions_creating_engines() if not closed]
     assert not offenders, (
-        "These functions create an SnmpEngine but never call closeDispatcher() - "
+        "These functions create an SnmpEngine but never call close_dispatcher() - "
         "each one leaks a UDP socket per invocation:\n"
         + "\n".join(f"  {f}:{line} in {fn}()" for f, fn, line in offenders)
     )
