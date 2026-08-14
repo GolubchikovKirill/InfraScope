@@ -77,4 +77,37 @@ describe("CartridgeStockPanel", () => {
 
     expect(screen.getByText(/issued to Store A/i)).toBeInTheDocument();
   });
+
+  it("sorts rows by column when a header is clicked, toggling direction on repeat clicks", () => {
+    const multiRows: CartridgeStock[] = [
+      { ...rows[0], id: "a", cartridge_name: "W2300A", quantity_on_hand: 10 },
+      { ...rows[0], id: "b", cartridge_name: "CF210A", quantity_on_hand: 2 },
+      { ...rows[0], id: "c", cartridge_name: "CE320A", quantity_on_hand: 6 },
+    ];
+
+    render(
+      <CartridgeStockPanel
+        rows={multiRows}
+        movements={[]}
+        loading={false}
+        syncing={false}
+        isSuperuser
+        onSync={vi.fn()}
+        onSelect={vi.fn()}
+        onAdjust={vi.fn()}
+        onIssue={vi.fn()}
+      />,
+    );
+
+    const namesInOrder = () => screen.getAllByRole("row").slice(1).map((row) => row.textContent);
+
+    // Default order is by name ascending, as the server already returns it.
+    expect(namesInOrder()[0]).toContain("CE320A");
+
+    fireEvent.click(screen.getByRole("button", { name: "Остаток" }));
+    expect(namesInOrder()[0]).toContain("CF210A"); // quantity 2, lowest first (asc)
+
+    fireEvent.click(screen.getByRole("button", { name: "Остаток" }));
+    expect(namesInOrder()[0]).toContain("W2300A"); // same column again -> desc, highest first
+  });
 });

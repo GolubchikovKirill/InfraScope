@@ -1,6 +1,27 @@
-import { useState } from "react";
-import { History, Minus, RefreshCw, Save } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, History, Minus, RefreshCw, Save } from "lucide-react";
 import type { CartridgeStock, CartridgeStockMovement } from "../client";
+
+type SortKey = "name" | "color" | "printers" | "quantity" | "minimum";
+type SortDir = "asc" | "desc";
+
+const COLOR_ORDER: Record<string, number> = { black: 0, cyan: 1, magenta: 2, yellow: 3 };
+
+function compareRows(a: CartridgeStock, b: CartridgeStock, key: SortKey): number {
+  switch (key) {
+    case "color":
+      return (COLOR_ORDER[a.toner_color ?? ""] ?? 99) - (COLOR_ORDER[b.toner_color ?? ""] ?? 99);
+    case "printers":
+      return a.printer_count - b.printer_count;
+    case "quantity":
+      return a.quantity_on_hand - b.quantity_on_hand;
+    case "minimum":
+      return a.minimum_stock - b.minimum_stock;
+    case "name":
+    default:
+      return a.cartridge_name.localeCompare(b.cartridge_name, "ru");
+  }
+}
 
 interface Props {
   rows: CartridgeStock[];
@@ -44,6 +65,22 @@ export default function CartridgeStockPanel({
   onIssue,
 }: Props) {
   const [drafts, setDrafts] = useState<Record<string, { quantity: string; minimum: string }>>({});
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedRows = useMemo(() => {
+    const sorted = [...rows].sort((a, b) => compareRows(a, b, sortKey));
+    return sortDir === "asc" ? sorted : sorted.reverse();
+  }, [rows, sortKey, sortDir]);
 
   const draftFor = (row: CartridgeStock) => drafts[row.id] ?? {
     quantity: String(row.quantity_on_hand),
@@ -111,16 +148,16 @@ export default function CartridgeStockPanel({
           <table className="app-table min-w-full">
             <thead>
               <tr>
-                <th>Картридж</th>
-                <th>Цвет</th>
-                <th>Принтеры</th>
-                <th>Остаток</th>
-                <th>Минимум</th>
+                <SortableHeader label="Картридж" sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortableHeader label="Цвет" sortKey="color" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortableHeader label="Принтеры" sortKey="printers" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortableHeader label="Остаток" sortKey="quantity" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortableHeader label="Минимум" sortKey="minimum" active={sortKey} dir={sortDir} onSort={toggleSort} />
                 <th className="text-right">Действия</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {sortedRows.map((row) => {
                 const draft = draftFor(row);
                 const low = row.quantity_on_hand <= row.minimum_stock;
                 return (
@@ -221,6 +258,37 @@ export default function CartridgeStockPanel({
         </div>
       )}
     </div>
+  );
+}
+
+function SortableHeader({
+  label,
+  sortKey: key,
+  active,
+  dir,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  active: SortKey;
+  dir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const isActive = active === key;
+  const Icon = isActive ? (dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <th>
+      <button
+        type="button"
+        onClick={() => onSort(key)}
+        className={`inline-flex items-center gap-1 transition hover:text-[var(--text-strong)] ${
+          isActive ? "text-[var(--text-strong)] font-semibold" : ""
+        }`}
+      >
+        {label}
+        <Icon className={`size-3 ${isActive ? "" : "text-[var(--text-faint)]"}`} />
+      </button>
+    </th>
   );
 }
 

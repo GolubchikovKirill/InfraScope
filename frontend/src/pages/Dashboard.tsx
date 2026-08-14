@@ -249,7 +249,11 @@ export default function Dashboard() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Умный поиск: магазин, модель, IP, host (A/А)"
+              placeholder={
+                activeTab === "cartridges"
+                  ? "Поиск: название картриджа, модель принтера, цвет"
+                  : "Умный поиск: магазин, модель, IP, host (A/А)"
+              }
               className="app-input w-full pl-10 pr-4 py-2 text-sm"
             />
           </div>
