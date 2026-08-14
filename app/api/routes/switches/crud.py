@@ -218,13 +218,37 @@ def read_switch(switch_id: uuid.UUID, session: SessionDep, current_user: Current
 
 
 @router.patch("/{switch_id}", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])
-async def update_switch(session: SessionDep, switch_id: uuid.UUID, switch_in: NetworkSwitchUpdate) -> NetworkSwitch:
+async def update_switch(
+    session: SessionDep,
+    switch_id: uuid.UUID,
+    switch_in: NetworkSwitchUpdate,
+    current_user: CurrentUser,
+) -> NetworkSwitch:
     switch = _get_switch_or_404(session, switch_id)
     update_data = switch_in.model_dump(exclude_unset=True)
     if "ip_address" in update_data and update_data["ip_address"] is not None:
         _ensure_unique_switch_ip(session, update_data["ip_address"], excluded_switch_id=switch_id)
+    auto_reboot_was_disabled = (
+        update_data.get("auto_reboot_aps_enabled") is False and switch.auto_reboot_aps_enabled
+    )
     switch.updated_at = datetime.now(UTC)
     switch.sqlmodel_update(update_data)
+    if auto_reboot_was_disabled:
+        # Historical warnings stay available via the event log, but the
+        # current-state counters must no longer describe a disabled feature.
+        switch.consecutive_unreachable_cycles = 0
+        switch.consecutive_no_aps_found_cycles = 0
+        switch.switch_needs_attention_since = None
+        write_event_log(
+            session,
+            severity="info",
+            category="network",
+            event_type="ap_auto_reboot_disabled",
+            device_kind="switch",
+            device_name=switch.name,
+            ip_address=switch.ip_address,
+            message=f"{current_user.email}: disabled automatic AP reboot for {switch.name}",
+        )
     session.add(switch)
     session.commit()
     session.refresh(switch)

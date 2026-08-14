@@ -21,6 +21,7 @@ const sw: NetworkSwitch = {
   hostname: "sw-core-01",
   uptime: "3 days",
   is_online: true,
+  reachability_reason: null,
   last_polled_at: null,
   mac_address: null,
   mac_status: null,
@@ -31,6 +32,48 @@ const sw: NetworkSwitch = {
 };
 
 describe("SwitchCard", () => {
+  it("keeps the model description inside the card header", () => {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <ConfirmProvider>
+          <SwitchCard
+            sw={{ ...sw, model_info: "Cisco IOS Software, C2960S Software (C2960S-UNIVERSALK9-M), Version 12.2" }}
+            onPoll={vi.fn()}
+            onEdit={vi.fn()}
+            onDelete={vi.fn()}
+            onOpenPorts={vi.fn()}
+            isPolling={false}
+            isSuperuser={true}
+          />
+        </ConfirmProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTitle(/C2960S-UNIVERSALK9-M/)).toHaveClass("truncate");
+  });
+
+  it("does not allow a manual auto-reboot while the switch toggle is off", () => {
+    const qc = new QueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <ConfirmProvider>
+          <SwitchCard
+            sw={sw}
+            onPoll={vi.fn()}
+            onEdit={vi.fn()}
+            onDelete={vi.fn()}
+            onOpenPorts={vi.fn()}
+            isPolling={false}
+            isSuperuser={true}
+          />
+        </ConfirmProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "Запустить автоперезагрузку точек сейчас" })).toBeDisabled();
+  });
+
   it("closes additional actions menu on outside click and Escape", async () => {
     const qc = new QueryClient();
     render(

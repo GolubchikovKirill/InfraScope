@@ -245,7 +245,10 @@ class Settings(BaseSettings):
     HONEST_SIGN_TIMEOUT_SECONDS: float = 10.0
     HONEST_SIGN_STATUS_WAIT_SECONDS: float = 15.0
     HONEST_SIGN_MAX_CONCURRENCY: int = 32
-    SWITCH_WRITE_LOCK_SECONDS: int = 20
+    # A PoE reboot can spend four minutes only waiting for an access point to
+    # return. The lease is renewed during a request; this floor also prevents
+    # a brief Redis outage from exposing a live hardware operation.
+    SWITCH_WRITE_LOCK_SECONDS: int = 300
     SWITCH_SAFETY_COOLDOWN_SECONDS: int = 8
 
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]

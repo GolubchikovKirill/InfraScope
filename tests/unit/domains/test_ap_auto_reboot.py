@@ -253,6 +253,77 @@ async def test_reboot_cycle_opens_a_single_ssh_session(db_session, monkeypatch) 
 
 
 @pytest.mark.asyncio
+async def test_reboot_cycle_stops_before_next_ap_when_switch_toggle_is_disabled(db_session, monkeypatch) -> None:
+    """A running cycle must not power-cycle a later AP after it is disabled."""
+    switch = NetworkSwitch(
+        name="ToggleStop",
+        ip_address="10.0.0.19",
+        ap_vlan=20,
+        auto_reboot_mode="live",
+        auto_reboot_aps_enabled=True,
+    )
+    db_session.add(switch)
+    db_session.commit()
+    db_session.refresh(switch)
+
+    aps = [
+        MergedAccessPoint(
+            mac_address="aa:bb:cc:dd:ee:11",
+            port="Gi1/0/11",
+            vlan=20,
+            cdp_name=None,
+            ip_address=None,
+            cdp_platform=None,
+            poe_power="15.4W",
+            poe_status="on",
+            is_responding=True,
+            last_seen_at=None,
+            exclude_from_auto_reboot=False,
+        ),
+        MergedAccessPoint(
+            mac_address="aa:bb:cc:dd:ee:12",
+            port="Gi1/0/12",
+            vlan=20,
+            cdp_name=None,
+            ip_address=None,
+            cdp_platform=None,
+            poe_power="15.4W",
+            poe_status="on",
+            is_responding=True,
+            last_seen_at=None,
+            exclude_from_auto_reboot=False,
+        ),
+    ]
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_access_points", lambda *a, **kw: [])
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.record_seen_aps", lambda *a, **kw: None)
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.get_known_aps", lambda *a, **kw: [])
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.merge_live_and_known", lambda *a, **kw: aps)
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.settings.AUTO_REBOOT_AP_PAUSE_SECONDS", 0)
+
+    handled: list[str] = []
+
+    async def _handle_once(_session, _switch, ap, **_kwargs):
+        handled.append(ap.port)
+        switch.auto_reboot_aps_enabled = False
+        db_session.add(switch)
+        db_session.commit()
+        return {"port": ap.port, "ok": True}
+
+    captured: list[dict] = []
+    monkeypatch.setattr("app.domains.inventory.ap_auto_reboot._handle_one_ap", _handle_once)
+    monkeypatch.setattr(
+        "app.domains.inventory.ap_auto_reboot.write_event_log",
+        lambda _session, **kwargs: captured.append(kwargs),
+    )
+
+    result = await run_ap_reboot_for_switch(db_session, switch)
+
+    assert handled == ["Gi1/0/11"]
+    assert result["cancelled"] == "disabled_during_cycle"
+    assert [event["event_type"] for event in captured] == ["ap_auto_reboot_cancelled"]
+
+
+@pytest.mark.asyncio
 async def test_switch_escalates_after_consecutive_unreachable_cycles(db_session, monkeypatch) -> None:
     monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.settings.AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES", 2)
     switch = NetworkSwitch(name="TestUnreachable", ip_address="10.0.0.2", ap_vlan=20, auto_reboot_mode="live")

@@ -131,6 +131,11 @@ async def run_ap_reboot_for_switch(session: Session, switch: NetworkSwitch) -> d
 async def _run_ap_reboot_cycle(session: Session, switch: NetworkSwitch, ssh: CiscoSSH) -> dict:
     is_dry_run = switch.auto_reboot_mode != "live"
     mode_label = "dry_run" if is_dry_run else "live"
+    # Scheduled and manual entry points already validate this toggle before a
+    # cycle starts. Remember the initial state so a caller from older internal
+    # code keeps its existing behaviour, while an in-flight live cycle stops
+    # before the next PoE write when an operator switches this off.
+    stop_when_disabled = switch.auto_reboot_aps_enabled
 
     live_aps = await asyncio.to_thread(
         get_access_points,
@@ -200,6 +205,32 @@ async def _run_ap_reboot_cycle(session: Session, switch: NetworkSwitch, ssh: Cis
 
     results: list[dict] = []
     for ap in targets:
+        if stop_when_disabled:
+            # `switch` is held in this Session's identity map. Refresh it so
+            # a concurrent PATCH request is visible before touching hardware.
+            session.refresh(switch)
+            if not switch.auto_reboot_aps_enabled:
+                write_event_log(
+                    session,
+                    severity="info",
+                    category="network",
+                    event_type="ap_auto_reboot_cancelled",
+                    device_kind="switch",
+                    device_name=switch.name,
+                    ip_address=switch.ip_address,
+                    message=(
+                        f"Auto-reboot ({mode_label}): cancelled for {switch.name} because "
+                        "the per-switch toggle was disabled"
+                    ),
+                )
+                session.commit()
+                return {
+                    "switch": switch.name,
+                    "mode": mode_label,
+                    "aps_found": len(targets),
+                    "results": results,
+                    "cancelled": "disabled_during_cycle",
+                }
         result = await _handle_one_ap(session, switch, ap, is_dry_run=is_dry_run, mode_label=mode_label, ssh=ssh)
         results.append(result)
 

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from time import monotonic
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes.switches import _shared as switch_shared
@@ -47,6 +48,28 @@ class _FakeRedis:
         for key in keys:
             self._values.pop(key, None)
         return len(keys)
+
+    async def eval(self, script: str, _keys: int, key: str, owner: str, *args) -> int:
+        if self._is_expired(key) or self._values.get(key, (None, None))[0] != owner:
+            return 0
+        if "del" in script:
+            self._values.pop(key, None)
+            return 1
+        if "expire" in script:
+            self._values[key] = (owner, monotonic() + int(args[0]))
+            return 1
+        return 0
+
+
+@pytest.fixture(autouse=True)
+def _switch_write_redis(monkeypatch):
+    """Hardware-write tests must model the production Redis safety lease."""
+    redis = _FakeRedis()
+
+    async def _get_redis():
+        return redis
+
+    monkeypatch.setattr(switch_shared, "get_redis", _get_redis)
 
 
 def test_create_and_poll_switch(client: TestClient, admin_token: str, monkeypatch):

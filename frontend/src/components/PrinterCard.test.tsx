@@ -15,6 +15,7 @@ const printer: Printer = {
   mac_status: null,
   host_pc: null,
   is_online: true,
+  reachability_reason: null,
   status: null,
   toner_black: 12,
   toner_cyan: 60,

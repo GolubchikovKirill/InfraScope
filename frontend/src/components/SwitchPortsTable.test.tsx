@@ -66,6 +66,7 @@ describe("SwitchPortsTable", () => {
             hostname: null,
             uptime: null,
             is_online: true,
+            reachability_reason: null,
             last_polled_at: null,
             mac_address: null,
             mac_status: null,

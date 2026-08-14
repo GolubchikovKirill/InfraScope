@@ -34,6 +34,8 @@ async def run_switch_auto_reboot_now(switch_id: uuid.UUID, session: SessionDep) 
     switch = _get_switch_or_404(session, switch_id)
     if not settings.AUTO_REBOOT_AP_ENABLED:
         raise HTTPException(status_code=400, detail="Auto-reboot is disabled globally (AUTO_REBOOT_AP_ENABLED)")
+    if not switch.auto_reboot_aps_enabled:
+        raise HTTPException(status_code=409, detail="Auto-reboot is disabled for this switch")
 
     allowed_stores = parse_allowed_stores(settings.AUTO_REBOOT_AP_ALLOWED_STORES)
     eligible, skip_reason = switch_eligible_for_auto_reboot(switch, allowed_stores)

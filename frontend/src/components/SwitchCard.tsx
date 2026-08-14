@@ -201,17 +201,19 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
     <div className={`app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col ${isActionsOpen ? "relative z-30" : ""}`}>
       <div className="p-5 flex flex-col gap-3">
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="app-entity-icon">
               <Network className="h-5 w-5" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="app-card-title truncate">{sw.name}</div>
-              <div className="app-card-meta truncate">{sw.model_info || sw.vendor.toUpperCase()}</div>
+              <div className="app-card-meta truncate" title={sw.model_info || sw.vendor.toUpperCase()}>
+                {sw.model_info || sw.vendor.toUpperCase()}
+              </div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex shrink-0 flex-col items-end gap-1">
             <OnlineStatusBadge isOnline={sw.is_online} />
             <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium bg-[var(--brand-soft)] text-[var(--brand)]">
               VLAN {sw.ap_vlan}
@@ -292,7 +294,6 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
                 onClick={() =>
                   autoRebootMut.mutate({
                     auto_reboot_aps_enabled: !sw.auto_reboot_aps_enabled,
-                    auto_reboot_mode: "live",
                   })
                 }
                 disabled={autoRebootMut.isPending}
@@ -314,9 +315,10 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             <div className="flex items-center gap-1.5">
               <button
                 onClick={handleRunNow}
-                disabled={runNowMut.isPending}
+                disabled={runNowMut.isPending || !sw.auto_reboot_aps_enabled}
                 className="p-1.5 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 transition disabled:opacity-40"
-                title="Запустить цикл автоперезагрузки сейчас (не дожидаясь 07:30/19:30)"
+                title={sw.auto_reboot_aps_enabled ? "Запустить цикл автоперезагрузки сейчас (не дожидаясь 07:30/19:30)" : "Сначала включите автоперезагрузку для этого свитча"}
+                aria-label="Запустить автоперезагрузку точек сейчас"
               >
                 <Play className={`h-3.5 w-3.5 ${runNowMut.isPending ? "animate-pulse" : ""}`} />
               </button>
