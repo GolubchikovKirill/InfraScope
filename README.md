@@ -2,7 +2,7 @@
 
 InfraScope — платформа мониторинга инфраструктуры магазинов: принтеры, медиаплееры (Iconbit/неттопы), сетевые свитчи, сетевой discovery, массовые операции, наблюдаемость и алерты.
 
-Проект ориентирован на production: отказоустойчивый polling, Redis/worker, ограничение параллелизма, мониторинг через Prometheus + Grafana.
+Проект рассчитан на эксплуатацию в production: отказоустойчивый polling, фоновые задачи через Redis, ограничение параллелизма и мониторинг через Prometheus и Grafana.
 
 ## Возможности
 
@@ -64,7 +64,7 @@ InfraScope — платформа мониторинга инфраструкт�
   - `ONEC_DUTY_*_API_URL` и `ONEC_DUTY_*_API_TOKEN` — HTTP endpoint интеграции 1С (обязателен для фактической выгрузки).
   - `ONEC_DUTY_*_IB_CONNECTION`, `ONEC_DUTY_*_DOMAIN`, `ONEC_DUTY_*_TERMINAL_SERVER` — строка базы 1С/домен/терминальный сервер для эксплуатации и диагностики.
 - Пример строки базы 1С:
-  - `Srvr="srv-1c-002;Ref="trade_rte_dfree";`
+  - `Srvr="db-host";Ref="database";`
 - Важно: сама строка базы `Srvr/Ref` не заменяет `API_URL`; backend выполняет обмен через HTTP endpoint 1С.
 
 ---
@@ -126,7 +126,7 @@ CASH_REGISTER_POLL_CONCURRENCY=16
 - Swagger/OpenAPI: `https://localhost/docs`
 - Prometheus: `http://127.0.0.1:9090` (по умолчанию bind на localhost)
 - Grafana: `http://127.0.0.1:3000` (по умолчанию bind на localhost)
-  - default: `admin` / `admin`
+  - логин и пароль задаются через `GRAFANA_ADMIN_USER` и `GRAFANA_ADMIN_PASSWORD`; значение `CHANGE_ME` перед запуском нужно заменить.
 - Kafka UI: `http://127.0.0.1:8080`
 - Jaeger (trace UI): `http://127.0.0.1:16686`
 

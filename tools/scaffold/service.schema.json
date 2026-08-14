@@ -96,6 +96,7 @@
     "ci": {
       "type": "object",
       "properties": {
+        "working_directory": {"type": "string", "minLength": 1},
         "lint_command": {"type": "string"},
         "test_command": {"type": "string"},
         "build_context": {"type": "string"},

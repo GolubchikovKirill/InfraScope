@@ -12,12 +12,16 @@ def main() -> int:
     include: list[dict[str, str]] = []
     for path in descriptors:
         payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        runtime = payload.get("runtime", {})
+        ci = payload.get("ci", {})
         include.append(
             {
                 "name": str(payload.get("name", path.parent.name)),
                 "path": str(path.parent.relative_to(repo_root)),
-                "lint": str(payload.get("ci", {}).get("lint_command", "echo no-lint")),
-                "test": str(payload.get("ci", {}).get("test_command", "echo no-test")),
+                "runtime": str(runtime.get("language", "python")),
+                "working_directory": str(ci.get("working_directory", ".")),
+                "lint": str(ci.get("lint_command", "echo no-lint")),
+                "test": str(ci.get("test_command", "echo no-test")),
             }
         )
     print(json.dumps({"include": include}))
