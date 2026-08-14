@@ -134,12 +134,12 @@ function CameraSwitchCard({
         onClick={onToggle}
         className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-gray-50/50 transition"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="app-entity-icon">
             <Camera className="h-5 w-5" />
           </div>
-          <div>
-            <div className="font-medium text-sm text-gray-900">{switchName}</div>
+          <div className="min-w-0">
+            <div className="font-medium text-sm text-gray-900 truncate">{switchName}</div>
             {isExpanded && cameraPorts && (
               <div className="text-xs text-gray-500">
                 {cameraPorts.length} камер{downCount > 0 && <span className="text-[var(--danger-fg)]"> · {downCount} без связи</span>}
@@ -147,7 +147,7 @@ function CameraSwitchCard({
             )}
           </div>
         </div>
-        {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />}
       </button>
 
       {isExpanded && (

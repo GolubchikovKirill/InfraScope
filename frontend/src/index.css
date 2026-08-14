@@ -531,10 +531,9 @@ body {
   background: var(--brand-soft);
   color: var(--brand);
   padding: 0.5rem;
-}
-
-:root[data-theme="dark"] .app-entity-icon {
-  color: #fda4af;
+  /* A fixed-size chip. Without this it is a shrinkable flex item, and a long
+     card title squashes it into an oval before the title itself gives way. */
+  flex-shrink: 0;
 }
 
 /* ============================================================================

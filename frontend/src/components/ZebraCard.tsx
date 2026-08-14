@@ -34,17 +34,17 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
       <div className="p-5 flex flex-col gap-3">
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="app-entity-icon">
               {isUsb ? <Usb className="h-5 w-5" /> : <Tag className="h-5 w-5" />}
             </div>
             <div className="min-w-0">
               <div className="app-card-title truncate">{printer.model}</div>
-              <div className="app-card-meta app-mono">{printer.store_name}</div>
+              <div className="app-card-meta app-mono truncate">{printer.store_name}</div>
             </div>
           </div>
-          {statusBadge(printer)}
+          <div className="shrink-0">{statusBadge(printer)}</div>
         </div>
 
         {/* IP or Host PC */}
