@@ -694,3 +694,41 @@ def test_reboot_ap_skips_verification_without_mac_address(client: TestClient, ad
     )
     assert response.status_code == 200
     assert response.json() == {"status": "rebooting", "interface": "Gi0/1", "method": "poe"}
+
+
+def test_reboot_ap_is_superuser_only(client: TestClient, admin_token: str, user_token: str):
+    """The UI has always hidden the AP reboot button from non-superusers, but
+    the endpoint accepted any authenticated session - so the restriction only
+    existed in the browser and a PoE cycle on a live access point was one API
+    call away for any user. Every other hardware-power-cycling endpoint here
+    (camera-ports/reboot, camera-ports/reboot-all) is superuser-only; this one
+    has to match.
+    """
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": "AP reboot authz",
+            "ip_address": "10.10.10.77",
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "cisco",
+            "management_protocol": "ssh",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    switch_id = created.json()["id"]
+
+    forbidden = client.post(
+        f"/api/v1/switches/{switch_id}/reboot-ap",
+        json={"interface": "GigabitEthernet1/0/47", "method": "poe"},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert forbidden.status_code == 403, (
+        "a non-superuser must not be able to power-cycle an access point"
+    )

@@ -282,7 +282,12 @@ async def set_switch_ap_excluded(
     )
 
 
-@router.post("/{switch_id}/reboot-ap")
+# Superuser-only, like every other endpoint here that power-cycles hardware
+# (camera-ports/reboot, camera-ports/reboot-all). The UI has always hidden
+# this button from non-superusers, but the endpoint itself accepted any
+# authenticated session - so the restriction only ever existed in the
+# browser, and a PoE cycle on a live AP was one API call away for any user.
+@router.post("/{switch_id}/reboot-ap", dependencies=[Depends(get_current_active_superuser)])
 async def reboot_access_point(
     switch_id: uuid.UUID,
     session: SessionDep,
