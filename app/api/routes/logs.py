@@ -16,6 +16,7 @@ def _query_logs_page(
     session: SessionDep,
     severity: str | None,
     device_kind: str | None,
+    event_type_prefix: str | None,
     q: str | None,
     skip: int,
     limit: int,
@@ -29,6 +30,16 @@ def _query_logs_page(
     if device_kind:
         statement = statement.where(EventLog.device_kind == device_kind.lower())
         count_stmt = count_stmt.where(EventLog.device_kind == device_kind.lower())
+    if event_type_prefix:
+        # A family of related event types rather than one exact value: AP
+        # automation alone writes ap_auto_reboot, _skipped, _failed,
+        # _dry_run, _recovering_hung, _needs_attention and
+        # _switch_needs_attention. Escaped so a caller can't turn the prefix
+        # into a wildcard of its own.
+        escaped = event_type_prefix.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"{escaped}%"
+        statement = statement.where(EventLog.event_type.ilike(pattern, escape="\\"))
+        count_stmt = count_stmt.where(EventLog.event_type.ilike(pattern, escape="\\"))
     if q:
         flt = build_ilike_filter(
             [
@@ -57,15 +68,16 @@ async def read_logs(
     limit: int = Query(default=100, ge=1, le=300),
     severity: str | None = Query(default=None),
     device_kind: str | None = Query(default=None),
+    event_type_prefix: str | None = Query(default=None),
     q: str | None = Query(default=None),
 ) -> EventLogsPublic:
     del current_user
-    cache_key = f"logs:{severity or ''}:{device_kind or ''}:{q or ''}:{skip}:{limit}"
+    cache_key = f"logs:{severity or ''}:{device_kind or ''}:{event_type_prefix or ''}:{q or ''}:{skip}:{limit}"
     if cached := await get_cached_model(cache_key, EventLogsPublic):
         return cached
 
     logs, count = await run_in_threadpool(
-        _query_logs_page, session, severity, device_kind, q, skip, limit
+        _query_logs_page, session, severity, device_kind, event_type_prefix, q, skip, limit
     )
     result = EventLogsPublic(data=logs, count=count)
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)

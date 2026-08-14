@@ -25,6 +25,9 @@ export async function getEventLogs(params?: {
   limit?: number;
   severity?: EventSeverity | "all";
   device_kind?: "printer" | "media_player" | "switch" | "cash_register" | "all";
+  /** Matches a family of related event types, e.g. "ap_auto_reboot" covers
+   *  ap_auto_reboot, _skipped, _failed, _needs_attention and the rest. */
+  event_type_prefix?: string;
   q?: string;
 }) {
   const query: Record<string, string | number> = {
@@ -33,6 +36,7 @@ export async function getEventLogs(params?: {
   };
   if (params?.severity && params.severity !== "all") query.severity = params.severity;
   if (params?.device_kind && params.device_kind !== "all") query.device_kind = params.device_kind;
+  if (params?.event_type_prefix) query.event_type_prefix = params.event_type_prefix;
   if (params?.q) query.q = params.q;
   const { data } = await api.get<EventLogsResponse>("/logs/", { params: query });
   return data;

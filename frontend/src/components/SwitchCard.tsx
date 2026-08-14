@@ -3,11 +3,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Network, Wifi, Clock, Cpu,
   ExternalLink, RotateCcw, ChevronDown, ChevronUp, Zap, Radio, MoreHorizontal,
-  AlertTriangle, History, Play, EyeOff,
+  AlertTriangle, Play, EyeOff,
 } from "lucide-react";
 import type { NetworkSwitch, AccessPoint } from "../client";
 import {
-  getSwitchAPs, rebootAP, updateSwitch, setApExcluded, runAutoRebootNow, getAutoRebootHistory,
+  getSwitchAPs, rebootAP, updateSwitch, setApExcluded, runAutoRebootNow,
 } from "../client";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -89,25 +89,16 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
           {ap.cdp_platform && (
             <span className="text-[11px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{ap.cdp_platform}</span>
           )}
-          {ap.needs_attention_since ? (
-            <span
-              className="text-[11px] text-white bg-[var(--danger-fg)] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 font-medium"
-              title={
-                `Не восстанавливается автоматически с ${new Date(ap.needs_attention_since).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}` +
-                (ap.consecutive_no_power_skips > ap.consecutive_reboot_failures
-                  ? ` — порт без питания ${ap.consecutive_no_power_skips} циклов подряд`
-                  : ` — не вернулась онлайн ${ap.consecutive_reboot_failures} перезагрузок подряд`) +
-                ". Автоперезагрузка отключена для этой точки, нужна проверка на месте."
-              }
-            >
-              <AlertTriangle className="h-2.5 w-2.5" />требует проверки на месте
+          {/* The auto-reboot automation's own verdict ("needs_attention",
+              consecutive-failure streaks) deliberately does not surface here
+              any more: a stale streak from days ago kept rendering as a live
+              alarm long after the automation had been turned off. That
+              history lives in the event log instead - Logs -> "Автоматизация
+              ТД". Only the neutral, currently-true facts stay on the card. */}
+          {ap.exclude_from_auto_reboot && (
+            <span className="text-[11px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
+              <EyeOff className="h-2.5 w-2.5" />искл. из автоперезагрузки
             </span>
-          ) : (
-            ap.exclude_from_auto_reboot && (
-              <span className="text-[11px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
-                <EyeOff className="h-2.5 w-2.5" />искл. из автоперезагрузки
-              </span>
-            )
           )}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-gray-500 mt-0.5">
@@ -162,7 +153,6 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
 
 export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, isPolling, isSuperuser }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const [historyExpanded, setHistoryExpanded] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const queryClient = useQueryClient();
@@ -172,13 +162,6 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
     queryKey: ["switch-aps", sw.id],
     queryFn: () => getSwitchAPs(sw.id),
     enabled: expanded,
-    staleTime: 30_000,
-  });
-
-  const { data: history, isLoading: loadingHistory } = useQuery({
-    queryKey: ["switch-auto-reboot-history", sw.id],
-    queryFn: () => getAutoRebootHistory(sw.id),
-    enabled: historyExpanded,
     staleTime: 30_000,
   });
 
@@ -236,15 +219,11 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           </div>
         </div>
 
-        {sw.switch_needs_attention_since && (
-          <div
-            className="flex items-center gap-1.5 rounded-lg bg-[var(--danger-bg)] border border-[var(--danger-border)] px-2.5 py-1.5 text-xs text-[var(--danger-fg)]"
-            title={`С ${new Date(sw.switch_needs_attention_since).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })} автоперезагрузка точек доступа не может нормально отработать на этом свитче несколько циклов подряд — не отвечает по SSH или не находит ни одной точки на VLAN. Требует проверки (доступ/конфигурация).`}
-          >
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-medium">Автоперезагрузка не работает на этом свитче — нужна проверка</span>
-          </div>
-        )}
+        {/* The switch-level auto-reboot alarm (switch_needs_attention_since)
+            used to render here. It stayed red indefinitely on switches whose
+            automation had since been switched off, so it reported a problem
+            that no longer existed. The underlying events are kept and are
+            searchable under Logs -> "Автоматизация ТД". */}
 
         {/* Switch info */}
         <div className="space-y-1.5">
@@ -367,40 +346,10 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
           </div>
         )}
 
-        {/* Auto-reboot history */}
-        {isSuperuser && sw.vendor === "cisco" && sw.ap_vlan === 20 && (
-          <button
-            onClick={() => setHistoryExpanded(!historyExpanded)}
-            className="flex items-center gap-1.5 text-xs font-medium text-[var(--brand)] hover:text-[var(--brand-strong)] transition"
-          >
-            <History className="h-3.5 w-3.5" />
-            История автоперезагрузок
-            {historyExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </button>
-        )}
-        {historyExpanded && (
-          <div className="border-t border-gray-100 pt-2 -mx-2">
-            {loadingHistory ? (
-              <div className="flex items-center justify-center py-4">
-                <RefreshCw className="h-4 w-4 animate-spin text-[var(--brand)]" />
-                <span className="ml-2 text-xs text-gray-400">Загрузка...</span>
-              </div>
-            ) : history && history.length > 0 ? (
-              <div className="space-y-0.5 max-h-64 overflow-y-auto">
-                {history.map((entry, i) => (
-                  <div key={i} className={`flex items-start gap-2 py-1.5 px-3 rounded-lg text-[11px] ${entry.severity === "error" ? "text-[var(--danger-fg)]" : "text-gray-600"}`}>
-                    <span className="font-mono text-gray-400 shrink-0">
-                      {new Date(entry.created_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
-                    </span>
-                    <span>{entry.message}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs text-gray-400 text-center py-3">Событий пока нет</div>
-            )}
-          </div>
-        )}
+        {/* The per-switch auto-reboot history expander lived here. It is now
+            one filtered view of the event log instead ("Автоматизация ТД" in
+            Logs), so the same records are searchable across the whole fleet
+            and by time window rather than only one switch at a time. */}
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-100">

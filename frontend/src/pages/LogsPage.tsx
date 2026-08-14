@@ -11,6 +11,14 @@ const SEVERITIES: Array<{ key: EventSeverity | "all"; label: string }> = [
   { key: "critical", label: "Critical" },
 ];
 
+// Event families, not device kinds: AP automation writes seven related
+// event_type values, and the point of this filter is to get all of that
+// history out of the switch cards and into one searchable place.
+const EVENT_FAMILIES: Array<{ key: string; label: string }> = [
+  { key: "all", label: "Все события" },
+  { key: "ap_auto_reboot", label: "Автоматизация ТД" },
+];
+
 const DEVICE_KINDS: Array<{ key: "all" | "printer" | "media_player" | "switch" | "cash_register"; label: string }> = [
   { key: "all", label: "Все устройства" },
   { key: "printer", label: "Принтеры" },
@@ -35,11 +43,19 @@ function severityBadge(severity: EventSeverity) {
 export default function LogsPage() {
   const [severity, setSeverity] = useState<EventSeverity | "all">("all");
   const [deviceKind, setDeviceKind] = useState<"all" | "printer" | "media_player" | "switch" | "cash_register">("all");
+  const [eventFamily, setEventFamily] = useState<string>("all");
   const [search, setSearch] = useState("");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["event-logs", severity, deviceKind, search],
-    queryFn: () => getEventLogs({ severity, device_kind: deviceKind, q: search || undefined, limit: 200 }),
+    queryKey: ["event-logs", severity, deviceKind, eventFamily, search],
+    queryFn: () =>
+      getEventLogs({
+        severity,
+        device_kind: deviceKind,
+        event_type_prefix: eventFamily === "all" ? undefined : eventFamily,
+        q: search || undefined,
+        limit: 200,
+      }),
     refetchInterval: 15_000,
   });
   const logs = data?.data ?? [];
@@ -96,6 +112,17 @@ export default function LogsPage() {
               key={item.key}
               onClick={() => setDeviceKind(item.key)}
               className={`app-btn-secondary px-3 py-1.5 text-xs ${deviceKind === item.key ? "ring-2 ring-[var(--brand-border)]" : ""}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="app-toolbar-actions flex flex-wrap gap-2">
+          {EVENT_FAMILIES.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setEventFamily(item.key)}
+              className={`app-btn-secondary px-3 py-1.5 text-xs ${eventFamily === item.key ? "ring-2 ring-[var(--brand-border)]" : ""}`}
             >
               {item.label}
             </button>

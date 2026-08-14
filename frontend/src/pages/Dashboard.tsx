@@ -27,7 +27,6 @@ import PrinterForm from "../components/PrinterForm";
 import CartridgeStockPanel from "../components/CartridgeStockPanel";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useConfirm } from "../components/ConfirmDialog";
-import AutoRebootSummaryPanel from "../components/AutoRebootSummaryPanel";
 import PathSuspectBanner from "../components/PathSuspectBanner";
 
 type TabKey = PrinterType | "cartridges";
@@ -279,7 +278,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <AutoRebootSummaryPanel />
       {activeTab !== "cartridges" && <PathSuspectBanner deviceKind="printer" />}
 
       {/* Stats (only for printer tabs) */}
