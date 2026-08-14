@@ -3,16 +3,17 @@ from __future__ import annotations
 import asyncio
 import logging
 
-
-from pysnmp.hlapi.asyncio import (  # noqa: E402
+from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
     CommunityData,
     ContextData,
     ObjectIdentity,
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
+    get_cmd,
+    set_cmd,
+    walk_cmd,
 )
-from pysnmp.hlapi.asyncio import get_cmd, set_cmd, walk_cmd  # noqa: E402
 from pysnmp.proto.rfc1902 import Integer, OctetString  # noqa: E402
 
 from app.domains.inventory.models import NetworkSwitch  # noqa: E402

@@ -5,6 +5,8 @@ import logging
 from ._pysnmp_compat import CommunityData, SnmpEngine, UdpTransportTarget
 from .helpers import _detect_color, _extract_supply_key, _is_toner_supply
 from .oids import (
+    BROTHER_COLOR_MAP,
+    BROTHER_TONER_BASE,
     OID_COLORANT_VALUE,
     OID_MARKER_COLORANT_IDX,
     OID_MARKER_DESCR,
@@ -13,8 +15,6 @@ from .oids import (
     OID_MARKER_TYPE,
     RICOH_SUPPLY_DESCR,
     RICOH_SUPPLY_LEVEL,
-    BROTHER_COLOR_MAP,
-    BROTHER_TONER_BASE,
     TonerLevel,
 )
 from .primitives import _snmp_get, _snmp_walk

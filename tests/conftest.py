@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 os.environ.setdefault("FIRST_SUPERUSER_PASSWORD", "TestPassword123!")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-internal-token")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-with-at-least-32-bytes")
 
 from app.api import deps
 from app.core.limiter import limiter as app_limiter

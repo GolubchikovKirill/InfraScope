@@ -14,7 +14,7 @@ from app.services.cisco_ssh import CiscoSSH, _classify_ssh_error, get_switch_inf
         (paramiko.AuthenticationException("bad creds"), "auth_rejected"),
         (paramiko.BadAuthenticationType("nope", ["password"]), "auth_rejected"),
         (socket.gaierror("name resolution failed"), "dns_failure"),
-        (socket.timeout("timed out"), "timeout"),
+        (TimeoutError("timed out"), "timeout"),
         (TimeoutError("timed out"), "timeout"),
         (ConnectionRefusedError("refused"), "connection_refused"),
         (OSError("No route to host"), "network_unreachable"),

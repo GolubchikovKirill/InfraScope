@@ -88,7 +88,6 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
     Sequential execution is intentional: pysnmp's UDP transport
     has global state that causes failures under concurrency.
     """
-    import warnings
 
 
     OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
@@ -102,8 +101,9 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
             ObjectType,
             SnmpEngine,
             UdpTransportTarget,
+            get_cmd,
+            walk_cmd,
         )
-        from pysnmp.hlapi.asyncio import get_cmd, walk_cmd
 
         info = SnmpInfo()
         engine = SnmpEngine()

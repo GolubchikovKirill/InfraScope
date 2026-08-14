@@ -39,11 +39,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_secret_key(self) -> "Settings":
-        if self.ENVIRONMENT == "production" and self.SECRET_KEY.strip().lower() in _PLACEHOLDERS:
-            raise ValueError(
-                "SECRET_KEY must be set to a secure value in production. "
-                'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
-            )
+        if self.ENVIRONMENT == "production":
+            secret_key = self.SECRET_KEY.strip()
+            if secret_key.lower() in _PLACEHOLDERS or len(secret_key.encode("utf-8")) < 32:
+                raise ValueError(
+                    "SECRET_KEY must be a non-placeholder value of at least 32 bytes in production. "
+                    'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+                )
         if self.ENVIRONMENT == "production" and self._is_weak_bootstrap_password(self.FIRST_SUPERUSER_PASSWORD):
             raise ValueError("FIRST_SUPERUSER_PASSWORD must be explicitly set to a strong value in production.")
         internal_services_enabled = any(

@@ -18,7 +18,7 @@ import pytest
 
 
 class _FakeEngine:
-    instances: list["_FakeEngine"] = []
+    instances: list[_FakeEngine] = []
 
     def __init__(self):
         self.close_calls = 0
@@ -185,8 +185,8 @@ async def test_switch_fetch_basics_closes_engine_when_get_raises(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_switch_get_ports_closes_engine_even_when_a_walk_raises(monkeypatch):
-    from app.services.switches import snmp_provider as snmp_provider_module
     from app.domains.inventory.models import NetworkSwitch
+    from app.services.switches import snmp_provider as snmp_provider_module
 
     provider = snmp_provider_module.SnmpSwitchProvider()
     monkeypatch.setattr(snmp_provider_module, "SnmpEngine", _FakeEngine)

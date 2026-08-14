@@ -18,16 +18,16 @@ import struct
 import weakref
 from dataclasses import dataclass, field
 
-
-from pysnmp.hlapi.asyncio import (  # noqa: E402
+from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
     CommunityData,
     ContextData,
     ObjectIdentity,
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
+    get_cmd,
+    walk_cmd,
 )
-from pysnmp.hlapi.asyncio import get_cmd, walk_cmd  # noqa: E402
 
 from app.core.bounded_cache import BoundedTTLCache  # noqa: E402
 from app.observability.metrics import media_player_ops_total  # noqa: E402

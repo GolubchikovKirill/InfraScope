@@ -47,7 +47,7 @@ async def resolve_devices_by_mac(
     targets: list[MacRediscoveryTarget],
     *,
     subnets: list[str] | None = None,
-    session: "Session | None" = None,
+    session: Session | None = None,
 ) -> list[MacRediscoveryMatch]:
     mac_to_targets: dict[str, list[MacRediscoveryTarget]] = defaultdict(list)
     for target in targets:
