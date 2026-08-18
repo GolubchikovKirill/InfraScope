@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, History, Minus, Save } from "lucide-react";
-import type { CartridgeStock, CartridgeStockMovement } from "../client";
+import { Archive, ArrowDown, ArrowUp, ArrowUpDown, History, Minus, Pencil, Plus, Save } from "lucide-react";
+import type { CartridgeStock, CartridgeStockInput, CartridgeStockMovement } from "../client";
+import CartridgeStockForm from "./CartridgeStockForm";
 
 type SortKey = "name" | "color" | "printers" | "quantity" | "minimum";
 type SortDir = "asc" | "desc";
@@ -34,9 +35,20 @@ interface Props {
   savingId?: string | null;
   selectedId?: string | null;
   isSuperuser: boolean;
+  showArchived?: boolean;
+  cardSaving?: boolean;
+  cardError?: string | null;
   onSelect: (id: string) => void;
   onAdjust: (id: string, quantity: number, minimum: number) => void;
   onIssue: (id: string) => void;
+  onToggleArchived?: (value: boolean) => void;
+  // Resolves once the save landed, so the modal only closes on success and a
+  // rejected save leaves the user's input on screen next to the error.
+  onSaveCard?: (
+    id: string | null,
+    data: CartridgeStockInput & { cartridge_name: string },
+  ) => void | Promise<unknown>;
+  onArchive?: (id: string) => void;
 }
 
 function colorLabel(value: string | null): string {
@@ -60,13 +72,21 @@ export default function CartridgeStockPanel({
   savingId,
   selectedId,
   isSuperuser,
+  showArchived = false,
+  cardSaving = false,
+  cardError,
   onSelect,
   onAdjust,
   onIssue,
+  onToggleArchived,
+  onSaveCard,
+  onArchive,
 }: Props) {
   const [drafts, setDrafts] = useState<Record<string, { quantity: string; minimum: string }>>({});
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  // null = closed, "new" = create form, otherwise the row being edited.
+  const [editing, setEditing] = useState<CartridgeStock | "new" | null>(null);
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -116,9 +136,34 @@ export default function CartridgeStockPanel({
         <Summary label="Низкий остаток" value={lowCount} tone="warn" />
       </div>
 
-      <div className="app-panel p-3">
-        <div className="text-sm font-semibold text-gray-900">Склад картриджей</div>
-        <div className="text-xs text-gray-500">Остатки и совместимость ведутся вручную по инвентаризации</div>
+      <div className="app-panel flex flex-wrap items-center justify-between gap-3 p-3">
+        <div>
+          <div className="text-sm font-semibold text-gray-900">Склад картриджей</div>
+          <div className="text-xs text-gray-500">Остатки и совместимость ведутся вручную по инвентаризации</div>
+        </div>
+        <div className="flex items-center gap-3">
+          {onToggleArchived && (
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(event) => onToggleArchived(event.target.checked)}
+                className="size-4 rounded border-gray-300"
+              />
+              Показывать архив
+            </label>
+          )}
+          {isSuperuser && onSaveCard && (
+            <button
+              type="button"
+              onClick={() => setEditing("new")}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              <Plus className="size-4" />
+              Добавить картридж
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -144,10 +189,15 @@ export default function CartridgeStockPanel({
               {sortedRows.map((row) => {
                 const draft = draftFor(row);
                 const low = row.quantity_on_hand <= row.minimum_stock;
+                const archived = !row.is_active;
                 return (
-                  <tr key={row.id} className={low ? "bg-[var(--warn-bg)]" : undefined}>
+                  <tr
+                    key={row.id}
+                    className={archived ? "opacity-55" : low ? "bg-[var(--warn-bg)]" : undefined}
+                  >
                     <td>
                       <div className="app-card-title">{row.cartridge_name}</div>
+                      {archived && <div className="text-xs text-[var(--text-faint)]">в архиве</div>}
                     </td>
                     <td>
                       <span className="inline-flex min-w-7 justify-center rounded-full bg-[var(--surface-3)] px-2 py-0.5 text-xs font-medium text-[var(--text-default)]">
@@ -210,6 +260,29 @@ export default function CartridgeStockPanel({
                             >
                               <Minus className="size-4" />
                             </button>
+                            {onSaveCard && (
+                              <button
+                                type="button"
+                                onClick={() => setEditing(row)}
+                                className="app-icon-btn text-[var(--text-faint)] hover:bg-[var(--surface-2)] hover:text-[var(--text-default)]"
+                                title="Карточка картриджа"
+                                aria-label="Карточка картриджа"
+                              >
+                                <Pencil className="size-4" />
+                              </button>
+                            )}
+                            {onArchive && !archived && (
+                              <button
+                                type="button"
+                                onClick={() => onArchive(row.id)}
+                                disabled={savingId === row.id}
+                                className="app-icon-btn text-[var(--text-faint)] hover:bg-[var(--danger-bg)] hover:text-[var(--danger-fg)] disabled:opacity-40"
+                                title="В архив"
+                                aria-label="В архив"
+                              >
+                                <Archive className="size-4" />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
@@ -220,6 +293,23 @@ export default function CartridgeStockPanel({
             </tbody>
           </table>
         </div>
+      )}
+
+      {editing && onSaveCard && (
+        <CartridgeStockForm
+          stock={editing === "new" ? null : editing}
+          loading={cardSaving}
+          error={cardError}
+          onClose={() => setEditing(null)}
+          onSave={async (data) => {
+            try {
+              await onSaveCard(editing === "new" ? null : editing.id, data);
+              setEditing(null);
+            } catch {
+              // Error text is rendered from cardError; keep the form open.
+            }
+          }}
+        />
       )}
 
       {selectedId && movements.length > 0 && (

@@ -222,3 +222,113 @@ def test_cartridge_issue_rejects_when_stock_is_empty(client: TestClient, admin_t
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert issued.status_code == 409
+
+
+def test_cartridge_card_full_crud(client: TestClient, admin_token: str):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    created = client.post(
+        "/api/v1/printers/cartridges",
+        json={
+            "cartridge_name": "  Hi-Black  ·  BCR-CC530A [K]  ",
+            "toner_color": "BLACK",
+            "compatible_printer_models": "HP Color LaserJet CM2320,  CP2025",
+            "quantity_on_hand": 2,
+            "minimum_stock": 1,
+            "note": "заведено вручную",
+        },
+        headers=headers,
+    )
+    assert created.status_code == 200
+    body = created.json()
+    # Whitespace runs collapse so visually identical names cannot split in two.
+    assert body["cartridge_name"] == "Hi-Black · BCR-CC530A [K]"
+    assert body["toner_color"] == "black"
+    assert body["compatible_printer_models"] == "HP Color LaserJet CM2320, CP2025"
+    assert body["quantity_on_hand"] == 2
+    stock_id = body["id"]
+
+    opening = client.get(f"/api/v1/printers/cartridges/{stock_id}/movements", headers=headers)
+    assert [row["delta"] for row in opening.json()["data"]] == [2]
+
+    renamed = client.patch(
+        f"/api/v1/printers/cartridges/{stock_id}",
+        json={
+            "cartridge_name": "Hi-Black · BCR-CC530A",
+            "compatible_printer_models": "HP CM2320",
+            "toner_color": None,
+        },
+        headers=headers,
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["cartridge_name"] == "Hi-Black · BCR-CC530A"
+    assert renamed.json()["compatible_printer_models"] == "HP CM2320"
+    assert renamed.json()["toner_color"] is None
+
+    duplicate = client.post(
+        "/api/v1/printers/cartridges",
+        json={"cartridge_name": "Hi-Black · BCR-CC530A"},
+        headers=headers,
+    )
+    assert duplicate.status_code == 409
+
+    archived = client.delete(f"/api/v1/printers/cartridges/{stock_id}", headers=headers)
+    assert archived.status_code == 200
+    assert archived.json()["is_active"] is False
+    # Archiving must not throw the counted stock away.
+    assert archived.json()["quantity_on_hand"] == 2
+
+    assert stock_id not in [row["id"] for row in client.get("/api/v1/printers/cartridges", headers=headers).json()["data"]]
+    with_archive = client.get("/api/v1/printers/cartridges?include_inactive=true", headers=headers)
+    assert stock_id in [row["id"] for row in with_archive.json()["data"]]
+
+    restored = client.patch(
+        f"/api/v1/printers/cartridges/{stock_id}",
+        json={"is_active": True},
+        headers=headers,
+    )
+    assert restored.status_code == 200
+    assert restored.json()["is_active"] is True
+
+
+def test_cartridge_rename_onto_existing_name_is_rejected(client: TestClient, admin_token: str):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    first = client.post(
+        "/api/v1/printers/cartridges", json={"cartridge_name": "W2070A"}, headers=headers
+    )
+    second = client.post(
+        "/api/v1/printers/cartridges", json={"cartridge_name": "W2071A"}, headers=headers
+    )
+    assert first.status_code == 200 and second.status_code == 200
+
+    clash = client.patch(
+        f"/api/v1/printers/cartridges/{second.json()['id']}",
+        json={"cartridge_name": "W2070A"},
+        headers=headers,
+    )
+    assert clash.status_code == 409
+
+    # Renaming a row to the name it already holds must stay a no-op, not a clash.
+    same = client.patch(
+        f"/api/v1/printers/cartridges/{second.json()['id']}",
+        json={"cartridge_name": "W2071A", "minimum_stock": 2},
+        headers=headers,
+    )
+    assert same.status_code == 200
+    assert same.json()["minimum_stock"] == 2
+
+
+def test_cartridge_card_rejects_bad_color_and_non_superuser(client: TestClient, admin_token: str, user_token: str):
+    bad_color = client.post(
+        "/api/v1/printers/cartridges",
+        json={"cartridge_name": "TK-5240K", "toner_color": "оранжевый"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert bad_color.status_code == 422
+
+    forbidden = client.post(
+        "/api/v1/printers/cartridges",
+        json={"cartridge_name": "TK-5240C"},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert forbidden.status_code == 403

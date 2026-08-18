@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 
 import type { CartridgeStock, CartridgeStockMovement } from "../client";
@@ -103,5 +103,120 @@ describe("CartridgeStockPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Остаток" }));
     expect(namesInOrder()[0]).toContain("W2300A"); // same column again -> desc, highest first
+  });
+});
+
+describe("CartridgeStockPanel card editing", () => {
+  it("opens a card for an existing row and saves every editable field", async () => {
+    const onSaveCard = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CartridgeStockPanel
+        rows={rows}
+        movements={[]}
+        loading={false}
+        isSuperuser
+        onSelect={vi.fn()}
+        onAdjust={vi.fn()}
+        onIssue={vi.fn()}
+        onSaveCard={onSaveCard}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Карточка картриджа/i }));
+
+    fireEvent.change(screen.getByLabelText(/Название \/ артикул/i), {
+      target: { value: "Hi-Black · BCR-CC530A [K]" },
+    });
+    fireEvent.change(screen.getByLabelText("Цвет"), { target: { value: "magenta" } });
+    fireEvent.change(screen.getByLabelText(/Совместимые принтеры/i), {
+      target: { value: "HP CM2320, CP2025" },
+    });
+    fireEvent.change(screen.getByLabelText(/Минимум/i), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Сохранить$/i }));
+
+    await waitFor(() => expect(onSaveCard).toHaveBeenCalled());
+    expect(onSaveCard).toHaveBeenCalledWith("stock-1", {
+      cartridge_name: "Hi-Black · BCR-CC530A [K]",
+      toner_color: "magenta",
+      compatible_printer_models: "HP CM2320, CP2025",
+      quantity_on_hand: 3,
+      minimum_stock: 4,
+      is_active: true,
+      note: undefined,
+    });
+  });
+
+  it("asks for a reason only when the quantity actually changes", () => {
+    render(
+      <CartridgeStockPanel
+        rows={rows}
+        movements={[]}
+        loading={false}
+        isSuperuser
+        onSelect={vi.fn()}
+        onAdjust={vi.fn()}
+        onIssue={vi.fn()}
+        onSaveCard={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Карточка картриджа/i }));
+    expect(screen.queryByLabelText(/Причина изменения остатка/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Остаток, шт/i), { target: { value: "9" } });
+    expect(screen.getByLabelText(/Причина изменения остатка/i)).toBeInTheDocument();
+  });
+
+  it("creates a new card with null id and keeps archived rows out of the way", async () => {
+    const onSaveCard = vi.fn().mockResolvedValue(undefined);
+    const archivedRow: CartridgeStock = { ...rows[0], id: "arch", cartridge_name: "OLD-1", is_active: false };
+
+    render(
+      <CartridgeStockPanel
+        rows={[rows[0], archivedRow]}
+        movements={[]}
+        loading={false}
+        isSuperuser
+        showArchived
+        onSelect={vi.fn()}
+        onAdjust={vi.fn()}
+        onIssue={vi.fn()}
+        onSaveCard={onSaveCard}
+        onArchive={vi.fn()}
+      />,
+    );
+
+    // The archived row is labelled and offers no second "to archive" action.
+    expect(screen.getByText("в архиве")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /В архив/i })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /Добавить картридж/i }));
+    fireEvent.change(screen.getByLabelText(/Название \/ артикул/i), { target: { value: "W2070A" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Сохранить$/i }));
+
+    await waitFor(() =>
+      expect(onSaveCard).toHaveBeenCalledWith(null, expect.objectContaining({ cartridge_name: "W2070A" })),
+    );
+  });
+
+  it("hides editing controls from non-superusers", () => {
+    render(
+      <CartridgeStockPanel
+        rows={rows}
+        movements={[]}
+        loading={false}
+        isSuperuser={false}
+        onSelect={vi.fn()}
+        onAdjust={vi.fn()}
+        onIssue={vi.fn()}
+        onSaveCard={vi.fn()}
+        onArchive={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Добавить картридж/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Карточка картриджа/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /В архив/i })).not.toBeInTheDocument();
   });
 });

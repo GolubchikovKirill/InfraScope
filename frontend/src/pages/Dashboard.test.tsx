@@ -14,6 +14,8 @@ const api = vi.hoisted(() => ({
   syncCartridgeStocks: vi.fn(),
   updatePrinter: vi.fn(),
   updateCartridgeStock: vi.fn(),
+  createCartridgeStock: vi.fn(),
+  archiveCartridgeStock: vi.fn(),
   deletePrinter: vi.fn(),
   getTonerPredictions: vi.fn(),
 }));

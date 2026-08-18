@@ -114,10 +114,31 @@ export async function pollAllPrinters(printer_type: PrinterType = "laser") {
   return data;
 }
 
-export async function getCartridgeStocks(search?: string) {
+export interface CartridgeStockInput {
+  cartridge_name?: string;
+  toner_color?: string | null;
+  compatible_printer_models?: string;
+  quantity_on_hand?: number;
+  minimum_stock?: number;
+  is_active?: boolean;
+  note?: string;
+}
+
+export async function getCartridgeStocks(search?: string, includeInactive = false) {
   const params: Record<string, string> = {};
   if (search) params.search = search;
+  if (includeInactive) params.include_inactive = "true";
   const { data } = await api.get<CartridgeStocksResponse>("/printers/cartridges", { params });
+  return data;
+}
+
+export async function createCartridgeStock(payload: CartridgeStockInput & { cartridge_name: string }) {
+  const { data } = await api.post<CartridgeStock>("/printers/cartridges", payload);
+  return data;
+}
+
+export async function archiveCartridgeStock(id: string) {
+  const { data } = await api.delete<CartridgeStock>(`/printers/cartridges/${id}`);
   return data;
 }
 
@@ -126,10 +147,7 @@ export async function syncCartridgeStocks() {
   return data;
 }
 
-export async function updateCartridgeStock(
-  id: string,
-  payload: { quantity_on_hand?: number; minimum_stock?: number; note?: string },
-) {
+export async function updateCartridgeStock(id: string, payload: CartridgeStockInput) {
   const { data } = await api.patch<CartridgeStock>(`/printers/cartridges/${id}`, payload);
   return data;
 }

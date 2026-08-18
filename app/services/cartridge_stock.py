@@ -7,7 +7,11 @@ from datetime import UTC, datetime
 from sqlmodel import Session, select
 
 from app.domains.inventory.models import CartridgeStock, CartridgeStockMovement, Printer
-from app.domains.inventory.schemas import CartridgeIssueRequest, CartridgeStockUpdate
+from app.domains.inventory.schemas import (
+    CartridgeIssueRequest,
+    CartridgeStockCreate,
+    CartridgeStockUpdate,
+)
 
 _TONER_FIELDS: tuple[tuple[str, str], ...] = (
     ("black", "toner_black_name"),
@@ -23,6 +27,15 @@ class CartridgeStockMissingError(LookupError):
 
 class CartridgeStockQuantityError(ValueError):
     pass
+
+
+class CartridgeStockDuplicateError(ValueError):
+    """Raised when a cartridge_name would collide with an existing catalog row.
+
+    cartridge_name is UNIQUE at the DB level, and the colliding row may be an
+    archived (is_active=False) one the caller cannot see in the default listing,
+    so the message has to say that out loud.
+    """
 
 
 def _normalize_cartridge_name(value: str | None) -> str | None:
@@ -72,8 +85,81 @@ def sync_cartridge_stock_from_printers(session: Session) -> list[CartridgeStock]
     return rows
 
 
-def list_cartridge_stock(session: Session, search: str | None = None) -> list[CartridgeStock]:
-    statement = select(CartridgeStock).where(CartridgeStock.is_active == True)  # noqa: E712
+def _find_by_name(session: Session, cartridge_name: str) -> CartridgeStock | None:
+    return session.exec(
+        select(CartridgeStock).where(CartridgeStock.cartridge_name == cartridge_name)
+    ).first()
+
+
+def create_cartridge_stock(
+    session: Session,
+    payload: CartridgeStockCreate,
+    *,
+    actor: str | None = None,
+) -> CartridgeStock:
+    if _find_by_name(session, payload.cartridge_name) is not None:
+        raise CartridgeStockDuplicateError(payload.cartridge_name)
+
+    now = datetime.now(UTC)
+    row = CartridgeStock(
+        cartridge_name=payload.cartridge_name,
+        toner_color=payload.toner_color,
+        compatible_printer_models=payload.compatible_printer_models,
+        quantity_on_hand=payload.quantity_on_hand,
+        minimum_stock=payload.minimum_stock,
+        is_active=True,
+        created_at=now,
+    )
+    session.add(row)
+    session.flush()  # need row.id for the opening movement
+
+    if row.quantity_on_hand:
+        session.add(
+            CartridgeStockMovement(
+                stock_id=row.id,
+                delta=row.quantity_on_hand,
+                reason="adjust",
+                note=payload.note or "Начальный остаток",
+                created_by=actor,
+            )
+        )
+
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def deactivate_cartridge_stock(
+    session: Session,
+    stock_id: uuid.UUID,
+    *,
+    actor: str | None = None,
+) -> CartridgeStock:
+    """Archive a position instead of deleting it.
+
+    Movements reference the row, and sync_cartridge_stock_from_printers treats
+    is_active=False as a tombstone it must not resurrect - both break if the
+    row is physically removed, so archiving is the only safe "delete" here.
+    """
+    del actor
+    row = get_cartridge_stock_or_raise(session, stock_id)
+    row.is_active = False
+    row.updated_at = datetime.now(UTC)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def list_cartridge_stock(
+    session: Session,
+    search: str | None = None,
+    *,
+    include_inactive: bool = False,
+) -> list[CartridgeStock]:
+    statement = select(CartridgeStock)
+    if not include_inactive:
+        statement = statement.where(CartridgeStock.is_active == True)  # noqa: E712
     if search:
         pattern = f"%{search.strip()}%"
         statement = statement.where(
@@ -111,6 +197,25 @@ def update_cartridge_stock(
     row = get_cartridge_stock_or_raise(session, stock_id)
     now = datetime.now(UTC)
     data = payload.model_dump(exclude_unset=True)
+
+    if "cartridge_name" in data and data["cartridge_name"] is not None:
+        new_name = data["cartridge_name"]
+        if new_name != row.cartridge_name:
+            clash = _find_by_name(session, new_name)
+            if clash is not None and clash.id != row.id:
+                raise CartridgeStockDuplicateError(new_name)
+            row.cartridge_name = new_name
+
+    # toner_color is nullable on purpose - sending an explicit null clears it,
+    # which is why this checks membership rather than "is not None".
+    if "toner_color" in data:
+        row.toner_color = data["toner_color"]
+
+    if "compatible_printer_models" in data and data["compatible_printer_models"] is not None:
+        row.compatible_printer_models = data["compatible_printer_models"]
+
+    if "is_active" in data and data["is_active"] is not None:
+        row.is_active = data["is_active"]
 
     if "quantity_on_hand" in data and data["quantity_on_hand"] is not None:
         previous = row.quantity_on_hand

@@ -7,6 +7,8 @@ import {
   getPrinters,
   getOfflineRiskPredictions,
   issueCartridgeStock,
+  createCartridgeStock,
+  archiveCartridgeStock,
   pollAllPrinters,
   pollPrinter,
   createPrinter,
@@ -16,6 +18,7 @@ import {
   getTonerPredictions,
   type MLOfflineRiskPrediction,
   type MLTonerPrediction,
+  type CartridgeStockInput,
   type Printer,
   type PrinterType,
 } from "../client";
@@ -56,6 +59,8 @@ export default function Dashboard() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null);
   const [savingStockId, setSavingStockId] = useState<string | null>(null);
+  const [showArchivedStock, setShowArchivedStock] = useState(false);
+  const [stockCardError, setStockCardError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["printers", printerTab, debouncedSearch],
@@ -64,8 +69,8 @@ export default function Dashboard() {
     placeholderData: keepPreviousData,
   });
   const { data: cartridgeStockData, isLoading: isStockLoading } = useQuery({
-    queryKey: ["cartridge-stock", debouncedSearch],
-    queryFn: () => getCartridgeStocks(debouncedSearch || undefined),
+    queryKey: ["cartridge-stock", debouncedSearch, showArchivedStock],
+    queryFn: () => getCartridgeStocks(debouncedSearch || undefined, showArchivedStock),
     enabled: activeTab === "cartridges",
     placeholderData: keepPreviousData,
   });
@@ -95,6 +100,23 @@ export default function Dashboard() {
     mutationFn: ({ id, quantity, minimum }: { id: string; quantity: number; minimum: number }) =>
       updateCartridgeStock(id, { quantity_on_hand: quantity, minimum_stock: minimum }),
     onMutate: ({ id }) => setSavingStockId(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cartridge-stock"] }),
+    onSettled: () => setSavingStockId(null),
+  });
+
+  const saveStockCardMut = useMutation({
+    mutationFn: ({ id, data }: { id: string | null; data: CartridgeStockInput & { cartridge_name: string } }) =>
+      id ? updateCartridgeStock(id, data) : createCartridgeStock(data),
+    onSuccess: () => {
+      setStockCardError(null);
+      queryClient.invalidateQueries({ queryKey: ["cartridge-stock"] });
+    },
+    onError: (err) => setStockCardError(extractError(err)),
+  });
+
+  const archiveStockMut = useMutation({
+    mutationFn: archiveCartridgeStock,
+    onMutate: (id: string) => setSavingStockId(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cartridge-stock"] }),
     onSettled: () => setSavingStockId(null),
   });
@@ -335,6 +357,12 @@ export default function Dashboard() {
           onSelect={(id) => setSelectedStockId((current) => (current === id ? null : id))}
           onAdjust={(id, quantity, minimum) => updateStockMut.mutate({ id, quantity, minimum })}
           onIssue={(id) => issueStockMut.mutate(id)}
+          showArchived={showArchivedStock}
+          onToggleArchived={setShowArchivedStock}
+          cardSaving={saveStockCardMut.isPending}
+          cardError={stockCardError}
+          onSaveCard={(id, data) => saveStockCardMut.mutateAsync({ id, data })}
+          onArchive={(id) => archiveStockMut.mutate(id)}
         />
       ) : isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

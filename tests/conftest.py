@@ -17,6 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("FIRST_SUPERUSER_PASSWORD", "TestPassword123!")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-internal-token")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-with-at-least-32-bytes")
+# TestClient talks to host "testserver", which the settings default allows but a
+# real .env sitting in the repo root does not - without this every request dies
+# in TrustedHostMiddleware as "Invalid host header", surfacing as a confusing
+# HTTP 400 from the login fixture rather than anything about hosts.
+os.environ.setdefault("BACKEND_TRUSTED_HOSTS", '["testserver","localhost","127.0.0.1"]')
 
 from app.api import deps
 from app.core.limiter import limiter as app_limiter

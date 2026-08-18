@@ -16,6 +16,7 @@ __all__ = [
     "CartridgeStocksPublic",
     "CartridgeStockMovementPublic",
     "CartridgeStockMovementsPublic",
+    "CartridgeStockCreate",
     "CartridgeStockUpdate",
     "CartridgeIssueRequest",
     "PrinterStatusResponse",
@@ -253,10 +254,109 @@ class CartridgeStockMovementsPublic(BaseModel):
     count: int
 
 
+_TONER_COLORS = {"black", "cyan", "magenta", "yellow"}
+
+
+def _clean_cartridge_name(value: str) -> str:
+    # split() collapses every whitespace run, NBSP included - printer-reported
+    # model names arrive with U+00A0 often enough that letting it through makes
+    # two visually identical cartridges into two separate catalog rows.
+    value = " ".join(value.split())
+    if not value:
+        raise ValueError("cartridge_name must not be empty")
+    if len(value) > 128:
+        raise ValueError("cartridge_name must be <= 128 characters")
+    return value
+
+
+def _clean_toner_color(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if not value:
+        return None
+    if value not in _TONER_COLORS:
+        raise ValueError("toner_color must be one of: black, cyan, magenta, yellow")
+    return value
+
+
+def _clean_compatible_models(value: str | None) -> str:
+    value = " ".join((value or "").split())
+    if len(value) > 1024:
+        raise ValueError("compatible_printer_models must be <= 1024 characters")
+    return value
+
+
+def _clean_note(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if len(value) > 512:
+        raise ValueError("note must be <= 512 characters")
+    return value
+
+
+class CartridgeStockCreate(BaseModel):
+    cartridge_name: str
+    toner_color: str | None = None
+    compatible_printer_models: str = ""
+    quantity_on_hand: int = 0
+    minimum_stock: int = 0
+    note: str | None = None
+
+    @field_validator("cartridge_name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _clean_cartridge_name(value)
+
+    @field_validator("toner_color")
+    @classmethod
+    def validate_color(cls, value: str | None) -> str | None:
+        return _clean_toner_color(value)
+
+    @field_validator("compatible_printer_models")
+    @classmethod
+    def validate_models(cls, value: str | None) -> str:
+        return _clean_compatible_models(value)
+
+    @field_validator("quantity_on_hand", "minimum_stock")
+    @classmethod
+    def validate_non_negative_int(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("value must be non-negative")
+        return value
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, value: str | None) -> str | None:
+        return _clean_note(value)
+
+
 class CartridgeStockUpdate(BaseModel):
+    cartridge_name: str | None = None
+    toner_color: str | None = None
+    compatible_printer_models: str | None = None
     quantity_on_hand: int | None = None
     minimum_stock: int | None = None
+    is_active: bool | None = None
     note: str | None = None
+
+    @field_validator("cartridge_name")
+    @classmethod
+    def validate_name(cls, value: str | None) -> str | None:
+        return None if value is None else _clean_cartridge_name(value)
+
+    @field_validator("toner_color")
+    @classmethod
+    def validate_color(cls, value: str | None) -> str | None:
+        return _clean_toner_color(value)
+
+    @field_validator("compatible_printer_models")
+    @classmethod
+    def validate_models(cls, value: str | None) -> str | None:
+        return None if value is None else _clean_compatible_models(value)
 
     @field_validator("quantity_on_hand", "minimum_stock")
     @classmethod
@@ -268,14 +368,7 @@ class CartridgeStockUpdate(BaseModel):
     @field_validator("note")
     @classmethod
     def validate_note(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        if not value:
-            return None
-        if len(value) > 512:
-            raise ValueError("note must be <= 512 characters")
-        return value
+        return _clean_note(value)
 
 
 class CartridgeIssueRequest(BaseModel):
@@ -292,7 +385,7 @@ class CartridgeIssueRequest(BaseModel):
     @field_validator("note")
     @classmethod
     def validate_issue_note(cls, value: str | None) -> str | None:
-        return CartridgeStockUpdate.validate_note(value)
+        return _clean_note(value)
 
 
 class PrinterStatusResponse(BaseModel):

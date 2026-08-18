@@ -19,6 +19,7 @@ from app.domains.inventory.printer_polling import (
 )
 from app.domains.inventory.schemas import (
     CartridgeIssueRequest,
+    CartridgeStockCreate,
     CartridgeStockMovementsPublic,
     CartridgeStockPublic,
     CartridgeStocksPublic,
@@ -32,8 +33,11 @@ from app.domains.operations.models import EventLog
 from app.domains.shared.schemas import Message
 from app.services.cache import get_cached_model, set_cached_model
 from app.services.cartridge_stock import (
+    CartridgeStockDuplicateError,
     CartridgeStockMissingError,
     CartridgeStockQuantityError,
+    create_cartridge_stock,
+    deactivate_cartridge_stock,
     issue_cartridge_stock,
     list_cartridge_movements,
     list_cartridge_stock,
@@ -139,10 +143,46 @@ def read_cartridge_stock(
     session: SessionDep,
     current_user: CurrentUser,
     search: str | None = None,
+    include_inactive: bool = Query(default=False),
 ) -> CartridgeStocksPublic:
     del current_user
-    rows = list_cartridge_stock(session, search=search)
+    rows = list_cartridge_stock(session, search=search, include_inactive=include_inactive)
     return CartridgeStocksPublic(data=rows, count=len(rows))
+
+
+@router.post(
+    "/cartridges",
+    response_model=CartridgeStockPublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def create_cartridge(
+    payload: CartridgeStockCreate,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> CartridgeStockPublic:
+    try:
+        return create_cartridge_stock(session, payload, actor=current_user.email)
+    except CartridgeStockDuplicateError as exc:
+        raise conflict(
+            f"Картридж «{exc}» уже есть в справочнике (возможно, в архиве)",
+            status_code=409,
+        ) from exc
+
+
+@router.delete(
+    "/cartridges/{stock_id}",
+    response_model=CartridgeStockPublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def archive_cartridge(
+    stock_id: uuid.UUID,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> CartridgeStockPublic:
+    try:
+        return deactivate_cartridge_stock(session, stock_id, actor=current_user.email)
+    except CartridgeStockMissingError as exc:
+        raise HTTPException(status_code=404, detail="Cartridge stock item not found") from exc
 
 
 @router.post(
@@ -170,6 +210,11 @@ def patch_cartridge_stock(
         return update_cartridge_stock(session, stock_id, payload, actor=current_user.email)
     except CartridgeStockMissingError as exc:
         raise HTTPException(status_code=404, detail="Cartridge stock item not found") from exc
+    except CartridgeStockDuplicateError as exc:
+        raise conflict(
+            f"Картридж «{exc}» уже есть в справочнике (возможно, в архиве)",
+            status_code=409,
+        ) from exc
 
 
 @router.post(
