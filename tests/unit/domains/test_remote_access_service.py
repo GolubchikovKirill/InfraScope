@@ -112,6 +112,50 @@ def test_unmanaged_devices_are_skipped_by_enqueue(db_session) -> None:
     assert service.enqueue(db_session, [dev], "reconfigure", created_by=None) == []
 
 
+def test_prepare_device_creates_links_sets_id_and_queues_deploy(db_session) -> None:
+    db_session.add(CashRegister(kkm_number="K7", hostname="VNA-POS-07", store_number="007"))
+    db_session.commit()
+
+    dev, job = service.prepare_device(
+        db_session,
+        hostname="VNA-POS-07",
+        rustdesk_id="VNA_POS_07",
+        permanent_password="kentdful",
+        action="deploy",
+        created_by="admin@x",
+    )
+    assert dev.source_kind == "cash_register" and dev.cash_register_id is not None
+    assert dev.rustdesk_id == "VNA_POS_07" and dev.permanent_password == "kentdful"
+    assert dev.deploy_state == "installing"
+    assert job is not None and job.action == "deploy"
+
+    # second call while the job is open returns that same job, mints nothing new
+    dev2, job2 = service.prepare_device(
+        db_session,
+        hostname="VNA-POS-07",
+        rustdesk_id=None,
+        permanent_password=None,
+        action="deploy",
+        created_by="admin@x",
+    )
+    assert job2 is not None and job2.id == job.id
+    assert dev2.permanent_password == "kentdful"
+
+
+def test_prepare_device_mints_password_when_none_given(db_session) -> None:
+    dev, job = service.prepare_device(
+        db_session,
+        hostname="VNA-MGR-500",
+        rustdesk_id=None,
+        permanent_password=None,
+        action="deploy",
+        created_by=None,
+    )
+    assert dev.rustdesk_id == "VNA_MGR_500"
+    assert dev.permanent_password and dev.permanent_password.isalnum()
+    assert job is not None
+
+
 def test_enqueue_dedupes_while_a_job_is_still_open(db_session) -> None:
     dev = RemoteAccessDevice(hostname="VNA-MGR-16", permanent_password="x")
     db_session.add(dev)

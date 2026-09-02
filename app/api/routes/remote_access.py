@@ -24,6 +24,8 @@ from app.domains.remote_access.schemas import (
     DeployJobsPublic,
     DeployRequest,
     DeviceDesiredUpdate,
+    DevicePrepareRequest,
+    DevicePrepareResult,
     DevicePublic,
     DevicesPublic,
 )
@@ -50,12 +52,19 @@ def list_devices(
     location: str | None = Query(default=None),
     source_kind: str | None = Query(default=None),
     state: str | None = Query(default=None),
+    hostnames: str | None = Query(default=None, description="comma-separated exact hostnames"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=2000),
 ) -> DevicesPublic:
     del current_user
     stmt = select(RemoteAccessDevice)
     count_stmt = select(func.count()).select_from(RemoteAccessDevice)
+    if hostnames:
+        names = [h.strip() for h in hostnames.split(",") if h.strip()]
+        if not names:
+            return DevicesPublic(data=[], count=0)
+        cond = RemoteAccessDevice.hostname.in_(names)  # type: ignore[attr-defined]
+        stmt, count_stmt = stmt.where(cond), count_stmt.where(cond)
     if q:
         like = f"%{q.strip()}%"
         cond = RemoteAccessDevice.hostname.ilike(like) | RemoteAccessDevice.rustdesk_id.ilike(like)  # type: ignore[attr-defined]
@@ -99,6 +108,26 @@ def rotate_password(device_id: uuid.UUID, session: SessionDep, current_user: Cur
     session.commit()
     session.refresh(job)
     return job
+
+
+@router.post(
+    "/devices/prepare",
+    response_model=DevicePrepareResult,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def prepare_device(
+    payload: DevicePrepareRequest, session: SessionDep, current_user: CurrentUser
+) -> DevicePrepareResult:
+    """Install + configure RustDesk on one endpoint, setting its id/password inline."""
+    dev, job = service.prepare_device(
+        session,
+        hostname=payload.hostname,
+        rustdesk_id=payload.rustdesk_id,
+        permanent_password=payload.permanent_password,
+        action=payload.action,
+        created_by=current_user.email,
+    )
+    return DevicePrepareResult(device=_to_public(dev), job=job)
 
 
 @router.post("/sync", response_model=Message, dependencies=[Depends(get_current_active_superuser)])

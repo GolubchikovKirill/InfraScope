@@ -25,10 +25,13 @@ import {
   pollCashRegister,
   updateCashRegister,
   type CashRegister,
+  type RemoteDevice,
 } from "../client";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
 import { useConfirm } from "../components/ConfirmDialog";
+import RemoteAccessButtons from "../components/RemoteAccessButtons";
 
 type StatusFilter = "all" | "online" | "offline" | "unknown" | "attention";
 type ZoneFilter = "all" | "DF" | "DP";
@@ -95,6 +98,7 @@ export default function CashRegistersPage() {
   const confirm = useConfirm();
   const { user } = useAuth();
   const isSuperuser = Boolean(user?.is_superuser);
+  const { map: remoteMap } = useRemoteDeviceMap();
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q, 300);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -320,6 +324,7 @@ export default function CashRegistersPage() {
                     item={item}
                     isSuperuser={isSuperuser}
                     isPolling={pollingIds.has(item.id)}
+                    remote={item.hostname ? remoteMap.get(item.hostname) : undefined}
                     onCopy={copyText}
                     onPoll={() => pollMut.mutate(item.id)}
                     onEdit={() => openEdit(item)}
@@ -370,7 +375,7 @@ export default function CashRegistersPage() {
   );
 }
 
-function CashRow({ item, isSuperuser, isPolling, onCopy, onPoll, onEdit, onDelete }: { item: CashRegister; isSuperuser: boolean; isPolling: boolean; onCopy: (value: string | null) => void; onPoll: () => void; onEdit: () => void; onDelete: () => void }) {
+function CashRow({ item, isSuperuser, isPolling, remote, onCopy, onPoll, onEdit, onDelete }: { item: CashRegister; isSuperuser: boolean; isPolling: boolean; remote?: RemoteDevice; onCopy: (value: string | null) => void; onPoll: () => void; onEdit: () => void; onDelete: () => void }) {
   return (
     <article className={`grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1.05fr)_minmax(15rem,1.35fr)_minmax(13rem,1fr)_auto] ${isAttention(item) ? "bg-amber-50/40" : ""}`}>
       <div className="space-y-2">
@@ -379,7 +384,7 @@ function CashRow({ item, isSuperuser, isPolling, onCopy, onPoll, onEdit, onDelet
         {item.terminal_status && <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--danger-fg)]"><AlertTriangle className="h-3.5 w-3.5" />{item.terminal_status}</div>}
       </div>
 
-      <div className="space-y-2 text-sm"><SectionLabel>Сеть</SectionLabel><CopyValue value={item.hostname} onCopy={onCopy} /><Field label="NetSupport" value={item.netsupport_target} compact /><Field label="Последний опрос" value={item.last_polled_at ? new Date(item.last_polled_at).toLocaleString("ru-RU") : "ещё не было"} compact />{item.is_online === false && <div className="text-xs text-[var(--danger-fg)]">{describeOfflineReason(item.reachability_reason)}</div>}</div>
+      <div className="space-y-2 text-sm"><SectionLabel>Сеть</SectionLabel><CopyValue value={item.hostname} onCopy={onCopy} /><Field label="NetSupport" value={item.netsupport_target} compact /><Field label="Последний опрос" value={item.last_polled_at ? new Date(item.last_polled_at).toLocaleString("ru-RU") : "ещё не было"} compact />{item.is_online === false && <div className="text-xs text-[var(--danger-fg)]">{describeOfflineReason(item.reachability_reason)}</div>}{item.hostname && <div className="pt-1"><RemoteAccessButtons hostname={item.hostname} device={remote} canManage={isSuperuser} compact /></div>}</div>
 
       <div className="space-y-2 text-sm"><SectionLabel>Терминалы и коды</SectionLabel><div className="grid grid-cols-2 gap-x-4 gap-y-1"><Field label="Код ТТ РС" value={item.store_code} compact /><Field label="Код ТТ Сбер" value={item.sber_store_code} compact /><Field label="ID РС" value={item.terminal_id_rs} compact /><Field label="ID Сбер" value={item.terminal_id_sber} compact /><Field label="Серийный" value={item.serial_number} compact /><Field label="Инв. №" value={item.inventory_number} compact /></div></div>
 

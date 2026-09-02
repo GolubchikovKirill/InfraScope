@@ -9,6 +9,8 @@ __all__ = [
     "DevicePublic",
     "DevicesPublic",
     "DeviceDesiredUpdate",
+    "DevicePrepareRequest",
+    "DevicePrepareResult",
     "DeployJobPublic",
     "DeployJobsPublic",
     "DeployRequest",
@@ -73,14 +75,18 @@ class DeviceDesiredUpdate(BaseModel):
     @field_validator("rustdesk_id")
     @classmethod
     def _rid(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        v = v.strip()
-        if not v:
-            return None
-        if len(v) > 32 or any(c not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_" for c in v):
-            raise ValueError("rustdesk_id must be <=32 chars of [A-Za-z0-9_]")
-        return v
+        return _validate_rid(v)
+
+
+def _validate_rid(v: str | None) -> str | None:
+    if v is None:
+        return None
+    v = v.strip()
+    if not v:
+        return None
+    if len(v) > 32 or any(c not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_" for c in v):
+        raise ValueError("rustdesk_id must be <=32 chars of [A-Za-z0-9_]")
+    return v
 
 
 # --------------------------------------------------------------------------- #
@@ -115,6 +121,35 @@ class DeployJobPublic(BaseModel):
 class DeployJobsPublic(BaseModel):
     data: list[DeployJobPublic]
     count: int
+
+
+class DevicePrepareRequest(BaseModel):
+    """Point-and-shoot: create/link the endpoint, set its id + password, queue a deploy.
+
+    Used by the RustDesk buttons on the computer / cash-register / media-player cards.
+    """
+
+    hostname: str = Field(pattern=_HOSTNAME_RE)
+    rustdesk_id: str | None = None
+    permanent_password: str | None = Field(default=None, max_length=128)
+    action: str = Field(default="deploy", pattern=r"^(deploy|reconfigure)$")
+
+    @field_validator("rustdesk_id")
+    @classmethod
+    def _rid(cls, v: str | None) -> str | None:
+        return _validate_rid(v)
+
+    @field_validator("permanent_password")
+    @classmethod
+    def _pw(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v.strip() or None
+
+
+class DevicePrepareResult(BaseModel):
+    device: DevicePublic
+    job: DeployJobPublic | None = None
 
 
 # --------------------------------------------------------------------------- #

@@ -71,9 +71,35 @@ export async function getRemoteDevices(params?: {
   location?: string;
   source_kind?: SourceKind;
   state?: string;
+  hostnames?: string;
 }) {
   const { data } = await api.get<RemoteDevicesResponse>("/remote-access/devices", { params });
   return data;
+}
+
+export interface PrepareResult {
+  device: RemoteDevice;
+  job: DeployJob | null;
+}
+
+/** Install + configure RustDesk on one endpoint, setting its id/password inline.
+ *  Backs the "Деплой RustDesk" button on the device cards. */
+export async function prepareRustDesk(payload: {
+  hostname: string;
+  rustdesk_id?: string;
+  permanent_password?: string;
+  action?: "deploy" | "reconfigure";
+}) {
+  const { data } = await api.post<PrepareResult>("/remote-access/devices/prepare", payload);
+  return data;
+}
+
+/** Mirror of service._hostname_to_rid: RustDesk custom IDs allow only [A-Za-z0-9_]. */
+export function hostnameToRid(hostname: string): string {
+  return Array.from(hostname)
+    .map((c) => (/[A-Za-z0-9]/.test(c) ? c : "_"))
+    .join("")
+    .slice(0, 32);
 }
 
 export async function updateRemoteDevice(id: string, payload: Partial<RemoteDevice>) {
@@ -137,6 +163,19 @@ export interface ConsoleAddressBookEntry {
 
 export async function getConsoleAddressBook() {
   const { data } = await api.get<ConsoleAddressBookEntry[]>("/remote-access/console/address-book");
+  return data;
+}
+
+export interface ConsoleUser {
+  id?: number;
+  username?: string;
+  email?: string;
+  is_admin?: boolean;
+  status?: number;
+}
+
+export async function getConsoleUsers() {
+  const { data } = await api.get<ConsoleUser[]>("/remote-access/console/users");
   return data;
 }
 

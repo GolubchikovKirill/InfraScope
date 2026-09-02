@@ -82,6 +82,15 @@ def _link_inventory(session: Session, dev: RemoteAccessDevice) -> None:
         ).first()
         if mp:
             dev.media_player_id = mp.id
+    # label by the strongest source that actually linked (cash_register > computer > media_player)
+    linked_kind = (
+        "cash_register" if dev.cash_register_id
+        else "computer" if dev.computer_id
+        else "media_player" if dev.media_player_id
+        else None
+    )
+    if linked_kind:
+        dev.source_kind = linked_kind
 
 
 def _inventory_rows(session: Session) -> list[tuple[str, str, str | None]]:
@@ -213,6 +222,45 @@ async def sync_from_console(session: Session) -> dict[str, int]:
 # --------------------------------------------------------------------------- #
 # desired-state actions                                                       #
 # --------------------------------------------------------------------------- #
+def prepare_device(
+    session: Session,
+    *,
+    hostname: str,
+    rustdesk_id: str | None,
+    permanent_password: str | None,
+    action: str,
+    created_by: str | None,
+) -> tuple[RemoteAccessDevice, RemoteAccessDeployJob | None]:
+    """One call behind the RustDesk buttons on the device cards: create/link the
+    endpoint, stamp its id + password, and queue a deploy that installs the
+    client, points it at our server and applies the lockdown.
+    """
+    dev = _get_or_create_device(session, hostname)
+    _link_inventory(session, dev)
+    if rustdesk_id:
+        dev.rustdesk_id = rustdesk_id
+    elif not dev.rustdesk_id:
+        dev.rustdesk_id = _hostname_to_rid(hostname)
+    if permanent_password:
+        dev.permanent_password = permanent_password
+        dev.password_rotated_at = _now()
+    elif not dev.permanent_password:
+        dev.permanent_password = generate_password()
+        dev.password_rotated_at = _now()
+    dev.managed = True
+    dev.updated_at = _now()
+    session.add(dev)
+    session.flush()
+
+    existing = _open_job(session, dev.id, action)
+    job = existing or _enqueue_one(session, dev, action, created_by=created_by)
+    session.commit()
+    session.refresh(dev)
+    if job:
+        session.refresh(job)
+    return dev, job
+
+
 def rotate_password(session: Session, dev: RemoteAccessDevice, *, created_by: str | None) -> RemoteAccessDeployJob:
     dev.permanent_password = generate_password()
     dev.password_rotated_at = _now()

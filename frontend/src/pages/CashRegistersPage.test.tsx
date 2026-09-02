@@ -26,6 +26,12 @@ vi.mock("../hooks/useDebouncedValue", () => ({
   useDebouncedValue: (value: string) => value,
 }));
 
+vi.mock("../hooks/useRemoteDeviceMap", () => ({
+  useRemoteDeviceMap: () => ({ map: new Map(), isLoading: false, isError: false }),
+}));
+
+vi.mock("../components/RemoteAccessButtons", () => ({ default: () => null }));
+
 vi.mock("../client", () => api);
 
 import CashRegistersPage from "./CashRegistersPage";

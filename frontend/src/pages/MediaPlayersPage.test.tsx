@@ -34,6 +34,10 @@ vi.mock("../hooks/useDebouncedValue", () => ({
   useDebouncedValue: (value: string) => value,
 }));
 
+vi.mock("../hooks/useRemoteDeviceMap", () => ({
+  useRemoteDeviceMap: () => ({ map: new Map(), isLoading: false, isError: false }),
+}));
+
 vi.mock("../client", () => api);
 
 vi.mock("../components/MediaPlayerCard", () => ({

@@ -4,7 +4,8 @@ import {
   RefreshCw, Pencil, Trash2, Monitor, Music, ExternalLink, Clock, Cpu,
   Network, Wifi, Play, Square, Volume2, Upload, X, FileAudio, Copy, MoreHorizontal, Radio,
 } from "lucide-react";
-import type { MediaAssignment, MediaClientHeartbeat, MediaPlayer } from "../client";
+import type { MediaAssignment, MediaClientHeartbeat, MediaPlayer, RemoteDevice } from "../client";
+import RemoteAccessButtons from "./RemoteAccessButtons";
 import {
   getIconbitStatus, iconbitPlay, iconbitStop,
   iconbitPlayFile, iconbitDeleteFile, iconbitUpload,
@@ -24,6 +25,7 @@ interface Props {
   isSuperuser: boolean;
   mediaAssignment?: MediaAssignment;
   mediaHeartbeat?: MediaClientHeartbeat;
+  remote?: RemoteDevice;
 }
 
 const DEVICE_STYLES: Record<string, { bg: string; iconBg: string; iconColor: string; icon: typeof Monitor }> = {
@@ -223,6 +225,7 @@ export default function MediaPlayerCard({
   isSuperuser,
   mediaAssignment,
   mediaHeartbeat,
+  remote,
 }: Props) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
@@ -351,6 +354,17 @@ export default function MediaPlayerCard({
                   <Copy className="h-3 w-3" />
                 </button>
               )}
+            </div>
+          )}
+
+          {isNettop && player.hostname && (
+            <div className="pt-0.5">
+              <RemoteAccessButtons
+                hostname={player.hostname}
+                device={remote}
+                canManage={isSuperuser}
+                compact
+              />
             </div>
           )}
 

@@ -16,6 +16,9 @@ import {
 import { useAuth } from "../auth";
 import {
   deployRemoteAccess,
+  getConsoleAddressBook,
+  getConsoleConnections,
+  getConsoleUsers,
   getRemoteDevices,
   getRemoteJobs,
   rotateRemotePassword,
@@ -100,6 +103,25 @@ export default function RemoteAccessPage() {
     queryFn: () => getRemoteJobs({ limit: 25 }),
     refetchInterval: 10000,
   });
+  const consoleUsers = useQuery({
+    queryKey: ["rd-console", "users"],
+    queryFn: getConsoleUsers,
+    retry: false,
+    refetchInterval: 60000,
+  });
+  const consoleConns = useQuery({
+    queryKey: ["rd-console", "connections"],
+    queryFn: () => getConsoleConnections(30),
+    retry: false,
+    refetchInterval: 30000,
+  });
+  const consoleAb = useQuery({
+    queryKey: ["rd-console", "address-book"],
+    queryFn: getConsoleAddressBook,
+    retry: false,
+    refetchInterval: 60000,
+  });
+  const consoleDown = consoleUsers.isError && consoleConns.isError && consoleAb.isError;
 
   const rows = useMemo(() => data?.data ?? [], [data]);
   const locations = useMemo(
@@ -143,7 +165,7 @@ export default function RemoteAccessPage() {
       showToast(`Задач создано: ${r.count}`, "success");
       invalidate();
     },
-    onError: () => showToast("Не удалось поставить раскатку", "error"),
+    onError: () => showToast("Не удалось поставить деплой", "error"),
   });
   const toggleMut = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<RemoteDevice> }) =>
@@ -239,7 +261,7 @@ export default function RemoteAccessPage() {
                 disabled={deployMut.isPending}
               >
                 <Rocket className="mr-1 h-4 w-4" />
-                Раскатать
+                Деплой
                 {location || kind
                   ? ` · ${[kind ? KIND[kind].label : null, location].filter(Boolean).join(" / ")}`
                   : " · всё"}
@@ -406,7 +428,7 @@ export default function RemoteAccessPage() {
 
       <div className="app-panel overflow-hidden">
         <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-700">
-          Задачи раскатки
+          Задачи деплоя
         </div>
         <div className="overflow-x-auto app-compact-scroll">
           <table className="app-table min-w-full">
@@ -453,6 +475,54 @@ export default function RemoteAccessPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="app-panel overflow-hidden">
+        <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-700">
+          Консоль RustDesk
+        </div>
+        {consoleDown ? (
+          <div className="px-4 py-6 text-sm text-gray-500">
+            Консоль недоступна. Укажите <code className="app-mono">RUSTDESK_API_TOKEN</code> в{" "}
+            <code className="app-mono">.env</code> сервера (Admin → API tokens в веб-консоли RustDesk).
+          </div>
+        ) : (
+          <div className="grid gap-4 p-4 lg:grid-cols-3">
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase text-gray-400">Пользователи</div>
+              <ul className="space-y-1 text-sm">
+                {(consoleUsers.data ?? []).map((u, i) => (
+                  <li key={u.id ?? i} className="flex items-center gap-2">
+                    <span className="text-slate-700">{u.username || u.email || `#${u.id}`}</span>
+                    {u.is_admin && <Badge tone="violet">admin</Badge>}
+                  </li>
+                ))}
+                {(consoleUsers.data ?? []).length === 0 && <li className="text-gray-400">—</li>}
+              </ul>
+            </div>
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase text-gray-400">Книга адресов</div>
+              <div className="text-2xl font-bold text-gray-900">{(consoleAb.data ?? []).length}</div>
+              <div className="text-xs text-gray-500">записей синхронизировано с консолью</div>
+            </div>
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase text-gray-400">
+                Последние подключения
+              </div>
+              <ul className="space-y-1 text-xs text-gray-600">
+                {(consoleConns.data ?? []).slice(0, 8).map((c, i) => (
+                  <li key={c.id ?? i} className="flex items-center justify-between gap-2">
+                    <span className="app-mono truncate">
+                      {(c.from_name || c.from_peer || "?") + " → " + (c.peer_id || "?")}
+                    </span>
+                    <span className="shrink-0 text-gray-400">{c.created_at?.slice(5, 16) ?? ""}</span>
+                  </li>
+                ))}
+                {(consoleConns.data ?? []).length === 0 && <li className="text-gray-400">—</li>}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

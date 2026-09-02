@@ -1,8 +1,13 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { vi } from "vitest";
 
 import type { MediaPlayer } from "../client";
 import MediaPlayerCard from "./MediaPlayerCard";
+
+const renderCard = (ui: ReactElement) =>
+  render(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 
 const player: MediaPlayer = {
   id: "00000000-0000-0000-0000-000000000111",
@@ -28,7 +33,7 @@ describe("MediaPlayerCard", () => {
       configurable: true,
     });
 
-    render(
+    renderCard(
       <MediaPlayerCard
         player={player}
         onPoll={vi.fn()}
@@ -55,7 +60,7 @@ describe("MediaPlayerCard", () => {
     const onPoll = vi.fn();
     const onManageMedia = vi.fn();
 
-    render(
+    renderCard(
       <MediaPlayerCard
         player={player}
         onPoll={onPoll}
@@ -75,7 +80,7 @@ describe("MediaPlayerCard", () => {
   });
 
   it("closes additional actions menu on outside click and Escape", async () => {
-    render(
+    renderCard(
       <MediaPlayerCard
         player={player}
         onPoll={vi.fn()}

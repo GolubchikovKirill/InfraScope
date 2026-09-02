@@ -50,7 +50,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { match: (path) => path.startsWith("/honest-sign"), title: "Честный знак", subtitle: "Статус и удалённая инициализация Local Module" },
     { match: (path) => path.startsWith("/cameras"), title: "Камеры", subtitle: "Просмотр и перезагрузка камер по магазинам" },
     { match: (path) => path.startsWith("/computers"), title: "Компьютеры", subtitle: "Контроль доступности рабочих станций" },
-    { match: (path) => path.startsWith("/remote-access"), title: "Удалённый доступ", subtitle: "RustDesk: раскатка, пароли, подключения" },
+    { match: (path) => path.startsWith("/remote-access"), title: "Удалённый доступ", subtitle: "RustDesk как сервис: деплой, пароли, книга адресов, подключения" },
     { match: (path) => path.startsWith("/network-search"), title: "Поиск в сети", subtitle: "Сканирование и сопоставление устройств" },
     { match: (path) => path.startsWith("/onec"), title: "QR-генерация", subtitle: "Файлы обмена и посадочные талоны" },
     { match: (path) => path.startsWith("/settings"), title: "Настройки", subtitle: "Параметры сети и приложения" },

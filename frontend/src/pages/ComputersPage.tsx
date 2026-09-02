@@ -13,7 +13,9 @@ import {
 } from "../client";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
 import { describeOfflineReason } from "../lib/offlineReason";
+import RemoteAccessButtons from "../components/RemoteAccessButtons";
 
 type StatusFilter = "all" | "online" | "offline";
 type ComputerForm = {
@@ -46,6 +48,7 @@ export default function ComputersPage() {
     placeholderData: keepPreviousData,
   });
 
+  const { map: remoteMap } = useRemoteDeviceMap();
   const rows = useMemo(() => data?.data ?? [], [data]);
   const sortedRows = useMemo(() => {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
@@ -252,6 +255,11 @@ export default function ComputersPage() {
                   {row.comment && <div className="text-sm text-slate-600">Комментарий: {row.comment}</div>}
                 </div>
                 <div className="flex gap-2 flex-wrap">
+                  <RemoteAccessButtons
+                    hostname={row.hostname}
+                    device={remoteMap.get(row.hostname)}
+                    canManage={isSuperuser}
+                  />
                   <button
                     onClick={() => copyHostname(row.hostname)}
                     className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm"

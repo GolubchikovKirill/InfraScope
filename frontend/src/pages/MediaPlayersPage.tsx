@@ -23,6 +23,7 @@ import {
 } from "../client";
 import { useAuth } from "../auth";
 import MediaPlayerCard from "../components/MediaPlayerCard";
+import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
 import MediaPlayerForm from "../components/MediaPlayerForm";
 import MediaAssignmentPanel from "../components/MediaAssignmentPanel";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
@@ -44,6 +45,7 @@ export default function MediaPlayersPage() {
   const isSuperuser = user?.is_superuser ?? false;
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const { map: remoteMap } = useRemoteDeviceMap();
 
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
@@ -371,6 +373,7 @@ export default function MediaPlayersPage() {
               isSuperuser={isSuperuser}
               mediaAssignment={assignmentByPlayer.get(player.id)}
               mediaHeartbeat={heartbeatByPlayer.get(player.id)}
+              remote={player.hostname ? remoteMap.get(player.hostname) : undefined}
             />
           ))}
         </div>
