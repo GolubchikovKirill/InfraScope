@@ -48,6 +48,7 @@ def list_devices(
     current_user: CurrentUser,
     q: str | None = Query(default=None),
     location: str | None = Query(default=None),
+    source_kind: str | None = Query(default=None),
     state: str | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=2000),
@@ -62,6 +63,10 @@ def list_devices(
     if location:
         stmt, count_stmt = stmt.where(RemoteAccessDevice.location == location), count_stmt.where(
             RemoteAccessDevice.location == location
+        )
+    if source_kind:
+        stmt, count_stmt = stmt.where(RemoteAccessDevice.source_kind == source_kind), count_stmt.where(
+            RemoteAccessDevice.source_kind == source_kind
         )
     if state:
         stmt, count_stmt = stmt.where(RemoteAccessDevice.deploy_state == state), count_stmt.where(
@@ -100,7 +105,13 @@ def rotate_password(device_id: uuid.UUID, session: SessionDep, current_user: Cur
 async def sync(session: SessionDep) -> Message:
     created = await run_in_threadpool(service.seed_from_inventory, session)
     result = await service.sync_from_console(session) if rustdesk_client.enabled() else {"peers_seen": 0}
-    return Message(message=f"seeded {created} devices from inventory, saw {result['peers_seen']} console peers")
+    touched = await run_in_threadpool(service.refresh_status_from_inventory, session)
+    return Message(
+        message=(
+            f"seeded {created} devices from inventory, saw {result['peers_seen']} console peers, "
+            f"{touched} statuses from InfraScope polling"
+        )
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -109,7 +120,11 @@ async def sync(session: SessionDep) -> Message:
 @router.post("/deploy", response_model=DeployJobsPublic, dependencies=[Depends(get_current_active_superuser)])
 def deploy(payload: DeployRequest, session: SessionDep, current_user: CurrentUser) -> DeployJobsPublic:
     devices = service.resolve_scope(
-        session, device_ids=payload.device_ids, location=payload.location, all_managed=payload.all_managed
+        session,
+        device_ids=payload.device_ids,
+        location=payload.location,
+        source_kind=payload.source_kind,
+        all_managed=payload.all_managed,
     )
     if not devices:
         raise HTTPException(status_code=400, detail="deploy scope resolved to no devices")

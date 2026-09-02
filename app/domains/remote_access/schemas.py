@@ -34,8 +34,10 @@ class DevicePublic(BaseModel):
     id: uuid.UUID
     hostname: str
     location: str | None = None
+    source_kind: str = "computer"
     computer_id: uuid.UUID | None = None
     media_player_id: uuid.UUID | None = None
+    cash_register_id: uuid.UUID | None = None
     rustdesk_id: str | None = None
     has_password: bool = False
     password_rotated_at: datetime | None = None
@@ -86,9 +88,10 @@ class DeviceDesiredUpdate(BaseModel):
 # --------------------------------------------------------------------------- #
 class DeployRequest(BaseModel):
     action: str = Field(pattern=r"^(deploy|reconfigure|rotate_password|set_lockdown|uninstall)$")
-    # scope: exactly one of these
+    # scope: device_ids wins; otherwise location and/or source_kind narrow all_managed
     device_ids: list[uuid.UUID] | None = None
     location: str | None = None
+    source_kind: str | None = Field(default=None, pattern=r"^(cash_register|computer|media_player)$")
     all_managed: bool = False
 
 

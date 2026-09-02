@@ -52,6 +52,7 @@ done
 APP_SERVICES=(
   backend
   worker
+  beat
   frontend
   polling-service
   discovery-service

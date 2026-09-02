@@ -722,12 +722,16 @@ def remote_access_sync_task(self) -> dict:
                 if _rustdesk_client.enabled()
                 else {"peers_seen": 0}
             )
+            statuses = _remote_access_service.refresh_status_from_inventory(session)
+            reclaimed = _remote_access_service.reclaim_stale_jobs(session)
             pruned = _remote_access_service.prune_finished_jobs(session)
         payload = {
             "task_id": self.request.id,
             "operation": operation,
             "seeded": seeded,
             "peers_seen": result.get("peers_seen", 0),
+            "statuses_from_polling": statuses,
+            "reclaimed_jobs": reclaimed,
             "pruned_jobs": pruned,
             "finished_at": datetime.now(UTC).isoformat(),
         }

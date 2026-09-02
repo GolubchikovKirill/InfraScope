@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
-from app.domains.inventory.models import Computer
+from sqlmodel import select
+
+from app.domains.inventory.models import Computer, MediaPlayer
+from app.domains.operations.models import CashRegister
 from app.domains.remote_access import service
 from app.domains.remote_access.models import RemoteAccessDeployJob, RemoteAccessDevice
 
@@ -19,22 +23,71 @@ def test_hostname_to_rid_replaces_disallowed_chars() -> None:
     assert service._hostname_to_rid("a" * 40) == "a" * 32
 
 
-def test_seed_from_inventory_creates_one_device_per_computer(db_session) -> None:
+def _dev(db_session, hostname: str) -> RemoteAccessDevice:
+    return db_session.exec(
+        select(RemoteAccessDevice).where(RemoteAccessDevice.hostname == hostname)
+    ).first()
+
+
+def test_seed_from_inventory_covers_registers_computers_and_nettops(db_session) -> None:
     db_session.add(Computer(hostname="VNA-MGR-101", location="A1"))
     db_session.add(Computer(hostname="VNA-MGR-102", location="A1"))
+    db_session.add(
+        CashRegister(kkm_number="K1", hostname="VNA-POS-01", store_number="099", kkm_type="retail")
+    )
+    db_session.add(
+        MediaPlayer(
+            device_type="nettop", name="TV-hall", model="nettop",
+            ip_address="10.0.0.5", hostname="VNA-TV-01",
+        )
+    )
+    db_session.add(
+        MediaPlayer(
+            device_type="iconbit", name="stick", model="iconbit",
+            ip_address="10.0.0.6", hostname="VNA-STICK-01",
+        )
+    )
     db_session.commit()
 
     created = service.seed_from_inventory(db_session)
-    assert created == 2
-    # idempotent
-    assert service.seed_from_inventory(db_session) == 0
+    assert created == 4  # 2 computers + 1 till + 1 nettop; the iconbit stick is skipped
+    assert service.seed_from_inventory(db_session) == 0  # idempotent
 
-    dev = db_session.exec(
-        __import__("sqlmodel").select(RemoteAccessDevice).where(RemoteAccessDevice.hostname == "VNA-MGR-101")
-    ).first()
-    assert dev is not None
-    assert dev.rustdesk_id == "VNA_MGR_101"
-    assert dev.location == "A1"
+    comp = _dev(db_session, "VNA-MGR-101")
+    assert comp.rustdesk_id == "VNA_MGR_101" and comp.location == "A1"
+    assert comp.source_kind == "computer" and comp.computer_id is not None
+
+    till = _dev(db_session, "VNA-POS-01")
+    assert till.source_kind == "cash_register" and till.cash_register_id is not None
+    assert till.location == "099"
+
+    tv = _dev(db_session, "VNA-TV-01")
+    assert tv.source_kind == "media_player" and tv.media_player_id is not None
+
+    assert _dev(db_session, "VNA-STICK-01") is None
+
+
+def test_seed_marks_till_that_is_also_a_computer_as_cash_register(db_session) -> None:
+    db_session.add(Computer(hostname="VNA-POS-09", location="Z1"))
+    db_session.add(CashRegister(kkm_number="K9", hostname="VNA-POS-09", store_number="042"))
+    db_session.commit()
+
+    service.seed_from_inventory(db_session)
+    dev = _dev(db_session, "VNA-POS-09")
+    assert dev.source_kind == "cash_register"  # cash_register outranks computer
+    assert dev.computer_id is not None and dev.cash_register_id is not None
+
+
+def test_refresh_status_from_inventory_fills_online_when_console_blind(db_session) -> None:
+    polled = datetime.now(UTC) - timedelta(minutes=1)
+    db_session.add(Computer(hostname="VNA-MGR-77", location="A1", is_online=True, last_polled_at=polled))
+    db_session.commit()
+    service.seed_from_inventory(db_session)
+
+    touched = service.refresh_status_from_inventory(db_session)
+    assert touched == 1
+    dev = _dev(db_session, "VNA-MGR-77")
+    assert dev.online is True and dev.last_seen_at is not None
 
 
 def test_enqueue_first_deploy_mints_a_password_and_moves_to_installing(db_session) -> None:
@@ -57,6 +110,46 @@ def test_unmanaged_devices_are_skipped_by_enqueue(db_session) -> None:
     db_session.add(dev)
     db_session.commit()
     assert service.enqueue(db_session, [dev], "reconfigure", created_by=None) == []
+
+
+def test_enqueue_dedupes_while_a_job_is_still_open(db_session) -> None:
+    dev = RemoteAccessDevice(hostname="VNA-MGR-16", permanent_password="x")
+    db_session.add(dev)
+    db_session.commit()
+
+    first = service.enqueue(db_session, [dev], "reconfigure", created_by=None)
+    assert len(first) == 1
+    # same action again before the first finishes -> no new row
+    assert service.enqueue(db_session, [dev], "reconfigure", created_by=None) == []
+    open_jobs = db_session.exec(
+        select(RemoteAccessDeployJob).where(RemoteAccessDeployJob.device_id == dev.id)
+    ).all()
+    assert len(open_jobs) == 1
+
+
+def test_reclaim_stale_jobs_requeues_then_fails_after_retries(db_session) -> None:
+    dev = RemoteAccessDevice(hostname="VNA-MGR-17", permanent_password="x")
+    db_session.add(dev)
+    db_session.commit()
+    (job,) = service.enqueue(db_session, [dev], "deploy", created_by=None)
+    claimed = service.claim_next_job(db_session, "agent-x")
+    claimed.claimed_at = datetime.now(UTC) - timedelta(hours=2)
+    db_session.add(claimed)
+    db_session.commit()
+
+    assert service.reclaim_stale_jobs(db_session) == 1
+    db_session.refresh(job)
+    assert job.status == "queued" and job.claimed_by is None
+
+    # burn through attempts -> next reclaim fails it
+    job.attempts = 3
+    job.status = "claimed"
+    job.claimed_at = datetime.now(UTC) - timedelta(hours=2)
+    db_session.add(job)
+    db_session.commit()
+    assert service.reclaim_stale_jobs(db_session) == 1
+    db_session.refresh(job)
+    assert job.status == "failed"
 
 
 def test_rotate_password_changes_secret_and_queues_job(db_session) -> None:
@@ -114,9 +207,9 @@ def test_report_failed_job_records_error(db_session) -> None:
     assert "unreachable" in (dev.last_error or "")
 
 
-def test_resolve_scope_by_ids_location_and_all(db_session) -> None:
-    a = RemoteAccessDevice(hostname="h-a", location="A1")
-    b = RemoteAccessDevice(hostname="h-b", location="A2")
+def test_resolve_scope_by_ids_location_kind_and_all(db_session) -> None:
+    a = RemoteAccessDevice(hostname="h-a", location="A1", source_kind="computer")
+    b = RemoteAccessDevice(hostname="h-b", location="A2", source_kind="cash_register")
     c = RemoteAccessDevice(hostname="h-c", location="A1", managed=False)
     db_session.add_all([a, b, c])
     db_session.commit()
@@ -124,14 +217,20 @@ def test_resolve_scope_by_ids_location_and_all(db_session) -> None:
     assert {d.hostname for d in service.resolve_scope(db_session, device_ids=[a.id], location=None, all_managed=False)} == {
         "h-a"
     }
+    # bulk scopes never touch unmanaged endpoints, so h-c is excluded
     assert {d.hostname for d in service.resolve_scope(db_session, device_ids=None, location="A1", all_managed=False)} == {
         "h-a",
-        "h-c",
     }
     assert {d.hostname for d in service.resolve_scope(db_session, device_ids=None, location=None, all_managed=True)} == {
         "h-a",
         "h-b",
     }
+    assert {
+        d.hostname
+        for d in service.resolve_scope(
+            db_session, device_ids=None, location=None, all_managed=True, source_kind="computer"
+        )
+    } == {"h-a"}
     assert service.resolve_scope(db_session, device_ids=None, location=None, all_managed=False) == []
 
 

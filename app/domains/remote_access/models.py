@@ -33,6 +33,9 @@ DEPLOY_STATES = (
 JOB_ACTIONS = ("deploy", "reconfigure", "rotate_password", "set_lockdown", "uninstall")
 JOB_STATUSES = ("queued", "claimed", "running", "done", "failed", "cancelled")
 
+# which InfraScope inventory table an endpoint was seeded from
+SOURCE_KINDS = ("cash_register", "computer", "media_player")
+
 
 class RemoteAccessDevice(SQLModel, table=True):
     """One managed RustDesk endpoint, keyed by hostname and linked to inventory."""
@@ -40,9 +43,13 @@ class RemoteAccessDevice(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hostname: str = Field(max_length=255, unique=True, index=True)
 
-    # soft links to the inventory rows this endpoint corresponds to (either may be set)
+    # soft links to the inventory rows this endpoint corresponds to (any subset may be set:
+    # a till tracked both as a CashRegister and a Computer links to both)
     computer_id: uuid.UUID | None = Field(default=None, foreign_key="computer.id", index=True)
     media_player_id: uuid.UUID | None = Field(default=None, foreign_key="mediaplayer.id", index=True)
+    cash_register_id: uuid.UUID | None = Field(default=None, foreign_key="cashregister.id", index=True)
+    # cash_register | computer | media_player - the strongest inventory source that owns this host
+    source_kind: str = Field(default="computer", max_length=16, index=True)
     location: str | None = Field(default=None, max_length=128, index=True)
 
     # --- desired config (what the agent should converge the endpoint to) ---

@@ -24,18 +24,20 @@ import {
   updateRemoteDevice,
   type DeployState,
   type RemoteDevice,
+  type SourceKind,
 } from "../client";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { showToast } from "../lib/toastBus";
 import { Button } from "../components/ui/Button";
 
-type BadgeTone = "default" | "green" | "red" | "amber" | "sky";
+type BadgeTone = "default" | "green" | "red" | "amber" | "sky" | "violet";
 const badgeTone: Record<BadgeTone, string> = {
   default: "bg-slate-100 text-slate-600",
   green: "bg-emerald-100 text-emerald-700",
   red: "bg-rose-100 text-rose-700",
   amber: "bg-amber-100 text-amber-800",
   sky: "bg-sky-100 text-sky-700",
+  violet: "bg-violet-100 text-violet-700",
 };
 const STATE: Record<DeployState, { label: string; tone: BadgeTone }> = {
   unknown: { label: "не проверено", tone: "default" },
@@ -46,6 +48,12 @@ const STATE: Record<DeployState, { label: string; tone: BadgeTone }> = {
   drift: { label: "дрейф конфига", tone: "amber" },
   failed: { label: "ошибка", tone: "red" },
   uninstalled: { label: "удалён", tone: "default" },
+};
+
+const KIND: Record<SourceKind, { label: string; short: string; tone: BadgeTone }> = {
+  cash_register: { label: "Кассы", short: "касса", tone: "violet" },
+  computer: { label: "Компьютеры", short: "ПК", tone: "sky" },
+  media_player: { label: "Медиаплееры", short: "неттоп", tone: "amber" },
 };
 
 function relTime(iso: string | null): string {
@@ -72,14 +80,16 @@ export default function RemoteAccessPage() {
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q, 300);
   const [location, setLocation] = useState("");
+  const [kind, setKind] = useState<"" | SourceKind>("");
   const [state, setState] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["remote-devices", debouncedQ, location, state],
+    queryKey: ["remote-devices", debouncedQ, location, kind, state],
     queryFn: () =>
       getRemoteDevices({
         q: debouncedQ || undefined,
         location: location || undefined,
+        source_kind: kind || undefined,
         state: state || undefined,
       }),
     placeholderData: keepPreviousData,
@@ -189,6 +199,18 @@ export default function RemoteAccessPage() {
           </select>
           <select
             className="app-input px-3 py-2 text-sm text-slate-700"
+            value={kind}
+            onChange={(e) => setKind(e.target.value as "" | SourceKind)}
+          >
+            <option value="">Все классы</option>
+            {(Object.keys(KIND) as SourceKind[]).map((k) => (
+              <option key={k} value={k}>
+                {KIND[k].label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="app-input px-3 py-2 text-sm text-slate-700"
             value={state}
             onChange={(e) => setState(e.target.value)}
           >
@@ -207,16 +229,20 @@ export default function RemoteAccessPage() {
             {isSuperuser && (
               <Button
                 onClick={() =>
-                  deployMut.mutate(
-                    location
-                      ? { action: "reconfigure", location }
-                      : { action: "reconfigure", all_managed: true },
-                  )
+                  deployMut.mutate({
+                    action: "reconfigure",
+                    all_managed: true,
+                    ...(location ? { location } : {}),
+                    ...(kind ? { source_kind: kind } : {}),
+                  })
                 }
                 disabled={deployMut.isPending}
               >
                 <Rocket className="mr-1 h-4 w-4" />
-                Раскатать{location ? ` · ${location}` : " · всё"}
+                Раскатать
+                {location || kind
+                  ? ` · ${[kind ? KIND[kind].label : null, location].filter(Boolean).join(" / ")}`
+                  : " · всё"}
               </Button>
             )}
           </div>
@@ -228,6 +254,7 @@ export default function RemoteAccessPage() {
               <tr>
                 <th>Хост</th>
                 <th>RustDesk ID</th>
+                <th>Класс</th>
                 <th>Точка</th>
                 <th>Статус</th>
                 <th>Деплой</th>
@@ -239,7 +266,7 @@ export default function RemoteAccessPage() {
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-gray-400">
+                  <td colSpan={9} className="py-10 text-center text-gray-400">
                     Загрузка…
                   </td>
                 </tr>
@@ -260,6 +287,9 @@ export default function RemoteAccessPage() {
                         </button>
                       )}
                     </div>
+                  </td>
+                  <td>
+                    <Badge tone={KIND[d.source_kind].tone}>{KIND[d.source_kind].short}</Badge>
                   </td>
                   <td>{d.location ?? "—"}</td>
                   <td>
@@ -364,7 +394,7 @@ export default function RemoteAccessPage() {
               ))}
               {!isLoading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-gray-400">
+                  <td colSpan={9} className="py-10 text-center text-gray-400">
                     Нет устройств. Нажмите «Синхронизировать».
                   </td>
                 </tr>

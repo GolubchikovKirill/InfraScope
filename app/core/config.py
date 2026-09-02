@@ -165,6 +165,7 @@ class Settings(BaseSettings):
     RUSTDESK_INSTALLER_VERSION: str = "1.4.9"
     RUSTDESK_DEPLOY_AGENT_TOKEN: str = ""  # shared secret for the Windows deploy agent
     RUSTDESK_DEVICE_STALE_SECONDS: int = 300  # peer considered offline past this
+    RUSTDESK_JOB_STALE_MINUTES: int = 30  # a claimed/running job idle this long is re-queued
 
     INTERNAL_SERVICE_TOKEN: str = ""
     INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0

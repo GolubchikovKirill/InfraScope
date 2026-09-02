@@ -17,12 +17,16 @@ export type DeployAction =
   | "set_lockdown"
   | "uninstall";
 
+export type SourceKind = "cash_register" | "computer" | "media_player";
+
 export interface RemoteDevice {
   id: string;
   hostname: string;
   location: string | null;
+  source_kind: SourceKind;
   computer_id: string | null;
   media_player_id: string | null;
+  cash_register_id: string | null;
   rustdesk_id: string | null;
   has_password: boolean;
   password_rotated_at: string | null;
@@ -65,6 +69,7 @@ export interface DeployJob {
 export async function getRemoteDevices(params?: {
   q?: string;
   location?: string;
+  source_kind?: SourceKind;
   state?: string;
 }) {
   const { data } = await api.get<RemoteDevicesResponse>("/remote-access/devices", { params });
@@ -90,6 +95,7 @@ export async function deployRemoteAccess(payload: {
   action: DeployAction;
   device_ids?: string[];
   location?: string;
+  source_kind?: SourceKind;
   all_managed?: boolean;
 }) {
   const { data } = await api.post<{ data: DeployJob[]; count: number }>("/remote-access/deploy", payload);
