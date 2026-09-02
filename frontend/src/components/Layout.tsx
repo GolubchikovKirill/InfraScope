@@ -79,10 +79,10 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/cash-registers", label: "Кассы", icon: Wallet, visible: true },
     { to: "/honest-sign", label: "Честный знак", icon: ShieldCheck, visible: true },
     { to: "/computers", label: "Компьютеры", icon: Laptop, visible: true },
-    { to: "/remote-access", label: "Удалённый доступ", icon: MonitorSmartphone, visible: true },
     { to: "/network-search", label: "Поиск в сети", icon: Radar, visible: true },
   ];
   const baseItems = [
+    { to: "/remote-access", label: "Удалённый доступ", icon: MonitorSmartphone, visible: true },
     { to: "/onec", label: "QR-генерация", icon: Cable, visible: true },
     { to: "/settings", label: "Настройки", icon: Settings2, visible: true },
     { to: "/logs", label: "Логи", icon: ScrollText, visible: true },

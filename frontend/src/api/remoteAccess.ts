@@ -134,7 +134,9 @@ export async function getConsoleAddressBook() {
   return data;
 }
 
-/** rdp://-style deep link the browser hands to the installed RustDesk client */
+/** Deep link the browser hands to the installed RustDesk client.
+ *  The id goes in the PATH, not the authority - browsers lowercase the authority
+ *  component and RustDesk IDs are case-sensitive (VNA_MGR_101 != vna_mgr_101). */
 export function rustdeskLink(id: string): string {
-  return `rustdesk://${encodeURIComponent(id)}`;
+  return `rustdesk://connection/new/${encodeURIComponent(id)}`;
 }

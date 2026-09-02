@@ -8,6 +8,7 @@ import {
   ShieldAlert,
   EyeOff,
   Rocket,
+  Copy,
   CircleCheck,
   CircleX,
   CircleDashed,
@@ -27,28 +28,24 @@ import {
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { showToast } from "../lib/toastBus";
 import { Button } from "../components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/Card";
-import { Input } from "../components/ui/Input";
 
-const STATE_STYLE: Record<DeployState, string> = {
-  unknown: "bg-slate-500/15 text-slate-300",
-  not_installed: "bg-slate-500/15 text-slate-300",
-  installing: "bg-amber-500/15 text-amber-300",
-  installed: "bg-sky-500/15 text-sky-300",
-  configured: "bg-emerald-500/15 text-emerald-300",
-  drift: "bg-orange-500/15 text-orange-300",
-  failed: "bg-rose-500/15 text-rose-300",
-  uninstalled: "bg-slate-500/15 text-slate-400",
+type BadgeTone = "default" | "green" | "red" | "amber" | "sky";
+const badgeTone: Record<BadgeTone, string> = {
+  default: "bg-slate-100 text-slate-600",
+  green: "bg-emerald-100 text-emerald-700",
+  red: "bg-rose-100 text-rose-700",
+  amber: "bg-amber-100 text-amber-800",
+  sky: "bg-sky-100 text-sky-700",
 };
-const STATE_LABEL: Record<DeployState, string> = {
-  unknown: "не проверено",
-  not_installed: "не установлен",
-  installing: "устанавливается",
-  installed: "установлен",
-  configured: "настроен",
-  drift: "дрейф конфига",
-  failed: "ошибка",
-  uninstalled: "удалён",
+const STATE: Record<DeployState, { label: string; tone: BadgeTone }> = {
+  unknown: { label: "не проверено", tone: "default" },
+  not_installed: { label: "не установлен", tone: "default" },
+  installing: { label: "устанавливается", tone: "amber" },
+  installed: { label: "установлен", tone: "sky" },
+  configured: { label: "настроен", tone: "green" },
+  drift: { label: "дрейф конфига", tone: "amber" },
+  failed: { label: "ошибка", tone: "red" },
+  uninstalled: { label: "удалён", tone: "default" },
 };
 
 function relTime(iso: string | null): string {
@@ -58,6 +55,14 @@ function relTime(iso: string | null): string {
   if (s < 3600) return `${Math.floor(s / 60)} мин назад`;
   if (s < 86400) return `${Math.floor(s / 3600)} ч назад`;
   return `${Math.floor(s / 86400)} дн назад`;
+}
+
+function Badge({ children, tone = "default" }: { children: React.ReactNode; tone?: BadgeTone }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${badgeTone[tone]}`}>
+      {children}
+    </span>
+  );
 }
 
 export default function RemoteAccessPage() {
@@ -91,13 +96,15 @@ export default function RemoteAccessPage() {
     () => Array.from(new Set(rows.map((r) => r.location).filter((x): x is string => !!x))).sort(),
     [rows],
   );
-  const summary = useMemo(() => {
-    const total = rows.length;
-    const configured = rows.filter((r) => r.deploy_state === "configured").length;
-    const online = rows.filter((r) => r.online === true).length;
-    const failed = rows.filter((r) => r.deploy_state === "failed").length;
-    return { total, configured, online, failed };
-  }, [rows]);
+  const summary = useMemo(
+    () => ({
+      total: rows.length,
+      configured: rows.filter((r) => r.deploy_state === "configured").length,
+      online: rows.filter((r) => r.online === true).length,
+      failed: rows.filter((r) => r.deploy_state === "failed").length,
+    }),
+    [rows],
+  );
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["remote-devices"] });
@@ -134,6 +141,13 @@ export default function RemoteAccessPage() {
     onSuccess: () => invalidate(),
   });
 
+  const copyId = (id: string) => {
+    navigator.clipboard?.writeText(id).then(
+      () => showToast(`ID скопирован: ${id}`, "success"),
+      () => showToast("Не удалось скопировать", "error"),
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
@@ -143,28 +157,26 @@ export default function RemoteAccessPage() {
           { label: "Онлайн", value: summary.online },
           { label: "Ошибок", value: summary.failed },
         ].map((s) => (
-          <Card key={s.label}>
-            <CardContent className="py-3">
-              <div className="text-xs text-slate-400">{s.label}</div>
-              <div className="text-2xl font-semibold">{s.value}</div>
-            </CardContent>
-          </Card>
+          <div key={s.label} className="app-stat px-4 py-3">
+            <div className="text-2xl font-bold text-gray-900">{s.value}</div>
+            <div className="mt-0.5 text-xs text-gray-500">{s.label}</div>
+          </div>
         ))}
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-wrap items-center gap-2">
+      <div className="app-panel overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50/70 px-4 py-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-              className="pl-8"
+            <input
+              className="app-input w-56 pl-8 pr-3 py-2 text-sm"
               placeholder="hostname / RustDesk ID"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
           <select
-            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-2 text-sm"
+            className="app-input px-3 py-2 text-sm text-slate-700"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
           >
@@ -176,14 +188,14 @@ export default function RemoteAccessPage() {
             ))}
           </select>
           <select
-            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-2 text-sm"
+            className="app-input px-3 py-2 text-sm text-slate-700"
             value={state}
             onChange={(e) => setState(e.target.value)}
           >
             <option value="">Любой статус</option>
-            {Object.keys(STATE_LABEL).map((k) => (
+            {(Object.keys(STATE) as DeployState[]).map((k) => (
               <option key={k} value={k}>
-                {STATE_LABEL[k as DeployState]}
+                {STATE[k].label}
               </option>
             ))}
           </select>
@@ -208,100 +220,118 @@ export default function RemoteAccessPage() {
               </Button>
             )}
           </div>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900/60 text-left text-xs uppercase text-slate-400">
+        </div>
+
+        <div className="overflow-x-auto app-compact-scroll">
+          <table className="app-table min-w-full">
+            <thead>
               <tr>
-                <th className="px-3 py-2">Хост</th>
-                <th className="px-3 py-2">RustDesk ID</th>
-                <th className="px-3 py-2">Точка</th>
-                <th className="px-3 py-2">Статус</th>
-                <th className="px-3 py-2">Деплой</th>
-                <th className="px-3 py-2">Пароль</th>
-                <th className="px-3 py-2">Защита</th>
-                <th className="px-3 py-2 text-right">Действия</th>
+                <th>Хост</th>
+                <th>RustDesk ID</th>
+                <th>Точка</th>
+                <th>Статус</th>
+                <th>Деплой</th>
+                <th>Пароль</th>
+                <th>Защита</th>
+                <th className="text-right">Действия</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={8} className="py-10 text-center text-gray-400">
                     Загрузка…
                   </td>
                 </tr>
               )}
               {rows.map((d) => (
-                <tr key={d.id} className="border-t border-slate-800/70">
-                  <td className="px-3 py-2 font-medium">{d.hostname}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{d.rustdesk_id ?? "—"}</td>
-                  <td className="px-3 py-2">{d.location ?? "—"}</td>
-                  <td className="px-3 py-2">
+                <tr key={d.id}>
+                  <td className="font-medium text-slate-800">{d.hostname}</td>
+                  <td>
+                    <div className="flex items-center gap-1.5">
+                      <span className="app-mono text-xs">{d.rustdesk_id ?? "—"}</span>
+                      {d.rustdesk_id && (
+                        <button
+                          onClick={() => copyId(d.rustdesk_id!)}
+                          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-[var(--brand)]"
+                          title="Скопировать ID"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  <td>{d.location ?? "—"}</td>
+                  <td>
                     <span className="inline-flex items-center gap-1">
                       {d.online === true ? (
-                        <CircleCheck className="h-4 w-4 text-emerald-400" />
+                        <CircleCheck className="h-4 w-4 text-emerald-500" />
                       ) : d.online === false ? (
-                        <CircleX className="h-4 w-4 text-slate-500" />
+                        <CircleX className="h-4 w-4 text-slate-400" />
                       ) : (
-                        <CircleDashed className="h-4 w-4 text-slate-600" />
+                        <CircleDashed className="h-4 w-4 text-slate-300" />
                       )}
-                      <span className="text-xs text-slate-400">{relTime(d.last_seen_at)}</span>
+                      <span className="text-xs text-gray-500">{relTime(d.last_seen_at)}</span>
                     </span>
                     {d.logged_in_user && (
-                      <div className="text-[11px] text-slate-500">{d.logged_in_user}</div>
+                      <div className="app-card-meta app-mono">{d.logged_in_user}</div>
                     )}
                   </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs ${STATE_STYLE[d.deploy_state]}`}
-                      title={d.last_error ?? d.deploy_detail ?? ""}
-                    >
-                      {STATE_LABEL[d.deploy_state]}
+                  <td>
+                    <span title={d.last_error ?? d.deploy_detail ?? ""}>
+                      <Badge tone={STATE[d.deploy_state].tone}>{STATE[d.deploy_state].label}</Badge>
                     </span>
                     {d.installed_version && (
-                      <span className="ml-1 text-[11px] text-slate-500">v{d.installed_version}</span>
+                      <span className="ml-1 text-[11px] text-gray-400">v{d.installed_version}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     {d.has_password ? (
-                      <span className="text-xs text-emerald-400" title={`ротация: ${relTime(d.password_rotated_at)}`}>
+                      <span
+                        className="text-xs text-emerald-600"
+                        title={`ротация: ${relTime(d.password_rotated_at)}`}
+                      >
                         задан
                       </span>
                     ) : (
-                      <span className="text-xs text-slate-500">нет</span>
+                      <span className="text-xs text-gray-400">нет</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     <div className="flex gap-1">
                       <button
-                        title="Скрыт от пользователя"
+                        title={d.desired_hidden ? "Скрыт от пользователя" : "Виден пользователю"}
+                        disabled={!isSuperuser}
                         onClick={() =>
-                          isSuperuser &&
                           toggleMut.mutate({ id: d.id, payload: { desired_hidden: !d.desired_hidden } })
                         }
-                        className={d.desired_hidden ? "text-sky-400" : "text-slate-600"}
+                        className={d.desired_hidden ? "text-[var(--brand)]" : "text-slate-300"}
                       >
                         <EyeOff className="h-4 w-4" />
                       </button>
                       <button
-                        title="Запрет исходящих подключений"
+                        title={
+                          d.desired_block_outgoing
+                            ? "Исходящие подключения запрещены"
+                            : "Исходящие подключения разрешены"
+                        }
+                        disabled={!isSuperuser}
                         onClick={() =>
-                          isSuperuser &&
                           toggleMut.mutate({
                             id: d.id,
                             payload: { desired_block_outgoing: !d.desired_block_outgoing },
                           })
                         }
-                        className={d.desired_block_outgoing ? "text-sky-400" : "text-slate-600"}
+                        className={d.desired_block_outgoing ? "text-[var(--brand)]" : "text-slate-300"}
                       >
                         <ShieldAlert className="h-4 w-4" />
                       </button>
                     </div>
                   </td>
-                  <td className="px-3 py-2">
+                  <td>
                     <div className="flex justify-end gap-1">
                       <a href={rustdeskLink(d.rustdesk_id ?? d.hostname)}>
-                        <Button variant="secondary" className="h-7 px-2">
+                        <Button variant="secondary" size="sm" className="!px-2.5 !text-xs">
                           <MonitorSmartphone className="mr-1 h-3.5 w-3.5" />
                           Подключиться
                         </Button>
@@ -310,7 +340,8 @@ export default function RemoteAccessPage() {
                         <>
                           <Button
                             variant="secondary"
-                            className="h-7 px-2"
+                            size="sm"
+                            className="!px-2"
                             title="Ротировать пароль"
                             onClick={() => rotateMut.mutate(d.id)}
                           >
@@ -318,7 +349,8 @@ export default function RemoteAccessPage() {
                           </Button>
                           <Button
                             variant="secondary"
-                            className="h-7 px-2"
+                            size="sm"
+                            className="!px-2"
                             title="Переприменить конфиг"
                             onClick={() => deployMut.mutate({ action: "reconfigure", device_ids: [d.id] })}
                           >
@@ -332,52 +364,66 @@ export default function RemoteAccessPage() {
               ))}
               {!isLoading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={8} className="py-10 text-center text-gray-400">
                     Нет устройств. Нажмите «Синхронизировать».
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Задачи раскатки</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900/60 text-left text-xs uppercase text-slate-400">
+      <div className="app-panel overflow-hidden">
+        <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-700">
+          Задачи раскатки
+        </div>
+        <div className="overflow-x-auto app-compact-scroll">
+          <table className="app-table min-w-full">
+            <thead>
               <tr>
-                <th className="px-3 py-2">Хост</th>
-                <th className="px-3 py-2">Действие</th>
-                <th className="px-3 py-2">Статус</th>
-                <th className="px-3 py-2">Когда</th>
-                <th className="px-3 py-2">Детали</th>
+                <th>Хост</th>
+                <th>Действие</th>
+                <th>Статус</th>
+                <th>Когда</th>
+                <th>Детали</th>
               </tr>
             </thead>
             <tbody>
               {(jobs?.data ?? []).map((j) => (
-                <tr key={j.id} className="border-t border-slate-800/70">
-                  <td className="px-3 py-2">{j.hostname}</td>
-                  <td className="px-3 py-2">{j.action}</td>
-                  <td className="px-3 py-2">{j.status}</td>
-                  <td className="px-3 py-2 text-xs text-slate-400">{relTime(j.created_at)}</td>
-                  <td className="px-3 py-2 text-xs text-slate-400">{j.result_detail ?? "—"}</td>
+                <tr key={j.id}>
+                  <td>{j.hostname}</td>
+                  <td className="app-mono text-xs">{j.action}</td>
+                  <td>
+                    <Badge
+                      tone={
+                        j.status === "done"
+                          ? "green"
+                          : j.status === "failed"
+                            ? "red"
+                            : j.status === "running" || j.status === "claimed"
+                              ? "amber"
+                              : "default"
+                      }
+                    >
+                      {j.status}
+                    </Badge>
+                  </td>
+                  <td className="text-xs text-gray-500">{relTime(j.created_at)}</td>
+                  <td className="text-xs text-gray-500">{j.result_detail ?? "—"}</td>
                 </tr>
               ))}
               {(jobs?.data ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-center text-slate-500">
+                  <td colSpan={5} className="py-6 text-center text-gray-400">
                     Задач нет
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
