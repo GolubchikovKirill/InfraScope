@@ -708,7 +708,7 @@ def ml_run_cycle_task(self) -> dict:
     name="tasks.remote_access_sync",
 )
 def remote_access_sync_task(self) -> dict:
-    """Fold live RustDesk-console status into RemoteAccessDevice rows + housekeeping."""
+    """Mirror inventory into RemoteAccessDevice rows + fold in live RustDesk-console status."""
     operation = "remote_access_sync"
     started_at = _task_started(operation)
     if not settings.REMOTE_ACCESS_ENABLED:
@@ -723,16 +723,12 @@ def remote_access_sync_task(self) -> dict:
                 else {"peers_seen": 0}
             )
             statuses = _remote_access_service.refresh_status_from_inventory(session)
-            reclaimed = _remote_access_service.reclaim_stale_jobs(session)
-            pruned = _remote_access_service.prune_finished_jobs(session)
         payload = {
             "task_id": self.request.id,
             "operation": operation,
             "seeded": seeded,
             "peers_seen": result.get("peers_seen", 0),
             "statuses_from_polling": statuses,
-            "reclaimed_jobs": reclaimed,
-            "pruned_jobs": pruned,
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")

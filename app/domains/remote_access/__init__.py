@@ -1,15 +1,15 @@
 """Remote access (self-hosted RustDesk) wrapper.
 
-Two responsibilities, matching how InfraScope already splits work:
+InfraScope tracks and administers the self-hosted RustDesk fleet; it does not
+push the client - that is rolled out through Kaspersky Security Center with a
+preconfigured package (docs/rustdesk-ksc-deployment.md).
 
-* control plane - the RustDesk *console* (address book, users, live connections,
-  device status) is `lejianwen/rustdesk-api`, running next to hbbs/hbbr outside
-  this app. `rustdesk_client` proxies a curated slice of its REST API so
+* `rustdesk_client` proxies a curated slice of the `lejianwen/rustdesk-api`
+  console REST API (address book, users, live connections, peer status) so
   InfraScope admins manage it behind InfraScope auth, no second login.
 
-* deployment plane - installing/configuring/locking-down the RustDesk client on
-  the fleet is InfraScope's own job (no RustDesk API covers it). `service`
-  reconciles a desired per-device config (server, hostname ID, per-machine
-  rotatable password, hide-from-user, block-outgoing) into `RemoteAccessDeployJob`
-  rows that a Windows agent claims and executes.
+* `service` mirrors the InfraScope endpoint inventory (cash registers, computers,
+  nettop media players) into device rows, folds live status in from the console,
+  holds each machine's desired package config (server, hostname ID, per-machine
+  password, hide-from-user, block-outgoing), and owns the address-book push.
 """

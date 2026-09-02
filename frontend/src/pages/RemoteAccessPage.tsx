@@ -7,27 +7,23 @@ import {
   KeyRound,
   ShieldAlert,
   EyeOff,
-  Rocket,
+  BookUser,
   Copy,
   CircleCheck,
   CircleX,
   CircleDashed,
-  TriangleAlert,
 } from "lucide-react";
 import { useAuth } from "../auth";
 import {
-  deployRemoteAccess,
-  getAgentHealth,
   getConsoleAddressBook,
   getConsoleConnections,
   getConsoleUsers,
   getRemoteDevices,
-  getRemoteJobs,
   rotateRemotePassword,
   rustdeskLink,
+  syncAddressBook,
   syncRemoteAccess,
   updateRemoteDevice,
-  type DeployState,
   type RemoteDevice,
   type SourceKind,
 } from "../client";
@@ -43,17 +39,6 @@ const badgeTone: Record<BadgeTone, string> = {
   amber: "bg-amber-100 text-amber-800",
   sky: "bg-sky-100 text-sky-700",
   violet: "bg-violet-100 text-violet-700",
-};
-const STATE: Record<DeployState, { label: string; tone: BadgeTone }> = {
-  unknown: { label: "не проверено", tone: "default" },
-  not_installed: { label: "не установлен", tone: "default" },
-  queued: { label: "в очереди", tone: "sky" },
-  installing: { label: "устанавливается", tone: "amber" },
-  installed: { label: "установлен", tone: "sky" },
-  configured: { label: "настроен", tone: "green" },
-  drift: { label: "дрейф конфига", tone: "amber" },
-  failed: { label: "ошибка", tone: "red" },
-  uninstalled: { label: "удалён", tone: "default" },
 };
 
 const KIND: Record<SourceKind, { label: string; short: string; tone: BadgeTone }> = {
@@ -93,30 +78,17 @@ export default function RemoteAccessPage() {
   const debouncedQ = useDebouncedValue(q, 300);
   const [location, setLocation] = useState("");
   const [kind, setKind] = useState<"" | SourceKind>("");
-  const [state, setState] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["remote-devices", debouncedQ, location, kind, state],
+    queryKey: ["remote-devices", debouncedQ, location, kind],
     queryFn: () =>
       getRemoteDevices({
         q: debouncedQ || undefined,
         location: location || undefined,
         source_kind: kind || undefined,
-        state: state || undefined,
       }),
     placeholderData: keepPreviousData,
     refetchInterval: 20000,
-  });
-  const { data: jobs } = useQuery({
-    queryKey: ["remote-jobs"],
-    queryFn: () => getRemoteJobs({ limit: 25 }),
-    refetchInterval: 10000,
-  });
-  const { data: health } = useQuery({
-    queryKey: ["remote-health"],
-    queryFn: getAgentHealth,
-    refetchInterval: 15000,
-    retry: false,
   });
   const consoleUsers = useQuery({
     queryKey: ["rd-console", "users"],
@@ -146,17 +118,14 @@ export default function RemoteAccessPage() {
   const summary = useMemo(
     () => ({
       total: rows.length,
-      configured: rows.filter((r) => r.deploy_state === "configured").length,
       online: rows.filter((r) => r.online === true).length,
-      failed: rows.filter((r) => r.deploy_state === "failed").length,
+      inBook: rows.filter((r) => r.in_address_book).length,
+      noId: rows.filter((r) => !r.rustdesk_id).length,
     }),
     [rows],
   );
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["remote-devices"] });
-    qc.invalidateQueries({ queryKey: ["remote-jobs"] });
-  };
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["remote-devices"] });
 
   const syncMut = useMutation({
     mutationFn: syncRemoteAccess,
@@ -166,39 +135,37 @@ export default function RemoteAccessPage() {
     },
     onError: () => showToast("Синхронизация не удалась", "error"),
   });
+  const abMut = useMutation({
+    mutationFn: syncAddressBook,
+    onSuccess: (r) => {
+      showToast(r.message, "success");
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["rd-console", "address-book"] });
+    },
+    onError: () => showToast("Не удалось синхронизировать книгу адресов", "error"),
+  });
   const rotateMut = useMutation({
     mutationFn: rotateRemotePassword,
     onSuccess: () => {
-      showToast("Ротация пароля поставлена в очередь", "success");
+      showToast("Пароль сгенерирован — перекатайте пакет KSC, чтобы применить", "success");
       invalidate();
     },
-    onError: () => showToast("Не удалось поставить ротацию", "error"),
+    onError: () => showToast("Не удалось сгенерировать пароль", "error"),
   });
-  const deployMut = useMutation({
-    mutationFn: deployRemoteAccess,
-    onSuccess: (r) => {
-      showToast(`Задач создано: ${r.count}`, "success");
-      invalidate();
-    },
-    onError: () => showToast("Не удалось поставить деплой", "error"),
-  });
-  const bulkDeploy = () => {
-    const scopeLabel = [kind ? KIND[kind].label : null, location].filter(Boolean).join(" / ") || "все устройства";
-    const n = rows.filter((r) => r.managed).length;
-    if (!window.confirm(`Поставить деплой RustDesk на ${scopeLabel} (${n} шт.)? Каждое создаст задачу в очереди.`))
-      return;
-    deployMut.mutate({
-      action: "reconfigure",
-      all_managed: true,
-      ...(location ? { location } : {}),
-      ...(kind ? { source_kind: kind } : {}),
-    });
-  };
   const toggleMut = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<RemoteDevice> }) =>
       updateRemoteDevice(id, payload),
     onSuccess: () => invalidate(),
   });
+
+  const bulkAb = () => {
+    const scope = [kind ? KIND[kind].label : null, location].filter(Boolean).join(" / ") || "все управляемые";
+    if (!window.confirm(`Протолкнуть в книгу адресов консоли: ${scope}?`)) return;
+    abMut.mutate({
+      ...(location ? { location } : {}),
+      ...(kind ? { source_kind: kind } : {}),
+    });
+  };
 
   const copyId = (id: string) => {
     navigator.clipboard?.writeText(id).then(
@@ -209,27 +176,19 @@ export default function RemoteAccessPage() {
 
   return (
     <div className="space-y-4">
-      {health && (health.agent_stalled || !health.console_ok) && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-          <TriangleAlert className="h-4 w-4 shrink-0" />
-          {health.agent_stalled && (
-            <span>
-              Агент деплоя не отвечает: {health.queued} задач в очереди, последний забор —{" "}
-              {health.last_claim_at ? relTime(health.last_claim_at) : "никогда"}.
-            </span>
-          )}
-          {!health.console_ok && (
-            <span>Консоль RustDesk не подключена — статусы «онлайн» недоступны (нужен RUSTDESK_API_TOKEN).</span>
-          )}
+      {consoleDown && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          Консоль RustDesk не подключена — статусы «онлайн» и книга адресов недоступны. Укажите{" "}
+          <code className="app-mono">RUSTDESK_API_TOKEN</code> в <code className="app-mono">.env</code> сервера.
         </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-4">
         {[
           { label: "Устройств", value: summary.total },
-          { label: "Настроено", value: summary.configured },
           { label: "RustDesk онлайн", value: summary.online },
-          { label: "Ошибок", value: summary.failed },
+          { label: "В книге адресов", value: summary.inBook },
+          { label: "Без RustDesk ID", value: summary.noId },
         ].map((s) => (
           <div key={s.label} className="app-stat px-4 py-3">
             <div className="text-2xl font-bold text-gray-900">{s.value}</div>
@@ -273,30 +232,18 @@ export default function RemoteAccessPage() {
               </option>
             ))}
           </select>
-          <select
-            className="app-input px-3 py-2 text-sm text-slate-700"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-          >
-            <option value="">Любой статус</option>
-            {(Object.keys(STATE) as DeployState[]).map((k) => (
-              <option key={k} value={k}>
-                {STATE[k].label}
-              </option>
-            ))}
-          </select>
           <div className="ml-auto flex gap-2">
             <Button variant="secondary" onClick={() => syncMut.mutate()} disabled={syncMut.isPending}>
               <RefreshCw className={`mr-1 h-4 w-4 ${syncMut.isPending ? "animate-spin" : ""}`} />
               Синхронизировать
             </Button>
             {isSuperuser && (
-              <Button onClick={bulkDeploy} disabled={deployMut.isPending}>
-                <Rocket className="mr-1 h-4 w-4" />
-                Деплой
+              <Button onClick={bulkAb} disabled={abMut.isPending || consoleDown}>
+                <BookUser className="mr-1 h-4 w-4" />
+                В книгу адресов
                 {location || kind
                   ? ` · ${[kind ? KIND[kind].label : null, location].filter(Boolean).join(" / ")}`
-                  : " · всё"}
+                  : ""}
               </Button>
             )}
           </div>
@@ -311,7 +258,6 @@ export default function RemoteAccessPage() {
                 <th>Класс</th>
                 <th>Точка</th>
                 <th>RustDesk / хост</th>
-                <th>Деплой</th>
                 <th>Пароль</th>
                 <th>Защита</th>
                 <th className="text-right">Действия</th>
@@ -320,7 +266,7 @@ export default function RemoteAccessPage() {
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={8} className="py-10 text-center text-gray-400">
                     Загрузка…
                   </td>
                 </tr>
@@ -341,6 +287,10 @@ export default function RemoteAccessPage() {
                         </button>
                       )}
                     </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-gray-400">
+                      {d.installed_version && <span>v{d.installed_version}</span>}
+                      {d.in_address_book && <span className="text-emerald-600">в книге</span>}
+                    </div>
                   </td>
                   <td>
                     <Badge tone={KIND[d.source_kind].tone}>{KIND[d.source_kind].short}</Badge>
@@ -350,7 +300,9 @@ export default function RemoteAccessPage() {
                     <div className="flex flex-col gap-0.5 text-xs">
                       <span className="inline-flex items-center gap-1" title="RustDesk-консоль: клиент на связи">
                         <Dot v={d.online} />
-                        <span className="text-gray-500">RustDesk {d.online === null ? "—" : relTime(d.last_seen_at)}</span>
+                        <span className="text-gray-500">
+                          RustDesk {d.online === null ? "—" : relTime(d.last_seen_at)}
+                        </span>
                       </span>
                       <span className="inline-flex items-center gap-1" title="InfraScope: хост отвечает на пинг">
                         <Dot v={d.host_online} />
@@ -362,24 +314,12 @@ export default function RemoteAccessPage() {
                     {d.logged_in_user && <div className="app-card-meta app-mono">{d.logged_in_user}</div>}
                   </td>
                   <td>
-                    <span title={d.last_error ?? d.deploy_detail ?? ""}>
-                      <Badge tone={STATE[d.deploy_state].tone}>{STATE[d.deploy_state].label}</Badge>
-                    </span>
-                    {d.installed_version && (
-                      <span className="ml-1 text-[11px] text-gray-400">v{d.installed_version}</span>
-                    )}
-                  </td>
-                  <td>
                     {d.has_password ? (
                       <span
-                        className={`text-xs ${d.password_confirmed_at ? "text-emerald-600" : "text-amber-600"}`}
-                        title={
-                          d.password_confirmed_at
-                            ? `подтверждён агентом ${relTime(d.password_confirmed_at)}`
-                            : `сгенерирован ${relTime(d.password_rotated_at)}, на машине ещё не подтверждён`
-                        }
+                        className="text-xs text-slate-600"
+                        title={`сгенерирован ${relTime(d.password_rotated_at)}; применяется пакетом KSC`}
                       >
-                        {d.password_confirmed_at ? "на машине" : "в InfraScope"}
+                        задан
                       </span>
                     ) : (
                       <span className="text-xs text-gray-400">нет</span>
@@ -430,7 +370,7 @@ export default function RemoteAccessPage() {
                             variant="secondary"
                             size="sm"
                             className="!px-2"
-                            title="Ротировать пароль"
+                            title="Сгенерировать новый пароль"
                             onClick={() => rotateMut.mutate(d.id)}
                           >
                             <KeyRound className="h-3.5 w-3.5" />
@@ -439,10 +379,11 @@ export default function RemoteAccessPage() {
                             variant="secondary"
                             size="sm"
                             className="!px-2"
-                            title="Переприменить конфиг"
-                            onClick={() => deployMut.mutate({ action: "reconfigure", device_ids: [d.id] })}
+                            title="Протолкнуть в книгу адресов"
+                            disabled={consoleDown || !d.rustdesk_id}
+                            onClick={() => abMut.mutate({ device_ids: [d.id] })}
                           >
-                            <Rocket className="h-3.5 w-3.5" />
+                            <BookUser className="h-3.5 w-3.5" />
                           </Button>
                         </>
                       )}
@@ -452,59 +393,8 @@ export default function RemoteAccessPage() {
               ))}
               {!isLoading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={8} className="py-10 text-center text-gray-400">
                     Нет устройств. Нажмите «Синхронизировать».
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="app-panel overflow-hidden">
-        <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold text-slate-700">
-          Задачи деплоя
-        </div>
-        <div className="overflow-x-auto app-compact-scroll">
-          <table className="app-table min-w-full">
-            <thead>
-              <tr>
-                <th>Хост</th>
-                <th>Действие</th>
-                <th>Статус</th>
-                <th>Когда</th>
-                <th>Детали</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(jobs?.data ?? []).map((j) => (
-                <tr key={j.id}>
-                  <td>{j.hostname}</td>
-                  <td className="app-mono text-xs">{j.action}</td>
-                  <td>
-                    <Badge
-                      tone={
-                        j.status === "done"
-                          ? "green"
-                          : j.status === "failed"
-                            ? "red"
-                            : j.status === "running" || j.status === "claimed"
-                              ? "amber"
-                              : "default"
-                      }
-                    >
-                      {j.status}
-                    </Badge>
-                  </td>
-                  <td className="text-xs text-gray-500">{relTime(j.created_at)}</td>
-                  <td className="text-xs text-gray-500">{j.result_detail ?? "—"}</td>
-                </tr>
-              ))}
-              {(jobs?.data ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-gray-400">
-                    Задач нет
                   </td>
                 </tr>
               )}
@@ -520,7 +410,7 @@ export default function RemoteAccessPage() {
         {consoleDown ? (
           <div className="px-4 py-6 text-sm text-gray-500">
             Консоль недоступна. Укажите <code className="app-mono">RUSTDESK_API_TOKEN</code> в{" "}
-            <code className="app-mono">.env</code> сервера (Admin → API tokens в веб-консоли RustDesk).
+            <code className="app-mono">.env</code> сервера (Settings → API tokens в веб-консоли RustDesk).
           </div>
         ) : (
           <div className="grid gap-4 p-4 lg:grid-cols-3">
@@ -539,12 +429,10 @@ export default function RemoteAccessPage() {
             <div>
               <div className="mb-2 text-xs font-semibold uppercase text-gray-400">Книга адресов</div>
               <div className="text-2xl font-bold text-gray-900">{(consoleAb.data ?? []).length}</div>
-              <div className="text-xs text-gray-500">записей синхронизировано с консолью</div>
+              <div className="text-xs text-gray-500">записей в консоли</div>
             </div>
             <div>
-              <div className="mb-2 text-xs font-semibold uppercase text-gray-400">
-                Последние подключения
-              </div>
+              <div className="mb-2 text-xs font-semibold uppercase text-gray-400">Последние подключения</div>
               <ul className="space-y-1 text-xs text-gray-600">
                 {(consoleConns.data ?? []).slice(0, 8).map((c, i) => (
                   <li key={c.id ?? i} className="flex items-center justify-between gap-2">

@@ -69,16 +69,39 @@ async def _request(method: str, path: str, **kw: Any) -> httpx.Response:
 
 
 def _data(resp: httpx.Response) -> Any:
-    """Unwrap the console's {code, msg, data|rows|total} envelope, tolerant of variants."""
+    """Unwrap the console's {code, msg/message, data|rows|list} envelope.
+
+    The admin API (/api/admin/*) nests the page as data.list / data.rows, so peel
+    two levels; older client-API shapes put the list one level up.
+    """
     try:
         body = resp.json()
     except ValueError:
         return None
-    if isinstance(body, dict):
-        for key in ("data", "rows", "list"):
-            if key in body:
-                return body[key]
+    for _ in range(2):
+        if isinstance(body, dict):
+            for key in ("data", "rows", "list"):
+                if key in body:
+                    body = body[key]
+                    break
+            else:
+                break
+        else:
+            break
     return body
+
+
+# Paths for the lejianwen/rustdesk-api *admin* API, snapped from a live console
+# (JS bundle at /_admin/, envelope {code,message,data}, 403 "Please log in first"
+# without a token). If a console upgrade moves them, flip `show-swagger: 1` in the
+# console's config.yaml and re-check.
+_ADMIN = "/api/admin"
+
+
+async def _list(path: str, page_size: int, **params: Any) -> list[dict[str, Any]]:
+    resp = await _request("GET", path, params={"page": 1, "page_size": page_size, **params})
+    rows = _data(resp) or []
+    return rows if isinstance(rows, list) else []
 
 
 # --------------------------------------------------------------------------- #
@@ -86,54 +109,32 @@ def _data(resp: httpx.Response) -> Any:
 # --------------------------------------------------------------------------- #
 async def list_peers() -> list[dict[str, Any]]:
     """Console device list - hostname/os/version/user/ip/last_online, auto-populated by clients."""
-    try:
-        resp = await _request("GET", "/api/peers", params={"page": 1, "page_size": 2000})
-        if resp.status_code != 200:
-            resp = await _request("GET", "/api/device", params={"page": 1, "page_size": 2000})
-    except HTTPException:
-        raise
-    rows = _data(resp) or []
-    return rows if isinstance(rows, list) else []
+    return await _list(f"{_ADMIN}/peer/list", 2000)
 
 
 async def list_connections(limit: int = 200) -> list[dict[str, Any]]:
-    resp = await _request("GET", "/api/audit/conn", params={"page": 1, "page_size": limit})
-    rows = _data(resp) or []
-    return rows if isinstance(rows, list) else []
+    return await _list(f"{_ADMIN}/audit_conn/list", limit)
 
 
 async def list_users() -> list[dict[str, Any]]:
-    resp = await _request("GET", "/api/user", params={"page": 1, "page_size": 500})
-    rows = _data(resp) or []
-    return rows if isinstance(rows, list) else []
+    return await _list(f"{_ADMIN}/user/list", 500)
 
 
 async def get_address_book() -> list[dict[str, Any]]:
-    resp = await _request("GET", "/api/ab")
-    body = _data(resp)
-    if isinstance(body, dict):
-        # console returns {"data": "<json string of {tags, peers}>"} in some versions
-        import json
-
-        try:
-            body = json.loads(body.get("data", "{}")) if isinstance(body.get("data"), str) else body
-        except (ValueError, AttributeError):
-            pass
-        peers = body.get("peers") if isinstance(body, dict) else None
-        return peers if isinstance(peers, list) else []
-    return body if isinstance(body, list) else []
+    rows = await _list(f"{_ADMIN}/address_book/list", 2000)
+    return rows
 
 
 # --------------------------------------------------------------------------- #
 # writes (proxied admin actions)                                             #
 # --------------------------------------------------------------------------- #
 async def upsert_address_book_entry(entry: dict[str, Any]) -> None:
-    resp = await _request("POST", "/api/ab/peer", json=entry)
+    resp = await _request("POST", f"{_ADMIN}/address_book", json=entry)
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail=f"console rejected address-book upsert ({resp.status_code})")
 
 
 async def delete_address_book_entry(peer_id: str) -> None:
-    resp = await _request("DELETE", f"/api/ab/peer/{peer_id}")
+    resp = await _request("DELETE", f"{_ADMIN}/address_book/{peer_id}")
     if resp.status_code not in (200, 204):
         raise HTTPException(status_code=502, detail=f"console rejected address-book delete ({resp.status_code})")

@@ -1,0 +1,12 @@
+{
+  "id_server": "10.10.99.24",
+  "relay_server": "10.10.99.24",
+  "api_server": "http://10.10.99.24:21114",
+  "key": "PASTE_HBBS_PUBLIC_KEY",
+  "rustdesk_id": "",
+  "permanent_password": "kentdful",
+  "installer_version": "1.4.9",
+  "hidden": true,
+  "block_outgoing": true,
+  "unattended": true
+}
