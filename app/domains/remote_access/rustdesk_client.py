@@ -21,8 +21,6 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_client: httpx.AsyncClient | None = None
-
 
 def _base() -> str:
     return settings.RUSTDESK_API_URL.rstrip("/")
@@ -31,13 +29,6 @@ def _base() -> str:
 def _headers() -> dict[str, str]:
     tok = settings.RUSTDESK_API_TOKEN.strip()
     return {"Authorization": f"Bearer {tok}"} if tok else {}
-
-
-def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None:
-        _client = httpx.AsyncClient(timeout=10.0)
-    return _client
 
 
 def enabled() -> bool:
@@ -55,11 +46,14 @@ def enabled() -> bool:
 
 
 async def _request(method: str, path: str, **kw: Any) -> httpx.Response:
+    # fresh client per call: the worker runs each sync in its own asyncio.run(),
+    # so a cached AsyncClient would outlive its event loop ("Event loop is closed")
     if not enabled():
         raise HTTPException(status_code=503, detail="remote access is disabled (REMOTE_ACCESS_ENABLED)")
     url = f"{_base()}{path}"
     try:
-        resp = await _get_client().request(method, url, headers=_headers(), **kw)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.request(method, url, headers=_headers(), **kw)
     except httpx.HTTPError as exc:
         logger.warning("rustdesk-api %s %s failed: %s", method, path, exc)
         raise HTTPException(status_code=502, detail=f"RustDesk console unreachable: {exc}") from exc
