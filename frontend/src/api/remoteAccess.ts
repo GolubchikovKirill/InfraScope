@@ -140,6 +140,7 @@ export async function getConsoleAddressBook() {
 
 export interface ConsoleUser {
   id?: number;
+  name?: string;
   username?: string;
   email?: string;
   is_admin?: boolean;

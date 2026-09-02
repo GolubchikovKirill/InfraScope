@@ -12,7 +12,7 @@ import logging
 import secrets
 import string
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
@@ -187,35 +187,36 @@ def _inventory_status(session: Session, dev: RemoteAccessDevice) -> tuple[bool |
 
 
 async def sync_from_console(session: Session) -> dict[str, int]:
-    """Pull the console peer list and fold live status into RemoteAccessDevice rows."""
+    """Fold live RustDesk-console status into RemoteAccessDevice rows.
+
+    Client-API `/api/peers` is thin: id + info{device_name, os, username} + status.
+    `/api/ab` carries an explicit per-peer `online` flag, so we cross-reference it.
+    """
     peers = await rustdesk_client.list_peers()
-    stale_after = timedelta(seconds=settings.RUSTDESK_DEVICE_STALE_SECONDS)
+    ab_online = {
+        (p.get("id") or "").strip(): bool(p.get("online"))
+        for p in await rustdesk_client.get_address_book()
+        if isinstance(p, dict) and p.get("id")
+    }
+    now = _now()
     seen = 0
     for p in peers:
-        hostname = (p.get("hostname") or p.get("host") or "").strip()
-        if not hostname:
+        info = p.get("info") or {}
+        hostname = (info.get("device_name") or p.get("hostname") or "").strip()
+        rid = str(p.get("id") or "").strip() or None
+        if not hostname and not rid:
             continue
         seen += 1
-        dev = _get_or_create_device(session, hostname)
+        dev = _get_or_create_device(session, hostname or rid)
         _link_inventory(session, dev)
-        rid = str(p.get("id") or "").strip() or None
         if rid:
             dev.rustdesk_id = rid
-        ver = str(p.get("version") or "").strip() or None
-        if ver:
-            dev.installed_version = ver
-        dev.logged_in_user = (p.get("username") or p.get("user") or None) or dev.logged_in_user
-        dev.last_ip = (p.get("last_online_ip") or p.get("ip") or None) or dev.last_ip
-        ts = p.get("last_online_time") or p.get("last_online")
-        if isinstance(ts, (int, float)) and ts > 0:
-            dev.last_seen_at = datetime.fromtimestamp(ts, tz=UTC)
-        elif isinstance(ts, str) and ts:
-            try:
-                dev.last_seen_at = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-            except ValueError:
-                pass
-        dev.online = bool(dev.last_seen_at and (_now() - dev.last_seen_at) < stale_after)
-        dev.updated_at = _now()
+        dev.logged_in_user = (info.get("username") or None) or dev.logged_in_user
+        online = ab_online.get(rid) if rid in ab_online else bool(p.get("status"))
+        dev.online = online
+        if online:
+            dev.last_seen_at = now
+        dev.updated_at = now
     session.commit()
     return {"peers_seen": seen}
 
@@ -302,22 +303,18 @@ def _ab_entry(dev: RemoteAccessDevice) -> dict:
 
 
 async def push_address_book(session: Session, devices: list[RemoteAccessDevice]) -> dict[str, int]:
-    """Upsert the given managed devices into the console's address book."""
-    pushed = failed = 0
-    for dev in devices:
-        if not dev.managed or not dev.rustdesk_id:
-            continue
-        try:
-            await rustdesk_client.upsert_address_book_entry(_ab_entry(dev))
-            dev.in_address_book = True
-            dev.updated_at = _now()
-            session.add(dev)
-            pushed += 1
-        except Exception as exc:  # noqa: BLE001 - one bad entry shouldn't abort the batch
-            logger.warning("address-book push failed for %s: %s", dev.hostname, exc)
-            failed += 1
+    """Upsert the given managed devices into the console's address book (one write)."""
+    targets = [d for d in devices if d.managed and d.rustdesk_id]
+    if not targets:
+        return {"pushed": 0, "failed": 0}
+    await rustdesk_client.upsert_address_book_entries([_ab_entry(d) for d in targets])
+    now = _now()
+    for dev in targets:
+        dev.in_address_book = True
+        dev.updated_at = now
+        session.add(dev)
     session.commit()
-    return {"pushed": pushed, "failed": failed}
+    return {"pushed": len(targets), "failed": 0}
 
 
 async def sync_address_book(session: Session) -> dict[str, int]:

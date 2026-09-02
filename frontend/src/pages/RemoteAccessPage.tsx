@@ -419,7 +419,7 @@ export default function RemoteAccessPage() {
               <ul className="space-y-1 text-sm">
                 {(consoleUsers.data ?? []).map((u, i) => (
                   <li key={u.id ?? i} className="flex items-center gap-2">
-                    <span className="text-slate-700">{u.username || u.email || `#${u.id}`}</span>
+                    <span className="text-slate-700">{u.name || u.username || u.email || `#${u.id ?? i}`}</span>
                     {u.is_admin && <Badge tone="violet">admin</Badge>}
                   </li>
                 ))}

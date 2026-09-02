@@ -717,18 +717,25 @@ def remote_access_sync_task(self) -> dict:
     try:
         with Session(engine) as session:
             seeded = _remote_access_service.seed_from_inventory(session)
-            result = (
-                asyncio.run(_remote_access_service.sync_from_console(session))
-                if _rustdesk_client.enabled()
-                else {"peers_seen": 0}
-            )
+            # a dead console token must not sink the whole sync (inventory + host
+            # status still work); the page's "console down" banner surfaces it
+            peers_seen = 0
+            console_error = None
+            if _rustdesk_client.enabled():
+                try:
+                    peers_seen = asyncio.run(
+                        _remote_access_service.sync_from_console(session)
+                    ).get("peers_seen", 0)
+                except Exception as exc:  # noqa: BLE001
+                    console_error = str(exc)
             statuses = _remote_access_service.refresh_status_from_inventory(session)
         payload = {
             "task_id": self.request.id,
             "operation": operation,
             "seeded": seeded,
-            "peers_seen": result.get("peers_seen", 0),
+            "peers_seen": peers_seen,
             "statuses_from_polling": statuses,
+            "console_error": console_error,
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")

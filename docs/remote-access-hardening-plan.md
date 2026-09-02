@@ -35,13 +35,30 @@ uv run ruff check app tests && uv run pytest tests/unit -q
 
 ---
 
+## Консоль: как устроена авторизация (выяснено 2026-09-02)
+
+- Бирер для REST — это **JWT из `POST /api/login`** (`{username,password}` →
+  `access_token`, начинается с `eyJ`). Значение из таблицы `user_tokens` (то, что
+  показывает `_admin` в UserToken) — **не** бирер, по нему `401`.
+- Работает только **клиентский API** `/api/*` (`/api/peers`, `/api/users`,
+  `/api/ab`). `/api/admin/*` этим токеном не открыть — админка использует свою
+  сессию. `rustdesk_client.py` переписан на `/api/*`; лог подключений
+  (`/api/audit/conn`) — только в админке, будет пустым.
+- **Каждый вход (веб-консоль ИЛИ `/api/login`) ротирует токен и убивает
+  предыдущий.** Один токен в `.env` проживёт ровно до следующего входа `admin`
+  в веб-консоль. → нужен **отдельный сервисный пользователь** консоли
+  (`infrascope`, admin), под которым в веб никто не логинится.
+- `token-expire` / `jwt.expire-duration` в `~/rustdesk/conf/config.yaml` подняты
+  до `87600h` (10 лет). Бэкап: `config.yaml.bak-token-expire-*`.
+
 ## Осталось (блокеры на пользователе)
 
 | Что | Зачем | Кто |
 |---|---|---|
-| `RUSTDESK_API_TOKEN` в серверный `.env` | без него нет статусов «онлайн», пользователей консоли и книги адресов | пользователь: Settings → API tokens в веб-консоли, вписать, рестарт `backend`+`worker` |
-| Свериться с реальным API консоли | пути `/api/admin/{user,peer,audit_conn,address_book}/list` сняты с живого бандла, но **write-пути книги адресов угаданы** (`POST /api/admin/address_book`) | после токена: временно `show-swagger: 1` в `~/rustdesk/conf/config.yaml`, сверить, вернуть `0`. Поправить `rustdesk_client.upsert/delete_address_book_entry` |
-| Учётка для книги адресов | в lejianwen книга адресов пер-пользовательская — решить, под каким аккаунтом консоли пишем (личная vs общая с группой) | пользователь |
+| Завести пользователя консоли `infrascope` (admin) | чтобы токен InfraScope не убивался при каждом входе `admin` в веб | пользователь: консоль → System → UserManage → Add |
+| `RUSTDESK_API_TOKEN` = `access_token` этого юзера в серверный `.env` | статусы «онлайн», пользователи, книга адресов | `ssh infrascope-server 'curl -s http://10.10.99.24:21114/api/login -H "Content-Type: application/json" -d ...'`, вписать, рестарт `backend`+`worker` |
+| Свериться с write-API книги адресов | `POST /api/ab` (legacy blob `{data:"<json>"}`) — форма peer'а ещё не подтверждена (400 на разных попытках) | после токена: `show-swagger: 1`, сверить, вернуть `0` |
+| Книга адресов: личная vs общая | `/api/ab` — **личная** книга того аккаунта, под которым InfraScope. Техники видят её, только если логинятся тем же аккаунтом. Иначе нужна shared-книга (`address_book_collections`) | пользователь: решить, под каким аккаунтом заходят техники |
 | Собрать пакет(ы) KSC | 1 пакет = 1 пароль; нужны разные по классам — 3 пакета | пользователь по [rustdesk-ksc-deployment.md](rustdesk-ksc-deployment.md) |
 
 ---
