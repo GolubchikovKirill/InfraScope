@@ -140,8 +140,11 @@ async def get_address_book() -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
-# writes - lejianwen legacy address book is a single per-user blob:           #
-# POST /api/ab {"data": "<json string of {tags, peers}>"} (read-modify-write) #
+# writes - lejianwen guid-based address book (verified against a live console):  #
+#   POST   /api/ab/personal            -> {"guid": "..."} for the personal book  #
+#   POST   /api/ab/peer/add/{guid}     body = one peer object                    #
+#   PUT    /api/ab/peer/update/{guid}  body = one peer object                    #
+#   DELETE /api/ab/peer/{guid}         body = ["id", ...]                         #
 # --------------------------------------------------------------------------- #
 _AB_PEER_FIELDS = ("id", "username", "password", "hostname", "alias", "platform", "tags", "forceAlwaysRelay")
 
@@ -150,11 +153,19 @@ def _slim_peer(p: dict[str, Any]) -> dict[str, Any]:
     return {k: p[k] for k in _AB_PEER_FIELDS if k in p}
 
 
-async def _put_ab(tags: list, peers: list) -> None:
-    import json
+async def _personal_guid() -> str:
+    resp = await _request("POST", "/api/ab/personal")
+    try:
+        guid = resp.json().get("guid")
+    except ValueError:
+        guid = None
+    if not guid:
+        raise HTTPException(status_code=502, detail="console did not return a personal address-book guid")
+    return str(guid)
 
-    payload = {"data": json.dumps({"tags": tags, "peers": peers}, ensure_ascii=False)}
-    resp = await _request("POST", "/api/ab", json=payload)
+
+async def _ab_write(method: str, path: str, body: Any) -> None:
+    resp = await _request(method, path, json=body)
     if resp.status_code != 200:
         raise HTTPException(
             status_code=502,
@@ -163,19 +174,17 @@ async def _put_ab(tags: list, peers: list) -> None:
 
 
 async def upsert_address_book_entries(entries: list[dict[str, Any]]) -> None:
-    """One read-modify-write for a batch of peers (keyed by id)."""
-    ab = await _get_ab_raw()
-    by_id = {p["id"]: _slim_peer(p) for p in ab.get("peers", []) if isinstance(p, dict) and p.get("id")}
-    tags = list(ab.get("tags", []))
+    """Add new peers / update existing ones in the caller's personal address book."""
+    guid = await _personal_guid()
+    existing = {p.get("id") for p in await get_address_book() if isinstance(p, dict)}
     for entry in entries:
-        new = _slim_peer(entry)
-        if not new.get("id"):
+        peer = _slim_peer(entry)
+        if not peer.get("id"):
             continue
-        by_id[new["id"]] = new
-        for t in new.get("tags", []) or []:
-            if t and t not in tags:
-                tags.append(t)
-    await _put_ab(tags, list(by_id.values()))
+        if peer["id"] in existing:
+            await _ab_write("PUT", f"/api/ab/peer/update/{guid}", peer)
+        else:
+            await _ab_write("POST", f"/api/ab/peer/add/{guid}", peer)
 
 
 async def upsert_address_book_entry(entry: dict[str, Any]) -> None:
@@ -183,6 +192,5 @@ async def upsert_address_book_entry(entry: dict[str, Any]) -> None:
 
 
 async def delete_address_book_entry(peer_id: str) -> None:
-    ab = await _get_ab_raw()
-    peers = [_slim_peer(p) for p in ab.get("peers", []) if isinstance(p, dict) and p.get("id") != peer_id]
-    await _put_ab(list(ab.get("tags", [])), peers)
+    guid = await _personal_guid()
+    await _ab_write("DELETE", f"/api/ab/peer/{guid}", [peer_id])

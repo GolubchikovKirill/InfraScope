@@ -192,41 +192,42 @@ async def sync_from_console(session: Session) -> dict[str, int]:
     Client-API `/api/peers` is thin: id + info{device_name, os, username} + status.
     `/api/ab` carries an explicit per-peer `online` flag, so we cross-reference it.
     """
-    peers = await rustdesk_client.list_peers()
-    ab_online = {
-        (p.get("id") or "").strip(): bool(p.get("online"))
-        for p in await rustdesk_client.get_address_book()
-        if isinstance(p, dict) and p.get("id")
-    }
     now = _now()
+    # rid -> online, merged from both sources (address book's flag wins over peer status)
+    status: dict[str, bool] = {}
+    for p in await rustdesk_client.get_address_book():
+        rid = (p.get("id") or "").strip() if isinstance(p, dict) else ""
+        if rid:
+            status[rid] = bool(p.get("online"))
+
     seen = 0
-    known_rids: set[str] = set(ab_online)
-    for p in peers:
+    for p in await rustdesk_client.list_peers():
         info = p.get("info") or {}
         hostname = (info.get("device_name") or p.get("hostname") or "").strip()
         rid = str(p.get("id") or "").strip() or None
         if not hostname and not rid:
             continue
         seen += 1
-        if rid:
-            known_rids.add(rid)
         dev = _get_or_create_device(session, hostname or rid)
         _link_inventory(session, dev)
         if rid:
             dev.rustdesk_id = rid
+            status.setdefault(rid, bool(p.get("status")))
         dev.logged_in_user = (info.get("username") or None) or dev.logged_in_user
-        online = ab_online.get(rid) if rid in ab_online else bool(p.get("status"))
-        dev.online = online
-        if online:
-            dev.last_seen_at = now
         dev.updated_at = now
 
-    # anything the console has never registered is not a RustDesk client (yet) -
-    # clear stale `online` so the grid never claims an un-deployed box is on RustDesk
-    for dev in session.exec(select(RemoteAccessDevice).where(RemoteAccessDevice.online.is_not(None))):  # type: ignore[attr-defined]
-        if (dev.rustdesk_id or "") not in known_rids:
-            dev.online = None
+    # one pass over every tracked device: online == exactly what the console says,
+    # None for anything the console has never registered (no client yet)
+    for dev in session.exec(select(RemoteAccessDevice)):
+        want = status.get(dev.rustdesk_id or "")  # True / False / None
+        changed = dev.online != want
+        if want:
+            dev.last_seen_at = now
+        elif want is None and dev.last_seen_at is not None:
             dev.last_seen_at = None
+            changed = True
+        if changed:
+            dev.online = want
             dev.updated_at = now
     session.commit()
     return {"peers_seen": seen}

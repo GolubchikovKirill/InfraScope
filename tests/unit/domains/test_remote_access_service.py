@@ -141,6 +141,38 @@ def test_ab_entry_tags_by_kind_and_location(db_session) -> None:
     assert entry["tags"] == ["cash_register", "003"]
 
 
+def test_sync_from_console_sets_online_only_for_devices_the_console_knows(db_session, monkeypatch) -> None:
+    import asyncio
+
+    db_session.add(Computer(hostname="VNA-MGR-101", location="A1"))
+    db_session.add(Computer(hostname="VNA-MGR-102", location="A1"))
+    db_session.commit()
+    service.seed_from_inventory(db_session)
+    # pretend both were "online" from an earlier (pre-split) run
+    for h in ("VNA-MGR-101", "VNA-MGR-102"):
+        d = _dev(db_session, h)
+        d.online = True
+        db_session.add(d)
+    db_session.commit()
+
+    async def fake_peers():
+        return [{"id": "VNA_MGR_101", "info": {"device_name": "VNA-MGR-101", "username": "kassir"}, "status": 1}]
+
+    async def fake_ab():
+        return [{"id": "VNA_MGR_101", "online": True, "hostname": "vna-mgr-101"}]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_peers", fake_peers)
+    monkeypatch.setattr(service.rustdesk_client, "get_address_book", fake_ab)
+
+    res = asyncio.run(service.sync_from_console(db_session))
+    assert res["peers_seen"] == 1
+
+    a = _dev(db_session, "VNA-MGR-101")
+    assert a.online is True and a.logged_in_user == "kassir" and a.last_seen_at is not None
+    b = _dev(db_session, "VNA-MGR-102")
+    assert b.online is None  # console never saw it -> stale True cleared
+
+
 def test_resolve_scope_by_ids_location_kind_and_all(db_session) -> None:
     a = RemoteAccessDevice(hostname="h-a", location="A1", source_kind="computer")
     b = RemoteAccessDevice(hostname="h-b", location="A2", source_kind="cash_register")
