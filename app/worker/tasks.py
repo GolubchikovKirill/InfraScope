@@ -25,6 +25,8 @@ from app.domains.inventory.ap_auto_reboot import (
 from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
 from app.domains.inventory.port_snapshot import capture_switch_port_snapshot, get_switches_for_snapshot
 from app.domains.operations.models import CashRegister
+from app.domains.remote_access import rustdesk_client as _rustdesk_client
+from app.domains.remote_access import service as _remote_access_service
 from app.observability.metrics import (
     observe_service_edge,
     worker_task_duration_seconds,
@@ -689,6 +691,44 @@ def ml_run_cycle_task(self) -> dict:
             "task_id": self.request.id,
             "operation": operation,
             "result": response.json(),
+            "finished_at": datetime.now(UTC).isoformat(),
+        }
+        _task_finished(operation, started_at, "success")
+        return payload
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 2},
+    name="tasks.remote_access_sync",
+)
+def remote_access_sync_task(self) -> dict:
+    """Fold live RustDesk-console status into RemoteAccessDevice rows + housekeeping."""
+    operation = "remote_access_sync"
+    started_at = _task_started(operation)
+    if not settings.REMOTE_ACCESS_ENABLED:
+        _task_finished(operation, started_at, "skipped")
+        return {"task_id": self.request.id, "operation": operation, "status": "skipped"}
+    try:
+        with Session(engine) as session:
+            seeded = _remote_access_service.seed_from_inventory(session)
+            result = (
+                asyncio.run(_remote_access_service.sync_from_console(session))
+                if _rustdesk_client.enabled()
+                else {"peers_seen": 0}
+            )
+            pruned = _remote_access_service.prune_finished_jobs(session)
+        payload = {
+            "task_id": self.request.id,
+            "operation": operation,
+            "seeded": seeded,
+            "peers_seen": result.get("peers_seen", 0),
+            "pruned_jobs": pruned,
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")

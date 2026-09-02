@@ -21,6 +21,7 @@ import {
   Cable,
   ShieldCheck,
   Camera,
+  MonitorSmartphone,
 } from "lucide-react";
 import { readThemeMode, setThemeMode, type ThemeMode } from "../theme";
 import { motion, AnimatePresence } from "framer-motion";
@@ -49,6 +50,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { match: (path) => path.startsWith("/honest-sign"), title: "Честный знак", subtitle: "Статус и удалённая инициализация Local Module" },
     { match: (path) => path.startsWith("/cameras"), title: "Камеры", subtitle: "Просмотр и перезагрузка камер по магазинам" },
     { match: (path) => path.startsWith("/computers"), title: "Компьютеры", subtitle: "Контроль доступности рабочих станций" },
+    { match: (path) => path.startsWith("/remote-access"), title: "Удалённый доступ", subtitle: "RustDesk: раскатка, пароли, подключения" },
     { match: (path) => path.startsWith("/network-search"), title: "Поиск в сети", subtitle: "Сканирование и сопоставление устройств" },
     { match: (path) => path.startsWith("/onec"), title: "QR-генерация", subtitle: "Файлы обмена и посадочные талоны" },
     { match: (path) => path.startsWith("/settings"), title: "Настройки", subtitle: "Параметры сети и приложения" },
@@ -77,6 +79,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/cash-registers", label: "Кассы", icon: Wallet, visible: true },
     { to: "/honest-sign", label: "Честный знак", icon: ShieldCheck, visible: true },
     { to: "/computers", label: "Компьютеры", icon: Laptop, visible: true },
+    { to: "/remote-access", label: "Удалённый доступ", icon: MonitorSmartphone, visible: true },
     { to: "/network-search", label: "Поиск в сети", icon: Radar, visible: true },
   ];
   const baseItems = [

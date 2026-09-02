@@ -1,0 +1,7 @@
+{
+  "server": "http://10.10.98.10",
+  "agent_id": "deploy01",
+  "token": "PASTE_RUSTDESK_DEPLOY_AGENT_TOKEN",
+  "poll_seconds": 15,
+  "installer_dir": "\\\\Regstaer-M.local\\NETLOGON\\RustDesk"
+}
