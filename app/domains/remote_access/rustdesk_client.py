@@ -41,7 +41,17 @@ def _get_client() -> httpx.AsyncClient:
 
 
 def enabled() -> bool:
-    return bool(settings.REMOTE_ACCESS_ENABLED and settings.RUSTDESK_API_URL)
+    """True only when we can actually talk to the console (needs a token).
+
+    The deploy pipeline works without this - it never calls the console - so the
+    device grid still populates from InfraScope inventory when only the token is
+    missing.
+    """
+    return bool(
+        settings.REMOTE_ACCESS_ENABLED
+        and settings.RUSTDESK_API_URL
+        and settings.RUSTDESK_API_TOKEN.strip()
+    )
 
 
 async def _request(method: str, path: str, **kw: Any) -> httpx.Response:
