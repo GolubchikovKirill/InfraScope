@@ -18,6 +18,33 @@ param([string]$ConfigPath = (Join-Path $PSScriptRoot 'rustdesk-agent.json'))
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $ConfigPath)) { throw "config not found: $ConfigPath" }
 $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+
+# InfraScope serves HTTPS with a self-signed cert and redirects 80 -> 443, so the
+# agent always talks TLS. Windows PowerShell 5.1 (what the SYSTEM scheduled task
+# runs) has no -SkipCertificateCheck, so trust-all is wired at the platform level.
+# Scope: LAN-only, shared-token auth - acceptable for a deploy agent.
+if ($PSVersionTable.PSEdition -ne 'Core') {
+    try {
+        Add-Type -TypeDefinition @"
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+public static class InfraScopeCertPolicy {
+    public static void Trust() {
+        ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
+        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+    }
+}
+"@ -ErrorAction Stop
+        [InfraScopeCertPolicy]::Trust()
+    } catch {
+        [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    }
+    $script:IrmExtra = @{}
+} else {
+    # PowerShell 7+: per-call switch, no global state
+    $script:IrmExtra = @{ SkipCertificateCheck = $true }
+}
 $Server   = $cfg.server.TrimEnd('/')
 $AgentId  = $cfg.agent_id
 $Token    = $cfg.token
@@ -76,7 +103,7 @@ function Deploy-Client {
         #    context; CIM Win32_Process runs as this agent's account (fleet admin),
         #    which is the combo that actually persists it.
         if ($job.desired_unattended) {
-            $sec = Invoke-RestMethod -Method Get -Uri "$Base/jobs/$($job.job_id)/secret" -Headers $Headers -TimeoutSec 30
+            $sec = Invoke-RestMethod -Method Get -Uri "$Base/jobs/$($job.job_id)/secret" -Headers $Headers -TimeoutSec 30 @IrmExtra
             $pw = $sec.permanent_password
             if ($pw) {
                 Invoke-Remote $cs ('cmd /c ""{0}" --password {1}"' -f $RdExe, $pw) | Out-Null
@@ -93,7 +120,7 @@ function Deploy-Client {
 function Rotate-Password {
     param($h, $job)
     if (-not (Remote-RustDeskInstalled $h)) { throw "rustdesk not installed" }
-    $sec = Invoke-RestMethod -Method Get -Uri "$Base/jobs/$($job.job_id)/secret" -Headers $Headers -TimeoutSec 30
+    $sec = Invoke-RestMethod -Method Get -Uri "$Base/jobs/$($job.job_id)/secret" -Headers $Headers -TimeoutSec 30 @IrmExtra
     $pw = $sec.permanent_password
     if (-not $pw) { throw "server returned empty password" }
     $cs = New-Cim $h
@@ -122,14 +149,14 @@ function Report($jobId, $status, $detail, $facts) {
     $body = @{ status = $status; detail = $detail }
     if ($facts) { $facts.GetEnumerator() | ForEach-Object { $body[$_.Key] = $_.Value } }
     try { Invoke-RestMethod -Method Post -Uri "$Base/jobs/$jobId/report" -Headers $Headers `
-            -Body ($body | ConvertTo-Json) -ContentType 'application/json' -TimeoutSec 30 | Out-Null }
+            -Body ($body | ConvertTo-Json) -ContentType 'application/json' -TimeoutSec 30 @IrmExtra | Out-Null }
     catch { Log "report failed: $($_.Exception.Message)" }
 }
 
 Log "agent $AgentId -> $Server (poll ${Poll}s, installers: $InstDir)"
 while ($true) {
     try {
-        $job = Invoke-RestMethod -Method Post -Uri "$Base/claim?agent_id=$AgentId" -Headers $Headers -TimeoutSec 30
+        $job = Invoke-RestMethod -Method Post -Uri "$Base/claim?agent_id=$AgentId" -Headers $Headers -TimeoutSec 30 @IrmExtra
     } catch { Log "claim failed: $($_.Exception.Message)"; Start-Sleep $Poll; continue }
 
     if (-not $job -or -not $job.job_id) { Start-Sleep $Poll; continue }

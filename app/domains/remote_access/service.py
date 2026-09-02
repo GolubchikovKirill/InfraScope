@@ -8,6 +8,7 @@ import string
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import func, update
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -147,21 +148,20 @@ def seed_from_inventory(session: Session) -> int:
 
 
 def refresh_status_from_inventory(session: Session) -> int:
-    """Fall back to InfraScope's own reachability polling for devices the RustDesk
-    console can't see (or when there is no console token yet). The console always
-    wins when it has a fresher `last_seen_at`.
+    """Copy InfraScope's own reachability result onto the device as `host_online`.
+
+    This is a *separate* signal from `online` (which is RustDesk-console truth):
+    the host answering a ping tells you nothing about whether the RustDesk client
+    is running or connected. The UI shows the two side by side.
     """
     updated = 0
     for dev in session.exec(select(RemoteAccessDevice)).all():
         inv_online, inv_polled = _inventory_status(session, dev)
         if inv_online is None:
             continue
-        if dev.last_seen_at is not None and not (inv_polled and inv_polled > dev.last_seen_at):
-            continue
-        if dev.online != inv_online or (inv_polled and dev.last_seen_at != inv_polled):
-            dev.online = inv_online
-            if inv_polled:
-                dev.last_seen_at = inv_polled
+        if dev.host_online != inv_online or dev.host_last_seen_at != inv_polled:
+            dev.host_online = inv_online
+            dev.host_last_seen_at = inv_polled
             dev.updated_at = _now()
             updated += 1
     if updated:
@@ -306,7 +306,8 @@ def _enqueue_one(
     )
     session.add(job)
     if action in ("deploy", "reconfigure", "rotate_password", "set_lockdown"):
-        dev.deploy_state = "installing"
+        # only "queued" here - nothing is being installed until an agent claims it
+        dev.deploy_state = "queued"
         dev.updated_at = _now()
         session.add(dev)
     return job
@@ -338,23 +339,75 @@ def enqueue(
 # --------------------------------------------------------------------------- #
 # agent protocol                                                             #
 # --------------------------------------------------------------------------- #
+# what an agent should pick up first: install the client before fiddling with it
+_ACTION_PRIORITY = {"deploy": 0, "reconfigure": 1, "set_lockdown": 2, "rotate_password": 3, "uninstall": 4}
+
+
 def claim_next_job(session: Session, agent_id: str) -> RemoteAccessDeployJob | None:
-    job = session.exec(
+    # candidates ordered by (action priority, age); claim the first one that a
+    # concurrent agent hasn't grabbed. The conditional UPDATE is the guard - it
+    # only flips a row that is still 'queued', so two agents never take the same
+    # job (works on SQLite and Postgres alike; no SELECT ... FOR UPDATE needed).
+    candidates = session.exec(
         select(RemoteAccessDeployJob)
         .where(RemoteAccessDeployJob.status == "queued")
         .order_by(RemoteAccessDeployJob.created_at)
+    ).all()
+    candidates.sort(key=lambda j: _ACTION_PRIORITY.get(j.action, 9))
+
+    now = _now()
+    for job in candidates:
+        won = session.exec(
+            update(RemoteAccessDeployJob)
+            .where(RemoteAccessDeployJob.id == job.id, RemoteAccessDeployJob.status == "queued")
+            .values(status="claimed", claimed_by=agent_id, claimed_at=now, attempts=job.attempts + 1, updated_at=now)
+        ).rowcount
+        if not won:
+            continue  # another agent claimed it between the select and now
+        session.commit()
+        session.expire(job)
+        dev = session.get(RemoteAccessDevice, job.device_id)
+        if dev and dev.deploy_state == "queued":
+            dev.deploy_state = "installing"  # now something is actually happening
+            dev.updated_at = now
+            session.add(dev)
+            session.commit()
+        session.refresh(job)
+        return job
+    return None
+
+
+def agent_last_claim_at(session: Session) -> datetime | None:
+    row = session.exec(
+        select(RemoteAccessDeployJob.claimed_at)
+        .where(RemoteAccessDeployJob.claimed_at.is_not(None))  # type: ignore[attr-defined]
+        .order_by(RemoteAccessDeployJob.claimed_at.desc())  # type: ignore[attr-defined]
     ).first()
-    if not job:
-        return None
-    job.status = "claimed"
-    job.claimed_by = agent_id
-    job.claimed_at = _now()
-    job.attempts += 1
-    job.updated_at = _now()
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    return job
+    return row
+
+
+def agent_health(session: Session) -> dict:
+    """Small status summary for the page header: is anything draining the queue."""
+    queued = session.exec(
+        select(func.count()).select_from(RemoteAccessDeployJob).where(RemoteAccessDeployJob.status == "queued")
+    ).one()
+    running = session.exec(
+        select(func.count())
+        .select_from(RemoteAccessDeployJob)
+        .where(RemoteAccessDeployJob.status.in_(("claimed", "running")))  # type: ignore[attr-defined]
+    ).one()
+    last_claim = agent_last_claim_at(session)
+    silent_for = (_now() - last_claim).total_seconds() / 60 if last_claim else None
+    stalled = bool(
+        queued
+        and (last_claim is None or silent_for > settings.RUSTDESK_AGENT_SILENT_MINUTES)
+    )
+    return {
+        "queued": int(queued),
+        "running": int(running),
+        "last_claim_at": last_claim.isoformat() if last_claim else None,
+        "agent_stalled": stalled,
+    }
 
 
 def job_secret(session: Session, job: RemoteAccessDeployJob) -> str:
@@ -378,12 +431,18 @@ def report_job(session: Session, job: RemoteAccessDeployJob, *, status: str, det
             dev.installed_version = facts["installed_version"]
         if facts.get("rustdesk_id"):
             dev.rustdesk_id = facts["rustdesk_id"]
+        if status == "running" and dev.deploy_state in ("queued", "unknown"):
+            dev.deploy_state = "installing"
         if status == "done":
             dev.deploy_state = facts.get("deploy_state") or (
                 "not_installed" if job.action == "uninstall" else "configured"
             )
             dev.last_deployed_at = now
             dev.last_error = None
+            # the agent only reports a password action "done" after verifying the
+            # hash actually persisted on the box (Rotate-Password / Deploy-Client)
+            if job.action in ("deploy", "reconfigure", "rotate_password"):
+                dev.password_confirmed_at = now
         elif status == "failed":
             dev.deploy_state = "failed"
             dev.last_error = (detail or "")[:1024]
@@ -394,27 +453,30 @@ def report_job(session: Session, job: RemoteAccessDeployJob, *, status: str, det
 
 
 def reclaim_stale_jobs(session: Session) -> int:
-    """Return jobs whose agent went away mid-run back to the queue.
+    """Housekeeping for jobs that will never finish on their own.
 
-    A job that has sat in claimed/running longer than RUSTDESK_JOB_STALE_MINUTES
-    without a report is assumed orphaned (agent crashed / lost network). After 3
-    attempts it is failed instead of retried forever.
+    * claimed/running with no report for RUSTDESK_JOB_STALE_MINUTES -> back to
+      queued (agent crashed / lost network); failed after 3 attempts.
+    * queued for longer than RUSTDESK_JOB_QUEUED_TTL_HOURS -> failed (no agent
+      ever picked it up) so the grid stops showing phantom pending work.
     """
-    cutoff = _now() - timedelta(minutes=settings.RUSTDESK_JOB_STALE_MINUTES)
+    now = _now()
+    n = 0
+
+    stale_cutoff = now - timedelta(minutes=settings.RUSTDESK_JOB_STALE_MINUTES)
     stuck = session.exec(
         select(RemoteAccessDeployJob).where(
             RemoteAccessDeployJob.status.in_(("claimed", "running")),  # type: ignore[attr-defined]
-            RemoteAccessDeployJob.claimed_at < cutoff,
+            RemoteAccessDeployJob.claimed_at < stale_cutoff,
         )
     ).all()
-    n = 0
     for job in stuck:
         if job.attempts >= 3:
             job.status = "failed"
-            job.finished_at = _now()
+            job.finished_at = now
             job.result_detail = (job.result_detail or "") + " [reclaimed: agent never reported]"
             dev = session.get(RemoteAccessDevice, job.device_id)
-            if dev and dev.deploy_state == "installing":
+            if dev and dev.deploy_state in ("queued", "installing"):
                 dev.deploy_state = "failed"
                 dev.last_error = "deploy agent stopped responding mid-job"
                 session.add(dev)
@@ -423,9 +485,34 @@ def reclaim_stale_jobs(session: Session) -> int:
             job.claimed_by = None
             job.claimed_at = None
             job.started_at = None
-        job.updated_at = _now()
+        job.updated_at = now
         session.add(job)
         n += 1
+
+    ttl_cutoff = now - timedelta(hours=settings.RUSTDESK_JOB_QUEUED_TTL_HOURS)
+    abandoned = session.exec(
+        select(RemoteAccessDeployJob).where(
+            RemoteAccessDeployJob.status == "queued",
+            RemoteAccessDeployJob.created_at < ttl_cutoff,
+        )
+    ).all()
+    for job in abandoned:
+        job.status = "failed"
+        job.finished_at = now
+        job.result_detail = (
+            (job.result_detail or "") + f" [expired: no agent claimed it within "
+            f"{settings.RUSTDESK_JOB_QUEUED_TTL_HOURS}h]"
+        )
+        job.updated_at = now
+        session.add(job)
+        dev = session.get(RemoteAccessDevice, job.device_id)
+        if dev and dev.deploy_state == "queued" and _open_job(session, dev.id, job.action) is None:
+            dev.deploy_state = "failed"
+            dev.last_error = "deploy job expired: no agent is running"
+            dev.updated_at = now
+            session.add(dev)
+        n += 1
+
     if n:
         session.commit()
     return n

@@ -166,6 +166,8 @@ class Settings(BaseSettings):
     RUSTDESK_DEPLOY_AGENT_TOKEN: str = ""  # shared secret for the Windows deploy agent
     RUSTDESK_DEVICE_STALE_SECONDS: int = 300  # peer considered offline past this
     RUSTDESK_JOB_STALE_MINUTES: int = 30  # a claimed/running job idle this long is re-queued
+    RUSTDESK_JOB_QUEUED_TTL_HOURS: int = 24  # a job no agent ever claims is failed after this
+    RUSTDESK_AGENT_SILENT_MINUTES: int = 15  # no claim in this window + queued jobs => "agent down"
 
     INTERNAL_SERVICE_TOKEN: str = ""
     INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0

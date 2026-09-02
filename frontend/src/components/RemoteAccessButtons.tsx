@@ -12,6 +12,7 @@ import { showToast } from "../lib/toastBus";
 const STATE_LABEL: Record<string, string> = {
   unknown: "не проверен",
   not_installed: "не установлен",
+  queued: "в очереди",
   installing: "деплой…",
   installed: "установлен",
   configured: "готов",
@@ -22,6 +23,7 @@ const STATE_LABEL: Record<string, string> = {
 const STATE_TONE: Record<string, string> = {
   configured: "bg-emerald-100 text-emerald-700",
   installed: "bg-sky-100 text-sky-700",
+  queued: "bg-sky-100 text-sky-700",
   installing: "bg-amber-100 text-amber-800",
   drift: "bg-amber-100 text-amber-800",
   failed: "bg-rose-100 text-rose-700",
@@ -54,7 +56,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
 
   const rustId = device?.rustdesk_id ?? null;
   const state = device?.deploy_state ?? "not_installed";
-  const busy = state === "installing" || prepareMut.isPending;
+  const busy = state === "installing" || state === "queued" || prepareMut.isPending;
   const btn = `inline-flex items-center gap-1.5 rounded-lg font-medium ${
     compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
   }`;

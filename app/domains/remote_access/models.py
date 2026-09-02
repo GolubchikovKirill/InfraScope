@@ -12,7 +12,8 @@ from app.core.crypto import EncryptedString
 # deploy state machine
 #   unknown       - never contacted / just created
 #   not_installed - agent confirmed RustDesk absent
-#   installing    - a deploy job is in flight
+#   queued        - a job is waiting in the queue; no agent has picked it up yet
+#   installing    - an agent has claimed a job and is applying it right now
 #   installed     - binary present, config not yet ours
 #   configured    - our server + hostname id + password + lockdown all applied
 #   drift         - agent reports the on-disk config no longer matches desired
@@ -22,6 +23,7 @@ from app.core.crypto import EncryptedString
 DEPLOY_STATES = (
     "unknown",
     "not_installed",
+    "queued",
     "installing",
     "installed",
     "configured",
@@ -29,6 +31,9 @@ DEPLOY_STATES = (
     "failed",
     "uninstalled",
 )
+# states that mean "a job is open for this device" - used when deciding whether
+# an inventory refresh may overwrite a device's apparent progress
+IN_FLIGHT_STATES = ("queued", "installing")
 
 JOB_ACTIONS = ("deploy", "reconfigure", "rotate_password", "set_lockdown", "uninstall")
 JOB_STATUSES = ("queued", "claimed", "running", "done", "failed", "cancelled")
@@ -59,6 +64,9 @@ class RemoteAccessDevice(SQLModel, table=True):
         default="", sa_column=Column(EncryptedString(512), nullable=False, server_default="")
     )
     password_rotated_at: datetime | None = Field(default=None)
+    # set by report_job when an agent confirms the password actually persisted on the box;
+    # password_rotated_at alone only means "InfraScope generated one"
+    password_confirmed_at: datetime | None = Field(default=None)
     desired_hidden: bool = Field(default=True)  # hide-tray + strip Start Menu/Desktop shortcuts
     desired_block_outgoing: bool = Field(default=True)  # AppLocker: no interactive rustdesk.exe for non-admins
     desired_unattended: bool = Field(default=True)  # approve-mode=password (no on-screen accept)
@@ -68,10 +76,15 @@ class RemoteAccessDevice(SQLModel, table=True):
     deploy_state: str = Field(default="unknown", max_length=16, index=True)
     deploy_detail: str | None = Field(default=None, max_length=512)
     installed_version: str | None = Field(default=None, max_length=32)
+    # RustDesk-console truth: is the client itself reachable via the rendezvous server
     online: bool | None = Field(default=None, index=True)
     logged_in_user: str | None = Field(default=None, max_length=128)
     last_ip: str | None = Field(default=None, max_length=64)
     last_seen_at: datetime | None = Field(default=None, index=True)  # from the console peer list
+    # InfraScope-inventory truth: does the host answer a plain reachability probe.
+    # kept separate so the UI never passes "host pings" off as "RustDesk connected"
+    host_online: bool | None = Field(default=None, index=True)
+    host_last_seen_at: datetime | None = Field(default=None)
     last_deployed_at: datetime | None = Field(default=None)
     last_error: str | None = Field(default=None, max_length=1024)
 

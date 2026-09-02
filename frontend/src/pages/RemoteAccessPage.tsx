@@ -12,10 +12,12 @@ import {
   CircleCheck,
   CircleX,
   CircleDashed,
+  TriangleAlert,
 } from "lucide-react";
 import { useAuth } from "../auth";
 import {
   deployRemoteAccess,
+  getAgentHealth,
   getConsoleAddressBook,
   getConsoleConnections,
   getConsoleUsers,
@@ -45,6 +47,7 @@ const badgeTone: Record<BadgeTone, string> = {
 const STATE: Record<DeployState, { label: string; tone: BadgeTone }> = {
   unknown: { label: "не проверено", tone: "default" },
   not_installed: { label: "не установлен", tone: "default" },
+  queued: { label: "в очереди", tone: "sky" },
   installing: { label: "устанавливается", tone: "amber" },
   installed: { label: "установлен", tone: "sky" },
   configured: { label: "настроен", tone: "green" },
@@ -76,6 +79,12 @@ function Badge({ children, tone = "default" }: { children: React.ReactNode; tone
   );
 }
 
+function Dot({ v }: { v: boolean | null }) {
+  if (v === true) return <CircleCheck className="h-3.5 w-3.5 text-emerald-500" />;
+  if (v === false) return <CircleX className="h-3.5 w-3.5 text-slate-400" />;
+  return <CircleDashed className="h-3.5 w-3.5 text-slate-300" />;
+}
+
 export default function RemoteAccessPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -102,6 +111,12 @@ export default function RemoteAccessPage() {
     queryKey: ["remote-jobs"],
     queryFn: () => getRemoteJobs({ limit: 25 }),
     refetchInterval: 10000,
+  });
+  const { data: health } = useQuery({
+    queryKey: ["remote-health"],
+    queryFn: getAgentHealth,
+    refetchInterval: 15000,
+    retry: false,
   });
   const consoleUsers = useQuery({
     queryKey: ["rd-console", "users"],
@@ -167,6 +182,18 @@ export default function RemoteAccessPage() {
     },
     onError: () => showToast("Не удалось поставить деплой", "error"),
   });
+  const bulkDeploy = () => {
+    const scopeLabel = [kind ? KIND[kind].label : null, location].filter(Boolean).join(" / ") || "все устройства";
+    const n = rows.filter((r) => r.managed).length;
+    if (!window.confirm(`Поставить деплой RustDesk на ${scopeLabel} (${n} шт.)? Каждое создаст задачу в очереди.`))
+      return;
+    deployMut.mutate({
+      action: "reconfigure",
+      all_managed: true,
+      ...(location ? { location } : {}),
+      ...(kind ? { source_kind: kind } : {}),
+    });
+  };
   const toggleMut = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<RemoteDevice> }) =>
       updateRemoteDevice(id, payload),
@@ -182,11 +209,26 @@ export default function RemoteAccessPage() {
 
   return (
     <div className="space-y-4">
+      {health && (health.agent_stalled || !health.console_ok) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+          <TriangleAlert className="h-4 w-4 shrink-0" />
+          {health.agent_stalled && (
+            <span>
+              Агент деплоя не отвечает: {health.queued} задач в очереди, последний забор —{" "}
+              {health.last_claim_at ? relTime(health.last_claim_at) : "никогда"}.
+            </span>
+          )}
+          {!health.console_ok && (
+            <span>Консоль RustDesk не подключена — статусы «онлайн» недоступны (нужен RUSTDESK_API_TOKEN).</span>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-4">
         {[
           { label: "Устройств", value: summary.total },
           { label: "Настроено", value: summary.configured },
-          { label: "Онлайн", value: summary.online },
+          { label: "RustDesk онлайн", value: summary.online },
           { label: "Ошибок", value: summary.failed },
         ].map((s) => (
           <div key={s.label} className="app-stat px-4 py-3">
@@ -249,17 +291,7 @@ export default function RemoteAccessPage() {
               Синхронизировать
             </Button>
             {isSuperuser && (
-              <Button
-                onClick={() =>
-                  deployMut.mutate({
-                    action: "reconfigure",
-                    all_managed: true,
-                    ...(location ? { location } : {}),
-                    ...(kind ? { source_kind: kind } : {}),
-                  })
-                }
-                disabled={deployMut.isPending}
-              >
+              <Button onClick={bulkDeploy} disabled={deployMut.isPending}>
                 <Rocket className="mr-1 h-4 w-4" />
                 Деплой
                 {location || kind
@@ -278,7 +310,7 @@ export default function RemoteAccessPage() {
                 <th>RustDesk ID</th>
                 <th>Класс</th>
                 <th>Точка</th>
-                <th>Статус</th>
+                <th>RustDesk / хост</th>
                 <th>Деплой</th>
                 <th>Пароль</th>
                 <th>Защита</th>
@@ -315,19 +347,19 @@ export default function RemoteAccessPage() {
                   </td>
                   <td>{d.location ?? "—"}</td>
                   <td>
-                    <span className="inline-flex items-center gap-1">
-                      {d.online === true ? (
-                        <CircleCheck className="h-4 w-4 text-emerald-500" />
-                      ) : d.online === false ? (
-                        <CircleX className="h-4 w-4 text-slate-400" />
-                      ) : (
-                        <CircleDashed className="h-4 w-4 text-slate-300" />
-                      )}
-                      <span className="text-xs text-gray-500">{relTime(d.last_seen_at)}</span>
-                    </span>
-                    {d.logged_in_user && (
-                      <div className="app-card-meta app-mono">{d.logged_in_user}</div>
-                    )}
+                    <div className="flex flex-col gap-0.5 text-xs">
+                      <span className="inline-flex items-center gap-1" title="RustDesk-консоль: клиент на связи">
+                        <Dot v={d.online} />
+                        <span className="text-gray-500">RustDesk {d.online === null ? "—" : relTime(d.last_seen_at)}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1" title="InfraScope: хост отвечает на пинг">
+                        <Dot v={d.host_online} />
+                        <span className="text-gray-400">
+                          хост {d.host_online === null ? "—" : relTime(d.host_last_seen_at)}
+                        </span>
+                      </span>
+                    </div>
+                    {d.logged_in_user && <div className="app-card-meta app-mono">{d.logged_in_user}</div>}
                   </td>
                   <td>
                     <span title={d.last_error ?? d.deploy_detail ?? ""}>
@@ -340,10 +372,14 @@ export default function RemoteAccessPage() {
                   <td>
                     {d.has_password ? (
                       <span
-                        className="text-xs text-emerald-600"
-                        title={`ротация: ${relTime(d.password_rotated_at)}`}
+                        className={`text-xs ${d.password_confirmed_at ? "text-emerald-600" : "text-amber-600"}`}
+                        title={
+                          d.password_confirmed_at
+                            ? `подтверждён агентом ${relTime(d.password_confirmed_at)}`
+                            : `сгенерирован ${relTime(d.password_rotated_at)}, на машине ещё не подтверждён`
+                        }
                       >
-                        задан
+                        {d.password_confirmed_at ? "на машине" : "в InfraScope"}
                       </span>
                     ) : (
                       <span className="text-xs text-gray-400">нет</span>

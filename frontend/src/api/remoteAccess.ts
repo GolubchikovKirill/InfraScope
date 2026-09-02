@@ -3,6 +3,7 @@ import api from "./http";
 export type DeployState =
   | "unknown"
   | "not_installed"
+  | "queued"
   | "installing"
   | "installed"
   | "configured"
@@ -30,6 +31,7 @@ export interface RemoteDevice {
   rustdesk_id: string | null;
   has_password: boolean;
   password_rotated_at: string | null;
+  password_confirmed_at: string | null;
   desired_hidden: boolean;
   desired_block_outgoing: boolean;
   desired_unattended: boolean;
@@ -41,9 +43,24 @@ export interface RemoteDevice {
   logged_in_user: string | null;
   last_ip: string | null;
   last_seen_at: string | null;
+  host_online: boolean | null;
+  host_last_seen_at: string | null;
   last_deployed_at: string | null;
   last_error: string | null;
   created_at: string;
+}
+
+export interface AgentHealth {
+  queued: number;
+  running: number;
+  last_claim_at: string | null;
+  agent_stalled: boolean;
+  console_ok: boolean;
+}
+
+export async function getAgentHealth() {
+  const { data } = await api.get<AgentHealth>("/remote-access/health");
+  return data;
 }
 
 export interface RemoteDevicesResponse {

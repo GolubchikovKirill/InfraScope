@@ -14,6 +14,7 @@ __all__ = [
     "DeployJobPublic",
     "DeployJobsPublic",
     "DeployRequest",
+    "AgentHealth",
     "AgentJobClaim",
     "AgentJobReport",
     "AgentJobSecret",
@@ -41,8 +42,9 @@ class DevicePublic(BaseModel):
     media_player_id: uuid.UUID | None = None
     cash_register_id: uuid.UUID | None = None
     rustdesk_id: str | None = None
-    has_password: bool = False
+    has_password: bool = False  # InfraScope holds a password for this device
     password_rotated_at: datetime | None = None
+    password_confirmed_at: datetime | None = None  # an agent verified it on the box
     desired_hidden: bool
     desired_block_outgoing: bool
     desired_unattended: bool
@@ -50,10 +52,12 @@ class DevicePublic(BaseModel):
     deploy_state: str
     deploy_detail: str | None = None
     installed_version: str | None = None
-    online: bool | None = None
+    online: bool | None = None  # RustDesk console: client reachable via rendezvous
     logged_in_user: str | None = None
     last_ip: str | None = None
     last_seen_at: datetime | None = None
+    host_online: bool | None = None  # InfraScope: host answers a reachability probe
+    host_last_seen_at: datetime | None = None
     last_deployed_at: datetime | None = None
     last_error: str | None = None
     created_at: datetime
@@ -150,6 +154,16 @@ class DevicePrepareRequest(BaseModel):
 class DevicePrepareResult(BaseModel):
     device: DevicePublic
     job: DeployJobPublic | None = None
+
+
+class AgentHealth(BaseModel):
+    """Header strip on the page: is anything actually draining the queue."""
+
+    queued: int
+    running: int
+    last_claim_at: datetime | None = None
+    agent_stalled: bool = False
+    console_ok: bool = False  # RUSTDESK_API_TOKEN set and console answered
 
 
 # --------------------------------------------------------------------------- #

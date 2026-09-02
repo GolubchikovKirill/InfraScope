@@ -17,6 +17,7 @@ from app.domains.remote_access import rustdesk_client, service
 from app.domains.remote_access.models import RemoteAccessDeployJob, RemoteAccessDevice
 from app.domains.remote_access.schemas import (
     AddressBookUpsert,
+    AgentHealth,
     AgentJobClaim,
     AgentJobReport,
     AgentJobSecret,
@@ -159,6 +160,13 @@ def deploy(payload: DeployRequest, session: SessionDep, current_user: CurrentUse
         raise HTTPException(status_code=400, detail="deploy scope resolved to no devices")
     jobs = service.enqueue(session, devices, payload.action, created_by=current_user.email)
     return DeployJobsPublic(data=jobs, count=len(jobs))
+
+
+@router.get("/health", response_model=AgentHealth)
+def agent_health(session: SessionDep, current_user: CurrentUser) -> AgentHealth:
+    del current_user
+    h = service.agent_health(session)
+    return AgentHealth(**h, console_ok=rustdesk_client.enabled())
 
 
 @router.get("/jobs", response_model=DeployJobsPublic)

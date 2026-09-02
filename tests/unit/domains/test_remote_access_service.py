@@ -78,7 +78,7 @@ def test_seed_marks_till_that_is_also_a_computer_as_cash_register(db_session) ->
     assert dev.computer_id is not None and dev.cash_register_id is not None
 
 
-def test_refresh_status_from_inventory_fills_online_when_console_blind(db_session) -> None:
+def test_refresh_status_writes_host_online_not_rustdesk_online(db_session) -> None:
     polled = datetime.now(UTC) - timedelta(minutes=1)
     db_session.add(Computer(hostname="VNA-MGR-77", location="A1", is_online=True, last_polled_at=polled))
     db_session.commit()
@@ -87,10 +87,12 @@ def test_refresh_status_from_inventory_fills_online_when_console_blind(db_sessio
     touched = service.refresh_status_from_inventory(db_session)
     assert touched == 1
     dev = _dev(db_session, "VNA-MGR-77")
-    assert dev.online is True and dev.last_seen_at is not None
+    # inventory reachability lands on host_online; the RustDesk-console field stays untouched
+    assert dev.host_online is True and dev.host_last_seen_at is not None
+    assert dev.online is None and dev.last_seen_at is None
 
 
-def test_enqueue_first_deploy_mints_a_password_and_moves_to_installing(db_session) -> None:
+def test_enqueue_first_deploy_mints_password_and_moves_to_queued(db_session) -> None:
     dev = RemoteAccessDevice(hostname="VNA-MGR-901")
     db_session.add(dev)
     db_session.commit()
@@ -100,9 +102,75 @@ def test_enqueue_first_deploy_mints_a_password_and_moves_to_installing(db_sessio
     assert len(jobs) == 1
     db_session.refresh(dev)
     assert dev.permanent_password  # per-machine password minted
-    assert dev.deploy_state == "installing"
+    assert dev.deploy_state == "queued"  # nothing installing until an agent claims it
     assert jobs[0].action == "deploy"
     assert jobs[0].status == "queued"
+
+
+def test_claim_moves_device_from_queued_to_installing(db_session) -> None:
+    dev = RemoteAccessDevice(hostname="VNA-MGR-902", permanent_password="x")
+    db_session.add(dev)
+    db_session.commit()
+    service.enqueue(db_session, [dev], "deploy", created_by=None)
+    db_session.refresh(dev)
+    assert dev.deploy_state == "queued"
+
+    service.claim_next_job(db_session, "agent-1")
+    db_session.refresh(dev)
+    assert dev.deploy_state == "installing"
+
+
+def test_claim_prefers_deploy_over_rotate_for_the_same_device(db_session) -> None:
+    dev = RemoteAccessDevice(hostname="VNA-MGR-903", permanent_password="x")
+    db_session.add(dev)
+    db_session.commit()
+    # rotate queued first, deploy second - deploy must still go out first
+    service.enqueue(db_session, [dev], "rotate_password", created_by=None)
+    service.enqueue(db_session, [dev], "deploy", created_by=None)
+
+    first = service.claim_next_job(db_session, "agent-1")
+    assert first.action == "deploy"
+
+
+def test_two_agents_never_claim_the_same_job(db_session) -> None:
+    dev = RemoteAccessDevice(hostname="VNA-MGR-906", permanent_password="x")
+    db_session.add(dev)
+    db_session.commit()
+    service.enqueue(db_session, [dev], "deploy", created_by=None)
+
+    a = service.claim_next_job(db_session, "agent-a")
+    b = service.claim_next_job(db_session, "agent-b")
+    assert a is not None and b is None
+    assert a.claimed_by == "agent-a" and a.attempts == 1
+
+
+def test_reclaim_expires_jobs_no_agent_ever_claimed(db_session, monkeypatch) -> None:
+    from app.core.config import settings as _s
+
+    monkeypatch.setattr(_s, "RUSTDESK_JOB_QUEUED_TTL_HOURS", 24, raising=False)
+    dev = RemoteAccessDevice(hostname="VNA-MGR-904", permanent_password="x")
+    db_session.add(dev)
+    db_session.commit()
+    (job,) = service.enqueue(db_session, [dev], "deploy", created_by=None)
+    job.created_at = datetime.now(UTC) - timedelta(hours=48)
+    db_session.add(job)
+    db_session.commit()
+
+    assert service.reclaim_stale_jobs(db_session) == 1
+    db_session.refresh(job)
+    db_session.refresh(dev)
+    assert job.status == "failed" and "expired" in (job.result_detail or "")
+    assert dev.deploy_state == "failed"
+
+
+def test_agent_health_flags_stall_when_queue_and_no_claims(db_session) -> None:
+    dev = RemoteAccessDevice(hostname="VNA-MGR-905", permanent_password="x")
+    db_session.add(dev)
+    db_session.commit()
+    service.enqueue(db_session, [dev], "deploy", created_by=None)
+
+    h = service.agent_health(db_session)
+    assert h["queued"] == 1 and h["last_claim_at"] is None and h["agent_stalled"] is True
 
 
 def test_unmanaged_devices_are_skipped_by_enqueue(db_session) -> None:
@@ -126,7 +194,7 @@ def test_prepare_device_creates_links_sets_id_and_queues_deploy(db_session) -> N
     )
     assert dev.source_kind == "cash_register" and dev.cash_register_id is not None
     assert dev.rustdesk_id == "VNA_POS_07" and dev.permanent_password == "kentdful"
-    assert dev.deploy_state == "installing"
+    assert dev.deploy_state == "queued"
     assert job is not None and job.action == "deploy"
 
     # second call while the job is open returns that same job, mints nothing new
