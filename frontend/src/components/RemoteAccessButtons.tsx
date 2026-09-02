@@ -110,7 +110,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
             title="Установить и настроить RustDesk на этом устройстве"
           >
             <Rocket className={`h-4 w-4 ${prepareMut.isPending ? "animate-pulse" : ""}`} />
-            {rustId ? "Передеплой" : "Деплой RustDesk"}
+            {rustId ? "Задеплоить заново" : "Деплой RustDesk"}
           </button>
         )}
       </div>
@@ -165,7 +165,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
                 disabled={prepareMut.isPending}
                 className="app-btn-primary px-4 py-2 text-sm disabled:opacity-50"
               >
-                {rustId ? "Передеплоить" : "Задеплоить"}
+                {rustId ? "Задеплоить заново" : "Задеплоить"}
               </button>
             </div>
           </div>
