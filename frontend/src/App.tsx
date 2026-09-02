@@ -19,6 +19,7 @@ const UsersPage = lazy(() => import("./pages/Users"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const HonestSignPage = lazy(() => import("./pages/HonestSignPage"));
 const CamerasPage = lazy(() => import("./pages/CamerasPage"));
+const RemoteAccessPage = lazy(() => import("./pages/RemoteAccessPage"));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -64,6 +65,7 @@ function AnimatedRoutes() {
           <Route path="/honest-sign" element={<HonestSignPage />} />
           <Route path="/cameras" element={<CamerasPage />} />
           <Route path="/computers" element={<ComputersPage />} />
+          <Route path="/remote-access" element={<RemoteAccessPage />} />
           <Route path="/network-search" element={<NetworkSearchPage />} />
           <Route path="/onec" element={<OneCPage />} />
           <Route path="/qr-generator" element={<Navigate to="/onec" replace />} />

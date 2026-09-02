@@ -151,6 +151,21 @@ class Settings(BaseSettings):
     MEDIA_CLIENT_TOKEN: str = ""
     MEDIA_LIBRARY_DIR: str = "/var/lib/infrascope/media-library"
     MEDIA_LIBRARY_MAX_UPLOAD_MB: int = 1024
+
+    # Remote access (self-hosted RustDesk). The rustdesk-api console + hbbs/hbbr
+    # live outside this app (see ~/rustdesk on the deploy host); InfraScope wraps
+    # them: it proxies the console API behind its own auth and owns fleet
+    # deployment of the client via a Windows agent (RUSTDESK_DEPLOY_AGENT_TOKEN).
+    REMOTE_ACCESS_ENABLED: bool = False
+    RUSTDESK_API_URL: str = "http://10.10.99.24:21114"
+    RUSTDESK_API_TOKEN: str = ""  # long-lived token from the console (Admin -> API tokens)
+    RUSTDESK_ID_SERVER: str = "10.10.99.24"
+    RUSTDESK_RELAY_SERVER: str = "10.10.99.24"
+    RUSTDESK_KEY: str = ""  # hbbs public key (id_ed25519.pub); clients must match
+    RUSTDESK_INSTALLER_VERSION: str = "1.4.9"
+    RUSTDESK_DEPLOY_AGENT_TOKEN: str = ""  # shared secret for the Windows deploy agent
+    RUSTDESK_DEVICE_STALE_SECONDS: int = 300  # peer considered offline past this
+
     INTERNAL_SERVICE_TOKEN: str = ""
     INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0
     INTERNAL_HTTP_RETRIES: int = 1

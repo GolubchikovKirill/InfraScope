@@ -100,4 +100,16 @@ if settings.SWITCH_PORT_SNAPSHOT_ENABLED:
         }
     )
 
+if settings.REMOTE_ACCESS_ENABLED:
+    # Fold live RustDesk-console status into the managed-device rows every 2 min
+    # (the console peer list is cheap; no device is contacted here).
+    _beat_schedule.update(
+        {
+            "remote-access-sync": {
+                "task": "tasks.remote_access_sync",
+                "schedule": crontab(minute="*/2"),
+            },
+        }
+    )
+
 celery_app.conf.beat_schedule = _beat_schedule
