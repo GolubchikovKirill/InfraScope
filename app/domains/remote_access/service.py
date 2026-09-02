@@ -200,6 +200,7 @@ async def sync_from_console(session: Session) -> dict[str, int]:
     }
     now = _now()
     seen = 0
+    known_rids: set[str] = set(ab_online)
     for p in peers:
         info = p.get("info") or {}
         hostname = (info.get("device_name") or p.get("hostname") or "").strip()
@@ -207,6 +208,8 @@ async def sync_from_console(session: Session) -> dict[str, int]:
         if not hostname and not rid:
             continue
         seen += 1
+        if rid:
+            known_rids.add(rid)
         dev = _get_or_create_device(session, hostname or rid)
         _link_inventory(session, dev)
         if rid:
@@ -217,6 +220,14 @@ async def sync_from_console(session: Session) -> dict[str, int]:
         if online:
             dev.last_seen_at = now
         dev.updated_at = now
+
+    # anything the console has never registered is not a RustDesk client (yet) -
+    # clear stale `online` so the grid never claims an un-deployed box is on RustDesk
+    for dev in session.exec(select(RemoteAccessDevice).where(RemoteAccessDevice.online.is_not(None))):  # type: ignore[attr-defined]
+        if (dev.rustdesk_id or "") not in known_rids:
+            dev.online = None
+            dev.last_seen_at = None
+            dev.updated_at = now
     session.commit()
     return {"peers_seen": seen}
 
