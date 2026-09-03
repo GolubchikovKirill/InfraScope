@@ -522,9 +522,15 @@ def apply_deploy_report(
     os_caption: str | None = None,
 ) -> RemoteAccessDevice | None:
     """Record what the endpoint script says it did. Unknown hosts are ignored -
-    we never invent a device row from an unauthenticated-ish report."""
+    we never invent a device row from an unauthenticated-ish report.
+
+    Case-insensitive, same as _get_or_create_device: the script reports
+    $env:COMPUTERNAME, whose casing doesn't always match what inventory or an
+    earlier console sync stored - a mismatch here used to 404 deploy/config
+    (see the routes.py lookup) or silently drop the report right after.
+    """
     dev = session.exec(
-        select(RemoteAccessDevice).where(RemoteAccessDevice.hostname == hostname.strip())
+        select(RemoteAccessDevice).where(func.lower(RemoteAccessDevice.hostname) == hostname.strip().lower())
     ).first()
     if dev is None:
         logger.warning("rustdesk deploy report from unknown host %s", hostname)

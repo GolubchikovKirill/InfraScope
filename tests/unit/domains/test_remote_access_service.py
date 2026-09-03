@@ -374,6 +374,18 @@ def test_apply_deploy_report_records_what_the_endpoint_said(db_session) -> None:
     assert dev.deploy_state == "failed" and dev.deploy_detail == "msiexec exit 1603"
 
 
+def test_apply_deploy_report_matches_the_device_case_insensitively(db_session) -> None:
+    # inventory (or an earlier console sync) can hold a different casing than
+    # whatever $env:COMPUTERNAME the script reports - a mismatch here used to
+    # 404 the config fetch and then silently drop the report too
+    service.ensure_device(db_session, hostname="vna-tv-101")
+
+    dev = service.apply_deploy_report(db_session, hostname="VNA-TV-101", state="configured")
+    assert dev is not None
+    assert dev.hostname == "vna-tv-101"  # stored casing untouched
+    assert dev.deploy_state == "configured"
+
+
 def test_apply_deploy_report_ignores_hosts_we_do_not_track(db_session) -> None:
     # a report must never conjure a device row - that would let any caller with
     # the deploy token seed the fleet inventory

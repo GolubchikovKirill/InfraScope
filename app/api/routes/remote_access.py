@@ -412,10 +412,16 @@ def deploy_config(payload: DeployConfigRequest, session: SessionDep, request: Re
     """The endpoint asks what it should become.
 
     Only a known, managed device gets an answer - an unknown hostname must not be
-    able to fish the fleet password out of an unconfigured row.
+    able to fish the fleet password out of an unconfigured row. Case-insensitive
+    like every other hostname lookup here: $env:COMPUTERNAME's casing doesn't
+    always match what's stored (caught live as a 404 on machines whose casing
+    happened to differ - e.g. inventory said "vna-tv-101", COMPUTERNAME said
+    "VNA-TV-101").
     """
     dev = session.exec(
-        select(RemoteAccessDevice).where(RemoteAccessDevice.hostname == payload.hostname.strip())
+        select(RemoteAccessDevice).where(
+            func.lower(RemoteAccessDevice.hostname) == payload.hostname.strip().lower()
+        )
     ).first()
     if dev is None or not dev.managed:
         logger.warning(
