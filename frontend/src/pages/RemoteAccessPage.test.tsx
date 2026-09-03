@@ -4,6 +4,8 @@ import { vi } from "vitest";
 import type { RemoteDevice } from "../client";
 
 const api = vi.hoisted(() => ({
+  deleteRemoteDevice: vi.fn(),
+  ensureRustDeskDevice: vi.fn(),
   getConsoleConnections: vi.fn(),
   getRemoteDevices: vi.fn(),
   requestDeploy: vi.fn(),
@@ -204,5 +206,43 @@ describe("RemoteAccessPage", () => {
 
     fireEvent.change(select, { target: { value: "admin" } });
     await waitFor(() => expect(api.setDeviceProfile).toHaveBeenCalledWith("dev-1", "admin"));
+  });
+
+  it("deletes a device after confirmation", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [makeDevice()], count: 1 });
+    api.deleteRemoteDevice.mockResolvedValue({ message: "VNK-MGR-D1: удалено из удалённого доступа" });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderPage();
+    const row = (await screen.findByText("VNK-MGR-D1")).closest("tr")!;
+    fireEvent.click(within(row).getByTitle("Удалить из удалённого доступа"));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(api.deleteRemoteDevice).toHaveBeenCalledWith("dev-1"));
+  });
+
+  it("does not delete a device when the confirmation is declined", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [makeDevice()], count: 1 });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderPage();
+    const row = (await screen.findByText("VNK-MGR-D1")).closest("tr")!;
+    fireEvent.click(within(row).getByTitle("Удалить из удалённого доступа"));
+
+    expect(api.deleteRemoteDevice).not.toHaveBeenCalled();
+  });
+
+  it("adds a device by hostname from the header button", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [], count: 0 });
+    api.ensureRustDeskDevice.mockResolvedValue(makeDevice({ id: "dev-9", hostname: "VNA-KKM-9999" }));
+
+    renderPage();
+    fireEvent.click(await screen.findByText("Добавить устройство"));
+    fireEvent.change(screen.getByPlaceholderText("VNA-KKM-1507"), { target: { value: "VNA-KKM-9999" } });
+    fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
+
+    await waitFor(() =>
+      expect(api.ensureRustDeskDevice).toHaveBeenCalledWith({ hostname: "VNA-KKM-9999" }),
+    );
   });
 });

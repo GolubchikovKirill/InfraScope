@@ -12,10 +12,12 @@ import {
   Rocket,
   Terminal,
   Plus,
+  Trash2,
   X,
 } from "lucide-react";
 import { useAuth } from "../auth";
 import {
+  deleteRemoteDevice,
   ensureRustDeskDevice,
   getConsoleConnections,
   getRemoteDevices,
@@ -208,6 +210,15 @@ export default function RemoteAccessPage() {
           },
     );
   };
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteRemoteDevice(id),
+    onSuccess: (r) => {
+      showToast(r.message, "success");
+      invalidate();
+    },
+    onError: () => showToast("Не удалось удалить устройство", "error"),
+  });
 
   const addMut = useMutation({
     mutationFn: (hostname: string) => ensureRustDeskDevice({ hostname }),
@@ -512,6 +523,20 @@ export default function RemoteAccessPage() {
                                 onClick={() => abMut.mutate({ device_ids: [d.id] })}
                               >
                                 <BookUser className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="!px-2 !text-rose-600 hover:!bg-rose-50"
+                                title="Удалить из удалённого доступа"
+                                disabled={deleteMut.isPending}
+                                onClick={() => {
+                                  if (window.confirm(`Удалить ${d.hostname} из удалённого доступа?`)) {
+                                    deleteMut.mutate(d.id);
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </>
                           )}

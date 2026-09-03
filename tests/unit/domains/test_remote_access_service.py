@@ -164,6 +164,47 @@ def test_hostname_type_tag_reads_the_middle_segment_of_site_type_num_names() -> 
     assert service.hostname_type_tag("VNK-PROJECT03") is None
 
 
+def test_delete_device_removes_the_row_and_best_effort_cleans_up_its_book_entry(db_session, monkeypatch) -> None:
+    import asyncio
+
+    dev = service.ensure_device(db_session, hostname="VNA-JUNK-01", permanent_password="pw")
+    dev.ab_row_id = 42
+    dev.in_address_book = True
+    db_session.add(dev)
+    db_session.commit()
+    dev_id = dev.id
+
+    calls: list[tuple[int, str]] = []
+
+    async def fake_delete_row(*, row_id: int, peer_id: str) -> None:
+        calls.append((row_id, peer_id))
+
+    monkeypatch.setattr(service.rustdesk_client, "delete_address_book_row", fake_delete_row)
+
+    asyncio.run(service.delete_device(db_session, dev))
+
+    assert calls == [(42, dev.rustdesk_id)]
+    assert _dev(db_session, "VNA-JUNK-01") is None
+    assert db_session.get(RemoteAccessDevice, dev_id) is None
+
+
+def test_delete_device_still_drops_the_row_when_the_console_call_fails(db_session, monkeypatch) -> None:
+    import asyncio
+
+    dev = service.ensure_device(db_session, hostname="VNA-JUNK-02", permanent_password="pw")
+    dev.ab_row_id = 7
+    db_session.add(dev)
+    db_session.commit()
+
+    async def fake_delete_row(*, row_id: int, peer_id: str) -> None:
+        raise RuntimeError("console is down")
+
+    monkeypatch.setattr(service.rustdesk_client, "delete_address_book_row", fake_delete_row)
+
+    asyncio.run(service.delete_device(db_session, dev))  # must not raise
+    assert _dev(db_session, "VNA-JUNK-02") is None
+
+
 def test_sync_from_console_sets_online_only_for_devices_the_console_knows(db_session, monkeypatch) -> None:
     import asyncio
 

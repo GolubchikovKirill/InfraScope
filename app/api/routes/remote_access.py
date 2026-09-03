@@ -164,6 +164,23 @@ def rotate_password(device_id: uuid.UUID, session: SessionDep) -> DevicePublic:
     return _to_public(dev)
 
 
+@router.delete(
+    "/devices/{device_id}",
+    response_model=Message,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+async def delete_device(device_id: uuid.UUID, session: SessionDep) -> Message:
+    """Drops the device from remote-access management (best-effort removal
+    from the shared address book too). The inventory row it came from is
+    untouched - re-adding by hostname re-links it."""
+    dev = session.get(RemoteAccessDevice, device_id)
+    if not dev:
+        raise not_found("Device not found")
+    hostname = dev.hostname
+    await service.delete_device(session, dev)
+    return Message(message=f"{hostname}: удалено из удалённого доступа")
+
+
 @router.get(
     "/devices/{device_id}/package",
     response_model=PackageConfig,

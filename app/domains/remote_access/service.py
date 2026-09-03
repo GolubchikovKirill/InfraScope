@@ -410,6 +410,25 @@ def rotate_password(session: Session, dev: RemoteAccessDevice) -> RemoteAccessDe
     return dev
 
 
+async def delete_device(session: Session, dev: RemoteAccessDevice) -> None:
+    """Drop a device from remote-access management entirely.
+
+    Best-effort cleanup of its shared-book row first (a dead console token or
+    a row already removed there shouldn't block dropping our own record - the
+    row would just be orphaned, not catastrophic). Does not touch the
+    inventory row (Computer/CashRegister/MediaPlayer) it was linked from -
+    only the RustDesk-side tracking goes away; re-adding by hostname
+    (ensure_device) re-links it automatically.
+    """
+    if dev.ab_row_id and dev.rustdesk_id:
+        try:
+            await rustdesk_client.delete_address_book_row(row_id=dev.ab_row_id, peer_id=dev.rustdesk_id)
+        except Exception:
+            logger.warning("could not remove %s from the shared address book", dev.hostname, exc_info=True)
+    session.delete(dev)
+    session.commit()
+
+
 def package_config(dev: RemoteAccessDevice) -> dict:
     """Everything an offline KSC package needs for this machine.
 

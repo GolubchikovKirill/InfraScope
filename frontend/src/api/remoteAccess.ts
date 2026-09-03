@@ -104,6 +104,13 @@ export async function ensureRustDeskDevice(payload: {
   return data;
 }
 
+/** Drops the device from remote-access management (best-effort removal from
+ *  the shared address book too). The inventory row it came from is untouched. */
+export async function deleteRemoteDevice(id: string) {
+  const { data } = await api.delete<{ message: string }>(`/remote-access/devices/${id}`);
+  return data;
+}
+
 export async function rotateRemotePassword(id: string) {
   const { data } = await api.post<RemoteDevice>(`/remote-access/devices/${id}/rotate-password`);
   return data;
