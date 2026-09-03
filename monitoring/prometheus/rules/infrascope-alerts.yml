@@ -250,3 +250,12 @@ groups:
         annotations:
           summary: "Точка доступа не вернулась после автоперезагрузки"
           description: "За последние 12 часов минимум одна точка доступа не поднялась после планового PoE-цикла. Смотрите event_log (event_type=ap_auto_reboot_failed) для деталей по свитчу и порту."
+
+      - alert: RustDeskPortDown
+        expr: probe_success{job="rustdesk-ports"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RustDesk: порт {{ $labels.instance }} не отвечает"
+          description: "hbbs/hbbr/api живут в отдельном docker-compose проекте (~/rustdesk) без healthcheck внутри контейнера - blackbox-exporter не может открыть TCP-соединение с {{ $labels.instance }} более 2 минут. Это останавливает раскатку и подключения по всему парку."

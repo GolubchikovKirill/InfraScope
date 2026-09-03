@@ -500,6 +500,19 @@ services:
     networks:
       - internal
 
+  # TCP-probes the RustDesk stack's ports (hbbs/hbbr have no shell to run an
+  # in-container HEALTHCHECK against at all - see docs/remote-access-audit-2026-09.md
+  # MED-3). ~/rustdesk is a separate compose project on its own bridge network,
+  # but publishes these ports to the host, and `internal` is a plain bridge
+  # (not `internal: true`), so this can reach 10.10.99.24 same as any other host.
+  blackbox-exporter:
+    image: ${BLACKBOX_EXPORTER_IMAGE:-prom/blackbox-exporter:latest}
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - internal
+
   grafana:
     image: ${GRAFANA_IMAGE:-grafana/grafana-oss:latest}
     restart: unless-stopped

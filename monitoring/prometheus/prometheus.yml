@@ -49,3 +49,26 @@ scrape_configs:
   - job_name: infrascope-service-catalog
     file_sd_configs:
       - files: ["/etc/prometheus/rules/service-targets.json"]
+
+  # hbbs/hbbr/api are a separate compose project (~/rustdesk) with no shell to
+  # run an in-container HEALTHCHECK against - see
+  # docs/remote-access-audit-2026-09.md MED-3. TCP-probed via blackbox-exporter
+  # against the host's own published ports instead.
+  - job_name: rustdesk-ports
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    static_configs:
+      - targets:
+          - "10.10.99.24:21114" # api (console)
+          - "10.10.99.24:21116" # hbbs (id server)
+          - "10.10.99.24:21117" # hbbr (relay)
+        labels:
+          job_label: rustdesk-ports
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
