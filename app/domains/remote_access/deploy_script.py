@@ -91,8 +91,17 @@ def deploy_command(api_prefix: str = "/api/v1") -> str:
     gives no hint it's a cert problem, not a network one. Verified live
     against a real fleet machine (VNA-MGR-15) before this fix was added: the
     trigger died before the downloaded script ever got a chance to run, so no
-    log, no report - just silence. TLS1.2 + a certificate bypass, same trust
-    model as the `curl -k` used to smoke-test this server, fixes it.
+    log, no report - just silence. TLS1.2 fixes the protocol half of that.
+
+    The cert half used to be `ServerCertificateValidationCallback = {$true}` -
+    unconditional trust, so anything able to answer on 443 as this host's
+    address (ARP/DNS spoofing on the LAN) could hand the endpoint arbitrary
+    PowerShell to run as SYSTEM. Pinned to RUSTDESK_TLS_FINGERPRINT instead:
+    the callback checks the presented cert's own SHA1 thumbprint, not the
+    chain - same trust model as `curl -k`'s cousin `curl --pinnedpubkey`,
+    appropriate for a cert with no CA behind it in the first place. Empty
+    fingerprint falls back to normal validation (fails safe against this
+    self-signed cert, doesn't silently reopen the bypass).
 
     Everything is wrapped in one try/catch that logs locally on failure - this
     line runs *before* the downloaded script's own logging exists, so without
@@ -107,11 +116,23 @@ def deploy_command(api_prefix: str = "/api/v1") -> str:
     The catch block detects this exact failure shape and says so.
     """
     url = f"{public_url()}{api_prefix}/remote-access/deploy/bootstrap.ps1"
+    # Pin the exact cert, don't just skip the chain check - an empty fingerprint
+    # means "not configured", which falls back to normal (strict) validation
+    # rather than trusting whatever's presented.
+    cert_check = (
+        (
+            "[Net.ServicePointManager]::ServerCertificateValidationCallback="
+            "{param($se,$ce,$ch,$er) $ce.GetCertHashString() -eq "
+            f"'{settings.RUSTDESK_TLS_FINGERPRINT}'}};"
+        )
+        if settings.RUSTDESK_TLS_FINGERPRINT
+        else ""
+    )
     return (
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
         '"$ErrorActionPreference=\'Stop\'; try{'
         "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;"
-        "[Net.ServicePointManager]::ServerCertificateValidationCallback={$true};"
+        f"{cert_check}"
         "$c=New-Object Net.WebClient; "
         f"$c.Headers.Add('X-InfraScope-Deploy-Token','{settings.RUSTDESK_DEPLOY_TOKEN}'); "
         f"iex $c.DownloadString('{url}')"

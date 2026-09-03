@@ -346,6 +346,22 @@ def _deploy_ready() -> bool:
     return bool(settings.RUSTDESK_DEPLOY_TOKEN.strip() and settings.RUSTDESK_PUBLIC_URL.strip())
 
 
+def _client_ip(request: Request) -> str | None:
+    """The real caller's address, not `request.client.host`.
+
+    nginx sits in front of the backend (see frontend/nginx.conf) and uvicorn
+    is not started with --proxy-headers, so request.client.host is always the
+    frontend container's own docker-network address - useless for telling one
+    endpoint apart from another. nginx does set X-Real-IP to $remote_addr on
+    every proxied request; that's the one worth reading. Falls back to
+    request.client.host for a direct (no-nginx) call, e.g. in tests.
+    """
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else None
+
+
 def require_deploy_token(
     request: Request,
     x_infrascope_deploy_token: str | None = Header(default=None),
@@ -359,7 +375,7 @@ def require_deploy_token(
     if not expected:
         raise HTTPException(status_code=503, detail="rollout is not configured (RUSTDESK_DEPLOY_TOKEN)")
     if not x_infrascope_deploy_token or not hmac.compare_digest(x_infrascope_deploy_token, expected):
-        logger.warning("rustdesk deploy call with a bad token from %s", request.client.host if request.client else "?")
+        logger.warning("rustdesk deploy call with a bad token from %s", _client_ip(request))
         raise HTTPException(status_code=401, detail="invalid deploy token")
 
 
@@ -417,7 +433,12 @@ def deploy_config(payload: DeployConfigRequest, session: SessionDep, request: Re
     always match what's stored (caught live as a 404 on machines whose casing
     happened to differ - e.g. inventory said "vna-tv-101", COMPUTERNAME said
     "VNA-TV-101").
+
+    Beyond that: the caller must actually *be* the device it's asking about
+    (service.verify_deploy_source) - the deploy token alone used to be enough
+    to fetch any managed machine's password, from any machine holding it.
     """
+    client_ip = _client_ip(request)
     dev = session.exec(
         select(RemoteAccessDevice).where(
             func.lower(RemoteAccessDevice.hostname) == payload.hostname.strip().lower()
@@ -427,14 +448,19 @@ def deploy_config(payload: DeployConfigRequest, session: SessionDep, request: Re
         logger.warning(
             "rustdesk deploy config for unknown/unmanaged host %s from %s",
             payload.hostname,
-            request.client.host if request.client else "?",
+            client_ip,
         )
         raise not_found("Device not found")
-    logger.info(
-        "rustdesk deploy config served for %s to %s",
-        dev.hostname,
-        request.client.host if request.client else "?",
-    )
+    if not service.verify_deploy_source(dev, client_ip):
+        logger.warning(
+            "rustdesk deploy config for %s refused - request from %s does not match "
+            "its known address (last_ip=%s)",
+            dev.hostname,
+            client_ip,
+            dev.last_ip,
+        )
+        raise not_found("Device not found")
+    logger.info("rustdesk deploy config served for %s to %s", dev.hostname, client_ip)
     return DeploymentConfig(**service.deployment_config(dev))
 
 

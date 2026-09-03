@@ -193,6 +193,15 @@ class Settings(BaseSettings):
     RUSTDESK_DEPLOY_TOKEN: str = ""
     # How an endpoint reaches this API, e.g. http://10.10.99.24:8000
     RUSTDESK_PUBLIC_URL: str = ""
+    # SHA1 thumbprint (uppercase, no separators - .NET X509Certificate.GetCertHashString()
+    # format) of RUSTDESK_PUBLIC_URL's TLS certificate. There is no public CA behind it
+    # (LAN-only, no public IP), so the bootstrap one-liner (deploy_script.deploy_command)
+    # can't use normal chain validation - it pins this exact fingerprint instead of
+    # trusting whatever cert is presented. Empty falls back to normal (strict) validation,
+    # which fails against the self-signed cert until this is set - a safe failure, not a
+    # silent bypass. Get the current one with:
+    #   openssl s_client -connect <host>:443 -servername <host> </dev/null | openssl x509 -noout -fingerprint -sha1
+    RUSTDESK_TLS_FINGERPRINT: str = "278E05F8AF0AEECE0002C52CFD378C170FF5E513"
 
     INTERNAL_SERVICE_TOKEN: str = ""
     INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0

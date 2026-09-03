@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import socket
 import string
 import uuid
 from datetime import UTC, datetime
@@ -470,6 +471,40 @@ def package_config(dev: RemoteAccessDevice) -> dict:
 # --------------------------------------------------------------------------- #
 # rollout                                                                     #
 # --------------------------------------------------------------------------- #
+def _resolve_hostname_ip(hostname: str) -> str | None:
+    """Best-effort forward DNS lookup. None on any failure (NXDOMAIN, no DNS
+    reachable, ...) - the caller treats that as "no signal", not as a pass."""
+    try:
+        return socket.gethostbyname(hostname)
+    except OSError:
+        return None
+
+
+def verify_deploy_source(dev: RemoteAccessDevice, client_ip: str | None) -> bool:
+    """Is this /deploy/config request coming from the machine it claims to be?
+
+    The deploy token is one shared secret handed to every endpoint - anything
+    holding it (a leftover bootstrap script, say) can otherwise ask for *any*
+    managed device's row and walk off with its permanent_password. Caught
+    live: a stale trigger script left behind after a rollout could fetch a
+    different machine's password with a plain curl.
+
+    Two independent signals, either is enough: `last_ip` (what the RustDesk
+    console actually saw this device connect from - not available before its
+    very first successful config fetch) or a forward DNS lookup of its own
+    hostname (works for the first fetch too, on a domain with working DNS).
+    No signal at all is refused, not waved through - a device this fleet has
+    literally never observed and can't resolve is exactly the case a stolen
+    token would produce.
+    """
+    if not client_ip:
+        return False
+    if dev.last_ip and client_ip == dev.last_ip:
+        return True
+    resolved = _resolve_hostname_ip(dev.hostname)
+    return bool(resolved and resolved == client_ip)
+
+
 def deployment_config(dev: RemoteAccessDevice) -> dict:
     """What the endpoint script fetches for itself at run time.
 

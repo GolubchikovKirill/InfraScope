@@ -386,6 +386,51 @@ def test_apply_deploy_report_matches_the_device_case_insensitively(db_session) -
     assert dev.deploy_state == "configured"
 
 
+def test_verify_deploy_source_accepts_a_matching_last_ip(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-510")
+    dev.last_ip = "10.10.99.10"
+    assert service.verify_deploy_source(dev, "10.10.99.10") is True
+
+
+def test_verify_deploy_source_falls_back_to_dns_when_last_ip_is_unset(db_session, monkeypatch) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-511")
+    assert dev.last_ip is None
+    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.11" if h == "VNA-MGR-511" else None)
+    assert service.verify_deploy_source(dev, "10.10.99.11") is True
+
+
+def test_verify_deploy_source_prefers_last_ip_over_a_stale_dns_record(db_session, monkeypatch) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-512")
+    dev.last_ip = "10.10.99.12"
+    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.254")
+    assert service.verify_deploy_source(dev, "10.10.99.12") is True
+
+
+def test_verify_deploy_source_refuses_a_mismatched_caller(db_session, monkeypatch) -> None:
+    # the actual attack this guards against: a stolen/leftover deploy token
+    # used from some other machine to ask for this device's row
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-513")
+    dev.last_ip = "10.10.99.13"
+    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.13")
+    assert service.verify_deploy_source(dev, "10.10.99.66") is False
+
+
+def test_verify_deploy_source_refuses_with_no_signal_at_all(db_session, monkeypatch) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-514")
+    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: None)
+    assert service.verify_deploy_source(dev, "10.10.99.14") is False
+
+
+def test_verify_deploy_source_refuses_when_the_caller_ip_is_unknown(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-515")
+    dev.last_ip = "10.10.99.15"
+    assert service.verify_deploy_source(dev, None) is False
+
+
+def test_resolve_hostname_ip_returns_none_on_failure() -> None:
+    assert service._resolve_hostname_ip("this-host-does-not-exist.invalid") is None
+
+
 def test_apply_deploy_report_ignores_hosts_we_do_not_track(db_session) -> None:
     # a report must never conjure a device row - that would let any caller with
     # the deploy token seed the fleet inventory
@@ -602,6 +647,37 @@ def test_deploy_command_bypasses_the_self_signed_cert_before_downloading(monkeyp
     webclient = cmd.index("New-Object Net.WebClient")
     assert bypass < webclient
     assert "SecurityProtocolType]::Tls12" in cmd
+
+
+def test_deploy_command_pins_the_configured_fingerprint(monkeypatch) -> None:
+    """Unconditional trust ({$true}) let anything answering on 443 as this
+    host's address hand the endpoint arbitrary PowerShell to run as SYSTEM.
+    The callback must check the presented cert's own thumbprint, not wave
+    every cert through."""
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "https://10.10.99.24")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "s3cr3t")
+    monkeypatch.setattr(settings, "RUSTDESK_TLS_FINGERPRINT", "DEADBEEF00112233445566778899AABBCCDDEEFF")
+
+    cmd = deploy_script.deploy_command()
+    assert "{$true}" not in cmd
+    assert "GetCertHashString() -eq 'DEADBEEF00112233445566778899AABBCCDDEEFF'" in cmd
+
+
+def test_deploy_command_falls_back_to_normal_validation_when_unpinned(monkeypatch) -> None:
+    """No fingerprint configured must not silently reopen the {$true} bypass -
+    it should fail safe (normal cert validation, which rejects the self-signed
+    cert) rather than trust whatever's presented."""
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "https://10.10.99.24")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "s3cr3t")
+    monkeypatch.setattr(settings, "RUSTDESK_TLS_FINGERPRINT", "")
+
+    cmd = deploy_script.deploy_command()
+    assert "ServerCertificateValidationCallback" not in cmd
+    assert "{$true}" not in cmd
 
 
 def test_deploy_command_logs_locally_when_the_bootstrap_fetch_itself_fails(monkeypatch) -> None:
