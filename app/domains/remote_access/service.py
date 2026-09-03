@@ -735,10 +735,31 @@ async def sync_accounts(session: Session) -> dict[str, int]:
 # --------------------------------------------------------------------------- #
 # shared address book                                                         #
 # --------------------------------------------------------------------------- #
+def hostname_type_tag(hostname: str) -> str | None:
+    """The role token out of a `<SITE>-<TYPE>-<NUM>` hostname, e.g.
+    VNA-KKM-1506 -> "KKM", VNK-MGR-D01 -> "MGR", VNA-SRV-LMG01 -> "SRV".
+
+    This is finer-grained than `source_kind` (TV and MUZ nettops are both
+    "media_player" there) and needs no per-device maintenance - it rides on
+    the naming convention the fleet already uses, so the shared address book
+    can be filtered by role in the console's own tag view. Names that don't
+    fit (fewer than three '-'-separated parts, e.g. a bare serial like
+    HPI2E8F25) are left untagged rather than guessed at.
+    """
+    parts = hostname.split("-")
+    if len(parts) < 3:
+        return None
+    token = parts[1].strip().upper()
+    return token or None
+
+
 def _ab_payload(dev: RemoteAccessDevice, *, collection_id: int, owner_id: int) -> dict:
     tags = [dev.source_kind]
     if dev.location:
         tags.append(dev.location)
+    type_tag = hostname_type_tag(dev.hostname)
+    if type_tag and type_tag not in tags:
+        tags.append(type_tag)
     return {
         "id": dev.rustdesk_id or _hostname_to_rid(dev.hostname),
         "alias": dev.hostname,

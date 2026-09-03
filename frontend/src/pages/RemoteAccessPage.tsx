@@ -11,9 +11,12 @@ import {
   Copy,
   Rocket,
   Terminal,
+  Plus,
+  X,
 } from "lucide-react";
 import { useAuth } from "../auth";
 import {
+  ensureRustDeskDevice,
   getConsoleConnections,
   getRemoteDevices,
   requestDeploy,
@@ -82,7 +85,10 @@ export default function RemoteAccessPage() {
   const debouncedQ = useDebouncedValue(q, 300);
   const [location, setLocation] = useState("");
   const [kind, setKind] = useState<"" | SourceKind>("");
+  const [typeTag, setTypeTag] = useState("");
   const [deployModalOpen, setDeployModalOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addHostname, setAddHostname] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["remote-devices", debouncedQ, location, kind],
@@ -111,15 +117,25 @@ export default function RemoteAccessPage() {
     () => Array.from(new Set(rows.map((r) => r.location).filter((x): x is string => !!x))).sort(),
     [rows],
   );
+  // role token off the hostname (KKM/MGR/TV/MUZ/SRV/...) - see service.hostname_type_tag.
+  // No backend filter for this yet, so it narrows client-side like the other dropdowns.
+  const typeTags = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.type_tag).filter((x): x is string => !!x))).sort(),
+    [rows],
+  );
+  const visibleRows = useMemo(
+    () => (typeTag ? rows.filter((r) => r.type_tag === typeTag) : rows),
+    [rows, typeTag],
+  );
   const summary = useMemo(
     () => ({
-      total: rows.length,
-      ready: rows.filter((r) => r.readiness === "ready").length,
-      inBook: rows.filter((r) => r.in_address_book).length,
-      noId: rows.filter((r) => !r.rustdesk_id).length,
-      applockerMismatch: rows.filter((r) => r.applocker_mismatch).length,
+      total: visibleRows.length,
+      ready: visibleRows.filter((r) => r.readiness === "ready").length,
+      inBook: visibleRows.filter((r) => r.in_address_book).length,
+      noId: visibleRows.filter((r) => !r.rustdesk_id).length,
+      applockerMismatch: visibleRows.filter((r) => r.applocker_mismatch).length,
     }),
-    [rows],
+    [visibleRows],
   );
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["remote-devices"] });
@@ -177,13 +193,32 @@ export default function RemoteAccessPage() {
   });
 
   const bulkAb = () => {
-    const scope = [kind ? KIND[kind].label : null, location].filter(Boolean).join(" / ") || "все управляемые";
+    const scope =
+      [kind ? KIND[kind].label : null, location, typeTag].filter(Boolean).join(" / ") || "все управляемые";
     if (!window.confirm(`Протолкнуть в общую книгу адресов: ${scope}?`)) return;
-    abMut.mutate({
-      ...(location ? { location } : {}),
-      ...(kind ? { source_kind: kind } : {}),
-    });
+    // the console has no type_tag filter of its own - when one is picked, push
+    // exactly the rows the table is showing instead (default page size already
+    // covers the whole fleet, so this isn't a narrower set than the server would give)
+    abMut.mutate(
+      typeTag
+        ? { device_ids: visibleRows.map((r) => r.id) }
+        : {
+            ...(location ? { location } : {}),
+            ...(kind ? { source_kind: kind } : {}),
+          },
+    );
   };
+
+  const addMut = useMutation({
+    mutationFn: (hostname: string) => ensureRustDeskDevice({ hostname }),
+    onSuccess: (dev) => {
+      showToast(`${dev.hostname}: добавлен в удалённый доступ`, "success");
+      invalidate();
+      setAddOpen(false);
+      setAddHostname("");
+    },
+    onError: () => showToast("Не удалось добавить устройство", "error"),
+  });
 
   const copyId = (id: string) => {
     navigator.clipboard?.writeText(id).then(
@@ -274,11 +309,30 @@ export default function RemoteAccessPage() {
                   </option>
                 ))}
               </select>
+              <select
+                className="app-input px-3 py-2 text-sm text-slate-700"
+                value={typeTag}
+                onChange={(e) => setTypeTag(e.target.value)}
+                title="Тип по имени хоста: VNA-KKM-1506 -> KKM"
+              >
+                <option value="">Все типы</option>
+                {typeTags.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
               <div className="ml-auto flex gap-2">
                 <Button variant="secondary" onClick={() => syncMut.mutate()} disabled={syncMut.isPending}>
                   <RefreshCw className={`mr-1 h-4 w-4 ${syncMut.isPending ? "animate-spin" : ""}`} />
                   Синхронизировать
                 </Button>
+                {isSuperuser && (
+                  <Button variant="secondary" onClick={() => setAddOpen(true)}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Добавить устройство
+                  </Button>
+                )}
                 {isSuperuser && (
                   <Button variant="secondary" onClick={() => setDeployModalOpen(true)}>
                     <Terminal className="mr-1 h-4 w-4" />
@@ -289,8 +343,8 @@ export default function RemoteAccessPage() {
                   <Button onClick={bulkAb} disabled={abMut.isPending || consoleDown}>
                     <BookUser className="mr-1 h-4 w-4" />
                     В книгу адресов
-                    {location || kind
-                      ? ` · ${[kind ? KIND[kind].label : null, location].filter(Boolean).join(" / ")}`
+                    {location || kind || typeTag
+                      ? ` · ${[kind ? KIND[kind].label : null, location, typeTag].filter(Boolean).join(" / ")}`
                       : ""}
                   </Button>
                 )}
@@ -304,6 +358,7 @@ export default function RemoteAccessPage() {
                     <th>Хост</th>
                     <th>RustDesk ID</th>
                     <th>Класс</th>
+                    <th>Тип</th>
                     <th>Точка</th>
                     <th>Готовность</th>
                     <th>Пароль</th>
@@ -314,12 +369,12 @@ export default function RemoteAccessPage() {
                 <tbody>
                   {isLoading && (
                     <tr>
-                      <td colSpan={8} className="py-10 text-center text-gray-400">
+                      <td colSpan={9} className="py-10 text-center text-gray-400">
                         Загрузка…
                       </td>
                     </tr>
                   )}
-                  {rows.map((d) => (
+                  {visibleRows.map((d) => (
                     <tr key={d.id}>
                       <td className="font-medium text-slate-800">{d.hostname}</td>
                       <td>
@@ -342,6 +397,9 @@ export default function RemoteAccessPage() {
                       </td>
                       <td>
                         <Badge tone={KIND[d.source_kind].tone}>{KIND[d.source_kind].short}</Badge>
+                      </td>
+                      <td>
+                        {d.type_tag ? <Badge>{d.type_tag}</Badge> : <span className="text-gray-400">—</span>}
                       </td>
                       <td>{d.location ?? "—"}</td>
                       <td>
@@ -461,10 +519,12 @@ export default function RemoteAccessPage() {
                       </td>
                     </tr>
                   ))}
-                  {!isLoading && rows.length === 0 && (
+                  {!isLoading && visibleRows.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-10 text-center text-gray-400">
-                        Нет устройств. Нажмите «Синхронизировать».
+                      <td colSpan={9} className="py-10 text-center text-gray-400">
+                        {rows.length === 0
+                          ? "Нет устройств. Нажмите «Синхронизировать»."
+                          : "Ничего не подходит под выбранный тип."}
                       </td>
                     </tr>
                   )}
@@ -531,6 +591,50 @@ export default function RemoteAccessPage() {
       )}
 
       <DeployCommandModal open={deployModalOpen} onClose={() => setDeployModalOpen(false)} />
+
+      {addOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="app-panel w-full max-w-md space-y-4 p-5">
+            <div className="flex items-start justify-between">
+              <h2 className="text-base font-semibold text-slate-900">Добавить устройство</h2>
+              <button onClick={() => setAddOpen(false)} className="text-slate-400 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Заводит устройство под удалённый доступ по имени хоста — привязывается к инвентарю,
+              если хост там уже есть, но работает и для хоста, которого там нет. ID и пароль
+              InfraScope сгенерирует сам; поменять их можно после, кнопкой «Настроить». В книгу
+              адресов новое устройство попадёт при следующем «В книгу адресов».
+            </p>
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-600">Hostname</span>
+              <input
+                autoFocus
+                className="app-input w-full px-3 py-2 text-sm"
+                value={addHostname}
+                onChange={(e) => setAddHostname(e.target.value)}
+                placeholder="VNA-KKM-1507"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && addHostname.trim()) addMut.mutate(addHostname.trim());
+                }}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setAddOpen(false)} className="app-btn-secondary px-4 py-2 text-sm">
+                Отмена
+              </button>
+              <button
+                onClick={() => addMut.mutate(addHostname.trim())}
+                disabled={addMut.isPending || !addHostname.trim()}
+                className="app-btn-primary px-4 py-2 text-sm disabled:opacity-50"
+              >
+                Добавить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

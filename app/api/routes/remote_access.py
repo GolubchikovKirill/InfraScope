@@ -57,6 +57,7 @@ logger = logging.getLogger(__name__)
 def _to_public(dev: RemoteAccessDevice) -> DevicePublic:
     data = DevicePublic.model_validate(dev)
     data.has_password = bool(dev.permanent_password)
+    data.type_tag = service.hostname_type_tag(dev.hostname)
     data.readiness = service.readiness(dev)
     # only flag a real mismatch: we asked for the lockdown AND know (not
     # "maybe") that this edition can't enforce it

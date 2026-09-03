@@ -143,11 +143,25 @@ def test_ab_payload_carries_tags_and_the_peer_password(db_session) -> None:
     entry = service._ab_payload(dev, collection_id=7, owner_id=1)
     assert entry["id"] == "VNA_POS_03"
     assert entry["alias"] == "VNA-POS-03"
-    assert entry["tags"] == ["cash_register", "003"]
+    # source_kind, store location, then the hostname's own role token (POS)
+    assert entry["tags"] == ["cash_register", "003", "POS"]
     # a shared-book row stores the password in `password` (personal books use `hash`),
     # which is what lets an engineer connect without typing anything
     assert entry["password"] == "kentdful"
     assert entry["collection_id"] == 7 and entry["user_id"] == 1
+
+
+def test_hostname_type_tag_reads_the_middle_segment_of_site_type_num_names() -> None:
+    assert service.hostname_type_tag("VNA-KKM-1506") == "KKM"
+    assert service.hostname_type_tag("VNK-MGR-D01") == "MGR"
+    assert service.hostname_type_tag("VNA-TV-1301") == "TV"
+    assert service.hostname_type_tag("VNA-MUZ-2601") == "MUZ"
+    assert service.hostname_type_tag("VNK-SRV-LMG01") == "SRV"
+    assert service.hostname_type_tag("vna-mgr-15") == "MGR"  # case-insensitive
+    # a bare serial-like name has no site/type/num shape - left untagged
+    assert service.hostname_type_tag("HPI2E8F25") is None
+    # two segments only ("VNK-PROJECT03") - no reliable middle token either
+    assert service.hostname_type_tag("VNK-PROJECT03") is None
 
 
 def test_sync_from_console_sets_online_only_for_devices_the_console_knows(db_session, monkeypatch) -> None:

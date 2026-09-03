@@ -22,6 +22,7 @@ const device: RemoteDevice = {
   hostname: "VNK-MGR-D1",
   location: "A1",
   source_kind: "computer",
+  type_tag: null,
   computer_id: null,
   media_player_id: null,
   cash_register_id: null,

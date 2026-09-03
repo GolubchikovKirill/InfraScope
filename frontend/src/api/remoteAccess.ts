@@ -25,6 +25,10 @@ export interface RemoteDevice {
   hostname: string;
   location: string | null;
   source_kind: SourceKind;
+  /** Role token read off the hostname (VNA-KKM-1506 -> "KKM"), same as the
+   *  extra tag pushed into the shared address book. Null if the hostname
+   *  doesn't fit the `<SITE>-<TYPE>-<NUM>` convention. */
+  type_tag: string | null;
   computer_id: string | null;
   media_player_id: string | null;
   cash_register_id: string | null;

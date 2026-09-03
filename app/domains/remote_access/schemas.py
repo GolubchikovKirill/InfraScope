@@ -54,6 +54,10 @@ class DevicePublic(BaseModel):
     hostname: str
     location: str | None = None
     source_kind: str = "computer"
+    # role token read off the hostname itself (VNA-KKM-1506 -> "KKM") - the
+    # same one that lands as an extra tag in the shared address book, see
+    # service.hostname_type_tag. None for names that don't fit the pattern.
+    type_tag: str | None = None
     computer_id: uuid.UUID | None = None
     media_player_id: uuid.UUID | None = None
     cash_register_id: uuid.UUID | None = None
