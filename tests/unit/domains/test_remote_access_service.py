@@ -115,6 +115,25 @@ def test_sync_from_console_does_not_revive_a_soft_deleted_device(db_session, mon
     assert _dev(db_session, "VNA-MGR-79").managed is False
 
 
+def test_sync_from_console_never_creates_a_device_for_an_untracked_peer(db_session, monkeypatch) -> None:
+    # the console's peer list is everything that has ever connected - an
+    # engineer's own laptop logged in to drive the shared book is a peer
+    # too, not just the fleet endpoints seed_from_inventory put here on
+    # purpose. Caught live: a personal machine ("macbook-pro") connecting
+    # over VPN got minted as a managed=True device, generated password,
+    # pushed to the shared book, the works.
+    import asyncio
+
+    async def fake_peers():
+        return [{"id": "210466452", "hostname": "macbook-pro", "version": "1.4.9"}]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    res = asyncio.run(service.sync_from_console(db_session))
+
+    assert res["peers_seen"] == 1  # saw it, didn't adopt it
+    assert _dev(db_session, "macbook-pro") is None
+
+
 def test_seed_marks_till_that_is_also_a_computer_as_cash_register(db_session) -> None:
     db_session.add(Computer(hostname="VNA-POS-09", location="Z1"))
     db_session.add(CashRegister(kkm_number="K9", hostname="VNA-POS-09", store_number="042"))

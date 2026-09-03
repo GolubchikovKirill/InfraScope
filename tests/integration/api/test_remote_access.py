@@ -96,3 +96,29 @@ def test_list_devices_hides_soft_deleted_ones_by_default(client, db_session, use
         headers={"Authorization": f"Bearer {user_token}"},
     )
     assert {d["hostname"] for d in resp.json()["data"]} == {"VNA-MGR-901", "VNA-MGR-902"}
+
+
+# The `client` fixture (see conftest.py) monkeypatches slowapi's own check to a
+# no-op for every test - these two just confirm the rate-limit decorator
+# (which requires a `request: Request` param the routes didn't take before)
+# didn't break the routes it was added to.
+def test_deploy_bootstrap_still_works_with_the_rate_limit_decorator(client, monkeypatch):
+    _configure_deploy(monkeypatch)
+    resp = client.get(
+        "/api/v1/remote-access/deploy/bootstrap.ps1",
+        headers={"X-InfraScope-Deploy-Token": "s3cr3t"},
+    )
+    assert resp.status_code == 200
+    assert "InfraScope" in resp.text
+
+
+def test_deploy_report_still_works_with_the_rate_limit_decorator(client, db_session, monkeypatch):
+    _configure_deploy(monkeypatch)
+    service.ensure_device(db_session, hostname="VNA-MGR-505")
+
+    resp = client.post(
+        "/api/v1/remote-access/deploy/report",
+        json={"hostname": "VNA-MGR-505", "state": "configured"},
+        headers={"X-InfraScope-Deploy-Token": "s3cr3t"},
+    )
+    assert resp.status_code == 200

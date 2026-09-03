@@ -150,17 +150,24 @@ def default_password() -> str:
 # --------------------------------------------------------------------------- #
 # device inventory sync                                                       #
 # --------------------------------------------------------------------------- #
-def _get_or_create_device(session: Session, hostname: str) -> RemoteAccessDevice:
-    """Windows hostnames are case-insensitive - VNA-MGR-101 and vna-mgr-101 are
-    the same machine, whether InfraScope's own inventory or a RustDesk client's
-    self-reported hostname (sync_from_console) spells it. Matching case-sensitively
-    here used to mint a second, permanently "pending" row for every device whose
-    console-reported casing didn't exactly match inventory's - caught live: 22
-    such duplicates on one sync pass. Keeps whichever casing was seen first."""
+def _find_device(session: Session, hostname: str) -> RemoteAccessDevice | None:
+    """Case-insensitive lookup, no creation. Windows hostnames are
+    case-insensitive - VNA-MGR-101 and vna-mgr-101 are the same machine,
+    whether InfraScope's own inventory or a RustDesk client's self-reported
+    hostname (sync_from_console) spells it. Matching case-sensitively here
+    used to mint a second, permanently "pending" row for every device whose
+    console-reported casing didn't exactly match inventory's - caught live:
+    22 such duplicates on one sync pass."""
     host = hostname.strip()
-    dev = session.exec(
+    return session.exec(
         select(RemoteAccessDevice).where(func.lower(RemoteAccessDevice.hostname) == host.lower())
     ).first()
+
+
+def _get_or_create_device(session: Session, hostname: str) -> RemoteAccessDevice:
+    """Keeps whichever casing was seen first - see _find_device."""
+    host = hostname.strip()
+    dev = _find_device(session, host)
     if dev:
         return dev
     dev = RemoteAccessDevice(
@@ -175,30 +182,73 @@ def _cr_location(cr: CashRegister) -> str | None:
     return cr.store_number or cr.store_code or None
 
 
-def _link_inventory(session: Session, dev: RemoteAccessDevice) -> None:
+def _inventory_maps(
+    session: Session,
+) -> tuple[dict[str, Computer], dict[str, CashRegister], dict[str, MediaPlayer]]:
+    """One query per inventory table instead of one per device - built once by
+    a caller that's about to _link_inventory a whole batch (seed_from_inventory,
+    sync_from_console), not per row. Neither Computer.hostname's nor the
+    others' index helps a lower(hostname) lookup (btree on the raw column,
+    same class of gap the remoteaccessdevice one had - see migration
+    a0b1c2d3e4f5), so a per-row query here was a real, avoidable seq scan
+    times ~150 devices every 2-minute sync."""
+    computers = {c.hostname.lower(): c for c in session.exec(select(Computer)).all() if c.hostname}
+    registers = {c.hostname.lower(): c for c in session.exec(select(CashRegister)).all() if c.hostname}
+    nettops = {
+        m.hostname.lower(): m
+        for m in session.exec(select(MediaPlayer).where(MediaPlayer.device_type == _NETTOP)).all()
+        if m.hostname
+    }
+    return computers, registers, nettops
+
+
+def _link_inventory(
+    session: Session,
+    dev: RemoteAccessDevice,
+    *,
+    computers: dict[str, Computer] | None = None,
+    registers: dict[str, CashRegister] | None = None,
+    nettops: dict[str, MediaPlayer] | None = None,
+) -> None:
     """(Re)bind a device row to every inventory row that shares its hostname.
 
     Case-insensitive, same reasoning as _get_or_create_device - a device row
     minted from the console's self-reported hostname casing must still find
     its inventory row even when that row's own hostname is cased differently.
+
+    Pass preloaded maps (_inventory_maps) when calling this for a batch of
+    devices; omitting them falls back to one query per table, fine for the
+    single-row case (ensure_device).
     """
     host = dev.hostname.lower()
     if dev.computer_id is None:
-        comp = session.exec(select(Computer).where(func.lower(Computer.hostname) == host)).first()
+        comp = (
+            computers.get(host)
+            if computers is not None
+            else session.exec(select(Computer).where(func.lower(Computer.hostname) == host)).first()
+        )
         if comp:
             dev.computer_id = comp.id
             dev.location = dev.location or comp.location
     if dev.cash_register_id is None:
-        cr = session.exec(select(CashRegister).where(func.lower(CashRegister.hostname) == host)).first()
+        cr = (
+            registers.get(host)
+            if registers is not None
+            else session.exec(select(CashRegister).where(func.lower(CashRegister.hostname) == host)).first()
+        )
         if cr:
             dev.cash_register_id = cr.id
             dev.location = dev.location or _cr_location(cr)
     if dev.media_player_id is None:
-        mp = session.exec(
-            select(MediaPlayer).where(
-                func.lower(MediaPlayer.hostname) == host, MediaPlayer.device_type == _NETTOP
-            )
-        ).first()
+        mp = (
+            nettops.get(host)
+            if nettops is not None
+            else session.exec(
+                select(MediaPlayer).where(
+                    func.lower(MediaPlayer.hostname) == host, MediaPlayer.device_type == _NETTOP
+                )
+            ).first()
+        )
         if mp:
             dev.media_player_id = mp.id
     # label by the strongest source that actually linked (cash_register > computer > media_player)
@@ -245,6 +295,7 @@ def seed_from_inventory(session: Session) -> int:
     # so this loop doesn't mint a duplicate for a hostname it already has
     # under different casing (e.g. seen from CashRegister once, Computer since)
     existing = {d.hostname.lower(): d for d in session.exec(select(RemoteAccessDevice)).all()}
+    computers, registers, nettops = _inventory_maps(session)
     created = 0
     for hostname, kind, location in _inventory_rows(session):
         dev = existing.get(hostname.lower())
@@ -266,7 +317,7 @@ def seed_from_inventory(session: Session) -> int:
                 dev.location = location
             if not dev.permanent_password:
                 dev.permanent_password = default_password()
-        _link_inventory(session, dev)
+        _link_inventory(session, dev, computers=computers, registers=registers, nettops=nettops)
     session.commit()
     return created
 
@@ -326,10 +377,22 @@ async def sync_from_console(session: Session) -> dict[str, int]:
     the installed client `version`, `os`, `hostname` and `last_online_time`,
     none of which the client API's `/api/peers` returns. The shared address book
     is not consulted for status - it caches an `online` flag that goes stale.
+
+    Only updates devices InfraScope already tracks - never creates one. The
+    console's peer list is *everything* that has ever connected, including an
+    engineer's own laptop logged in to drive the shared book, not just the
+    fleet endpoints seed_from_inventory put here on purpose. Used to call
+    _get_or_create_device unconditionally: caught live minting a tracked,
+    managed=True "macbook-pro" row - with a password generated and pushed to
+    the shared book - the moment someone's personal machine connected over
+    VPN and logged into the console. seed_from_inventory (backed by real
+    inventory: Computer/CashRegister/MediaPlayer) is the only thing that
+    should decide what gets managed.
     """
     now = _now()
     status: dict[str, bool] = {}
     peers = await rustdesk_client.list_admin_peers()
+    computers, registers, nettops = _inventory_maps(session)
     seen = 0
     for peer in peers:
         rid = str(peer.get("id") or "").strip()
@@ -337,8 +400,10 @@ async def sync_from_console(session: Session) -> dict[str, int]:
         if not rid and not hostname:
             continue
         seen += 1
-        dev = _get_or_create_device(session, hostname or rid)
-        _link_inventory(session, dev)
+        dev = _find_device(session, hostname or rid)
+        if dev is None:
+            continue
+        _link_inventory(session, dev, computers=computers, registers=registers, nettops=nettops)
         if rid:
             dev.rustdesk_id = rid
             status[rid] = _peer_online(peer, now)

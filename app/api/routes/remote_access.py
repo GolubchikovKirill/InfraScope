@@ -27,6 +27,7 @@ from sqlmodel import select
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import not_found
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.domains.remote_access import deploy_script, rustdesk_client, service
 from app.domains.remote_access.models import RemoteAccessConsoleAccount, RemoteAccessDevice
 from app.domains.remote_access.schemas import (
@@ -371,6 +372,15 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def _rate_limit_key(request: Request) -> str:
+    """slowapi's default key_func (get_remote_address) reads request.client.host
+    directly - behind nginx that's one fixed docker-network address for every
+    endpoint in the fleet, so the default would put all ~150 machines in one
+    shared bucket (one busy or misbehaving machine locking out every other
+    deploy). _client_ip is the same X-Real-IP fix used for verify_deploy_source."""
+    return _client_ip(request) or "unknown"
+
+
 def require_deploy_token(
     request: Request,
     x_infrascope_deploy_token: str | None = Header(default=None),
@@ -426,13 +436,16 @@ def request_deploy(device_id: uuid.UUID, session: SessionDep) -> DevicePublic:
     response_class=PlainTextResponse,
     dependencies=[Depends(require_deploy_token)],
 )
-def deploy_bootstrap() -> PlainTextResponse:
+@limiter.limit("20/minute", key_func=_rate_limit_key)
+def deploy_bootstrap(request: Request) -> PlainTextResponse:
+    _ = request  # required by the rate limiter decorator context
     return PlainTextResponse(deploy_script.render_bootstrap(), media_type="text/plain; charset=utf-8")
 
 
 @router.post(
     "/deploy/config", response_model=DeploymentConfig, dependencies=[Depends(require_deploy_token)]
 )
+@limiter.limit("20/minute", key_func=_rate_limit_key)
 def deploy_config(payload: DeployConfigRequest, session: SessionDep, request: Request) -> DeploymentConfig:
     """The endpoint asks what it should become.
 
@@ -474,8 +487,10 @@ def deploy_config(payload: DeployConfigRequest, session: SessionDep, request: Re
 
 
 @router.get("/deploy/installer", dependencies=[Depends(require_deploy_token)])
-def deploy_installer() -> FileResponse:
+@limiter.limit("20/minute", key_func=_rate_limit_key)
+def deploy_installer(request: Request) -> FileResponse:
     """Serve the pinned installer from the server so endpoints need no internet."""
+    _ = request  # required by the rate limiter decorator context
     name = os.path.basename(settings.RUSTDESK_INSTALLER_FILENAME)
     path = os.path.join(settings.RUSTDESK_PACKAGE_DIR, name)
     if not os.path.isfile(path):
@@ -487,8 +502,10 @@ def deploy_installer() -> FileResponse:
 
 
 @router.post("/deploy/report", response_model=Message, dependencies=[Depends(require_deploy_token)])
-def deploy_report(payload: DeployReport, session: SessionDep) -> Message:
+@limiter.limit("20/minute", key_func=_rate_limit_key)
+def deploy_report(payload: DeployReport, session: SessionDep, request: Request) -> Message:
     """The endpoint says what it actually did. Stored verbatim, never inferred."""
+    _ = request  # required by the rate limiter decorator context
     dev = service.apply_deploy_report(
         session,
         hostname=payload.hostname,

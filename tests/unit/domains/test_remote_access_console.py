@@ -283,6 +283,10 @@ def test_provision_account_returns_the_password_but_never_stores_it(db_session, 
     # the engineer lands in the group the shared book is shared with
     ivanov = next(u for u in console.users if u["username"] == "ivanov")
     assert ivanov["group_id"] == console.groups[0]["id"]
+    # least privilege by default - group membership + the read-only rule on
+    # the shared book (already asserted above) is enough for engineer work,
+    # console admin is not something provisioning should hand out
+    assert ivanov["is_admin"] is False and account.is_admin is False
     assert account.book_shared is True and account.active is True
     # the secret exists nowhere on the row, and the model has no field for it
     assert secret not in str(account.model_dump())
