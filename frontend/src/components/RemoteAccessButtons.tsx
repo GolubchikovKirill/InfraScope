@@ -10,7 +10,7 @@ import {
   type RemoteDevice,
 } from "../client";
 import { showToast } from "../lib/toastBus";
-import { ReadinessChip, deviceReadinessDetail } from "./RemoteAccessStatus";
+import { AppLockerMismatchBadge, ReadinessChip, deviceReadinessDetail } from "./RemoteAccessStatus";
 import DeployCommandModal from "./DeployCommandModal";
 
 type Props = {
@@ -64,6 +64,10 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
   });
 
   const rustId = device?.rustdesk_id ?? null;
+  // the button reapplies the entire desired config on every run, not just
+  // what changed - "Передеплоить" reads better once it has ever succeeded
+  const redeploy =
+    device?.readiness === "ready" || device?.readiness === "installed_offline" || device?.readiness === "stale";
   const btn = `inline-flex items-center gap-1.5 rounded-lg font-medium ${
     compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
   }`;
@@ -102,7 +106,12 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
             <Copy className="h-3.5 w-3.5" />
           </button>
         )}
-        {device && <ReadinessChip readiness={device.readiness} title={deviceReadinessDetail(device)} compact />}
+        {device && (
+          <>
+            <ReadinessChip readiness={device.readiness} title={deviceReadinessDetail(device)} compact />
+            <AppLockerMismatchBadge device={device} compact />
+          </>
+        )}
         {canManage && (
           <>
             <button onClick={openDialog} className={`${btn} app-btn-secondary`} title="Задать RustDesk ID и пароль">
@@ -114,10 +123,14 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
                 onClick={() => deployMut.mutate(device.id)}
                 disabled={deployMut.isPending}
                 className={`${btn} app-btn-secondary disabled:opacity-50`}
-                title="Тихо развернуть через InfraScope"
+                title={
+                  redeploy
+                    ? "Передеплоить: заново применить текущие ID, пароль и настройки скрытности/блокировки"
+                    : "Тихо развернуть через InfraScope"
+                }
               >
                 <Rocket className="h-4 w-4" />
-                Развернуть
+                {redeploy ? "Передеплоить" : "Развернуть"}
               </button>
             )}
             {device && (

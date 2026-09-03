@@ -29,7 +29,7 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { showToast } from "../lib/toastBus";
 import { relTime } from "../lib/relTime";
 import { Button } from "../components/ui/Button";
-import { ReadinessChip, deviceReadinessDetail } from "../components/RemoteAccessStatus";
+import { AppLockerMismatchBadge, ReadinessChip, deviceReadinessDetail } from "../components/RemoteAccessStatus";
 import DeployCommandModal from "../components/DeployCommandModal";
 import ConsoleAccountsPanel from "../components/ConsoleAccountsPanel";
 
@@ -62,6 +62,13 @@ function Badge({ children, tone = "default" }: { children: React.ReactNode; tone
       {children}
     </span>
   );
+}
+
+/** The rollout button reapplies the *entire* current config on every run
+ *  (id, password, hidden/block_outgoing/unattended) - it just reads better as
+ *  "Передеплоить" once the machine has actually been configured before. */
+function isRedeploy(d: RemoteDevice): boolean {
+  return d.readiness === "ready" || d.readiness === "installed_offline" || d.readiness === "stale";
 }
 
 export default function RemoteAccessPage() {
@@ -108,6 +115,7 @@ export default function RemoteAccessPage() {
       ready: rows.filter((r) => r.readiness === "ready").length,
       inBook: rows.filter((r) => r.in_address_book).length,
       noId: rows.filter((r) => !r.rustdesk_id).length,
+      applockerMismatch: rows.filter((r) => r.applocker_mismatch).length,
     }),
     [rows],
   );
@@ -191,6 +199,14 @@ export default function RemoteAccessPage() {
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
               Консоль RustDesk не подключена — статусы «онлайн» и книга адресов недоступны. Укажите{" "}
               <code className="app-mono">RUSTDESK_API_TOKEN</code> в <code className="app-mono">.env</code> сервера.
+            </div>
+          )}
+
+          {summary.applockerMismatch > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+              <b>{summary.applockerMismatch}</b>{" "}
+              {summary.applockerMismatch === 1 ? "устройство" : "устройств"} на Windows Home — AppLocker
+              там недоступен, запрет ручного запуска клиента не применился (см. значок «Home» в строке).
             </div>
           )}
 
@@ -314,7 +330,10 @@ export default function RemoteAccessPage() {
                       </td>
                       <td>{d.location ?? "—"}</td>
                       <td>
-                        <ReadinessChip readiness={d.readiness} title={deviceReadinessDetail(d)} />
+                        <div className="flex flex-wrap items-center gap-1">
+                          <ReadinessChip readiness={d.readiness} title={deviceReadinessDetail(d)} />
+                          <AppLockerMismatchBadge device={d} compact />
+                        </div>
                         {d.logged_in_user && (
                           <div className="app-card-meta app-mono mt-1">{d.logged_in_user}</div>
                         )}
@@ -376,7 +395,11 @@ export default function RemoteAccessPage() {
                                 variant="secondary"
                                 size="sm"
                                 className="!px-2"
-                                title="Развернуть тихо через InfraScope"
+                                title={
+                                  isRedeploy(d)
+                                    ? "Передеплоить: заново применить текущие ID, пароль и настройки скрытности/блокировки"
+                                    : "Развернуть тихо через InfraScope"
+                                }
                                 disabled={deployMut.isPending}
                                 onClick={() => deployMut.mutate(d.id)}
                               >

@@ -73,6 +73,12 @@ class DevicePublic(BaseModel):
     # single chip for the UI: ready | installed_offline | deploying | failed | not_deployed
     readiness: str = "not_deployed"
     installed_version: str | None = None
+    os_edition: str | None = None  # raw registry EditionID, self-reported by the endpoint
+    os_caption: str | None = None  # e.g. "Windows 10 Pro", for display
+    applocker_supported: bool | None = None  # None until the machine has reported
+    # true only when we asked for block_outgoing AND know it silently did not
+    # apply - never true while applocker_supported is still unknown
+    applocker_mismatch: bool = False
     online: bool | None = None  # RustDesk console: client reachable via rendezvous
     logged_in_user: str | None = None
     last_ip: str | None = None
@@ -178,13 +184,23 @@ class DeploymentConfig(PackageConfig):
 
 
 class DeployReport(BaseModel):
-    """What the endpoint script says it did. Stored verbatim."""
+    """What the endpoint script says it did. Stored verbatim.
+
+    `os_edition`/`os_caption` are the endpoint's own registry EditionID and
+    OS caption - self-reported because InfraScope has no other channel to
+    learn this without a new remote-query surface. The server, not the
+    script, classifies edition into `applocker_supported` (see
+    service.classify_applocker_support) so that logic stays in one testable
+    place.
+    """
 
     hostname: str = Field(pattern=_HOSTNAME_RE)
     state: str = Field(pattern=r"^(pending|installed|configured|failed)$")
     rustdesk_id: str | None = None
     version: str | None = Field(default=None, max_length=32)
     detail: str | None = Field(default=None, max_length=512)
+    os_edition: str | None = Field(default=None, max_length=64)
+    os_caption: str | None = Field(default=None, max_length=128)
 
     @field_validator("rustdesk_id")
     @classmethod

@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import type { RemoteDevice } from "../client";
-import { ReadinessChip, READINESS_META, deviceReadinessDetail } from "./RemoteAccessStatus";
+import { AppLockerMismatchBadge, ReadinessChip, READINESS_META, deviceReadinessDetail } from "./RemoteAccessStatus";
 
 function makeDevice(overrides: Partial<RemoteDevice> = {}): RemoteDevice {
   return {
@@ -26,6 +26,10 @@ function makeDevice(overrides: Partial<RemoteDevice> = {}): RemoteDevice {
     deploy_reported_at: null,
     readiness: "not_deployed",
     installed_version: null,
+    os_edition: null,
+    os_caption: null,
+    applocker_supported: null,
+    applocker_mismatch: false,
     online: null,
     logged_in_user: null,
     last_ip: null,
@@ -68,5 +72,55 @@ describe("deviceReadinessDetail", () => {
   it("reads a never-seen device as never registered, not offline", () => {
     const detail = deviceReadinessDetail(makeDevice());
     expect(detail).toContain("ещё не регистрировался");
+  });
+});
+
+describe("deviceReadinessDetail - stale and AppLocker", () => {
+  it("explains a stale device as a pending redeploy, not a fresh one", () => {
+    const detail = deviceReadinessDetail(makeDevice({ deploy_state: "stale", readiness: "stale" }));
+    expect(detail).toContain("на машине ещё старый");
+  });
+
+  it("warns when the desired lockdown could not apply on this edition", () => {
+    const detail = deviceReadinessDetail(
+      makeDevice({
+        applocker_mismatch: true,
+        os_edition: "Core",
+        os_caption: "Windows 10 Домашняя для одного языка",
+      }),
+    );
+    expect(detail).toContain("AppLocker недоступен");
+    expect(detail).toContain("Домашняя");
+  });
+
+  it("shows the OS caption plainly when there is no mismatch", () => {
+    const detail = deviceReadinessDetail(
+      makeDevice({ applocker_mismatch: false, os_caption: "Windows 11 Pro" }),
+    );
+    expect(detail).toContain("ОС: Windows 11 Pro");
+    expect(detail).not.toContain("AppLocker недоступен");
+  });
+});
+
+describe("AppLockerMismatchBadge", () => {
+  it("renders nothing without a confirmed mismatch", () => {
+    const { container } = render(<AppLockerMismatchBadge device={makeDevice()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders nothing while the edition is merely unknown, not mismatched", () => {
+    const { container } = render(
+      <AppLockerMismatchBadge device={makeDevice({ applocker_mismatch: false, os_edition: null })} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows a warning badge on a confirmed Home-edition mismatch", () => {
+    render(
+      <AppLockerMismatchBadge
+        device={makeDevice({ applocker_mismatch: true, os_edition: "Core", os_caption: "Windows 10 Home" })}
+      />,
+    );
+    expect(screen.getByText("Home")).toBeInTheDocument();
   });
 });

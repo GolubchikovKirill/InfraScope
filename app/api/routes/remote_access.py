@@ -57,6 +57,9 @@ def _to_public(dev: RemoteAccessDevice) -> DevicePublic:
     data = DevicePublic.model_validate(dev)
     data.has_password = bool(dev.permanent_password)
     data.readiness = service.readiness(dev)
+    # only flag a real mismatch: we asked for the lockdown AND know (not
+    # "maybe") that this edition can't enforce it
+    data.applocker_mismatch = dev.desired_block_outgoing and dev.applocker_supported is False
     return data
 
 
@@ -104,8 +107,14 @@ def update_device(device_id: uuid.UUID, payload: DeviceDesiredUpdate, session: S
     dev = session.get(RemoteAccessDevice, device_id)
     if not dev:
         raise not_found("Device not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    # only these actually change what the rollout script writes to the
+    # machine - managed/location changing does not make the live config stale
+    changes = payload.model_dump(exclude_unset=True)
+    stale_fields = {"desired_hidden", "desired_block_outgoing", "desired_unattended", "rustdesk_id"}
+    for field, value in changes.items():
         setattr(dev, field, value)
+    if stale_fields & changes.keys():
+        service.mark_config_stale(dev)
     session.add(dev)
     session.commit()
     session.refresh(dev)
@@ -412,6 +421,8 @@ def deploy_report(payload: DeployReport, session: SessionDep) -> Message:
         rustdesk_id=payload.rustdesk_id,
         version=payload.version,
         detail=payload.detail,
+        os_edition=payload.os_edition,
+        os_caption=payload.os_caption,
     )
     if dev is None:
         raise not_found("Device not found")

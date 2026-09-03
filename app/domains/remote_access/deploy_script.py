@@ -19,6 +19,12 @@ Two things about the install are deliberate and easy to get wrong:
 * **Password before lockdown.** `disable-change-permanent-password=Y` makes
   `rustdesk.exe --password` a no-op, so the config is written in two passes: the
   working options first, the password, then the same file again with the locks.
+
+Every deploy report also carries the endpoint's own registry `EditionID`
+("Professional", "Enterprise", "Core" for Home). `block_outgoing` (the
+AppLocker step below) does nothing on Windows Home - AppIDSvc doesn't exist
+there - and self-reporting from the machine that's already running as SYSTEM
+is the only way to see that without opening a new remote-query surface.
 """
 
 from __future__ import annotations
@@ -113,17 +119,27 @@ $Host_   = $env:COMPUTERNAME
 $Rid     = ''
 $Version = ''
 
+# Registry EditionID is locale-independent ("Professional", "Enterprise",
+# "Core" for Home, ...) - the OS Caption is only for display and can be
+# localized ("Windows 10 Домашняя"). Both are read locally, no remote query:
+# InfraScope has no other channel to learn this without a new remote-access
+# surface, which is exactly what this pull-based rollout was built to avoid.
+$edKey = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -EA SilentlyContinue
+$OsEdition = if ($edKey) { "$($edKey.EditionID)" } else { '' }
+$OsCaption = try { (Get-CimInstance Win32_OperatingSystem -EA Stop).Caption } catch { if ($edKey) { "$($edKey.ProductName)" } else { '' } }
+
 function Report($state, $detail) {
     try {
         $body = @{ hostname = $Host_; rustdesk_id = $Rid; version = $Version;
-                   state = $state; detail = "$detail" } | ConvertTo-Json -Compress
+                   state = $state; detail = "$detail"; os_edition = $OsEdition;
+                   os_caption = $OsCaption } | ConvertTo-Json -Compress
         Invoke-RestMethod -Uri "$Base/report" -Method Post -Headers $Headers `
             -ContentType 'application/json' -Body $body -TimeoutSec 30 | Out-Null
     } catch { Log "report failed: $($_.Exception.Message)" }
 }
 
 try {
-    Log "=== deploy start on $Host_ ==="
+    Log "=== deploy start on $Host_ (edition=$OsEdition) ==="
 
     # ---- 1. our own config -------------------------------------------------
     $cfgBody = @{ hostname = $Host_ } | ConvertTo-Json -Compress

@@ -2,14 +2,16 @@ import api from "./http";
 
 export type SourceKind = "cash_register" | "computer" | "media_player";
 
-/** What the endpoint's own rollout script reported. Never inferred by the server. */
-export type DeployState = "unknown" | "pending" | "installed" | "configured" | "failed";
+/** What the endpoint's own rollout script reported. "stale" is InfraScope's
+ *  own marker (set locally, never sent by the script) - see Readiness. */
+export type DeployState = "unknown" | "pending" | "installed" | "configured" | "failed" | "stale";
 
 /** Single chip for the device grid: can an engineer connect to this right now? */
 export type Readiness =
   | "ready" // config applied AND the console sees the client
   | "installed_offline" // rolled out, but the machine is not reachable
   | "deploying" // waiting for the endpoint to run the bootstrap
+  | "stale" // was configured, but the desired config changed since (redeploy needed)
   | "failed"
   | "not_deployed";
 
@@ -36,6 +38,12 @@ export interface RemoteDevice {
   deploy_reported_at: string | null;
   readiness: Readiness;
   installed_version: string | null;
+  os_edition: string | null; // raw registry EditionID, self-reported by the endpoint
+  os_caption: string | null; // e.g. "Windows 10 Pro"
+  applocker_supported: boolean | null; // null until the machine has reported
+  /** true only when block_outgoing was requested AND we know it silently did
+   *  not apply (Windows Home has no AppLocker) - never true while unknown. */
+  applocker_mismatch: boolean;
   online: boolean | null;
   logged_in_user: string | null;
   last_ip: string | null;

@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDashed, Loader2, MonitorOff, AlertTriangle } from "lucide-react";
+import { CircleCheck, CircleDashed, Loader2, MonitorOff, AlertTriangle, RefreshCw, ShieldAlert } from "lucide-react";
 import type { RemoteDevice, Readiness } from "../client";
 import { relTime } from "../lib/relTime";
 
@@ -22,6 +22,11 @@ export const READINESS_META: Record<
     label: "Разворачивается",
     toneClass: "bg-amber-100 text-amber-800",
     Icon: Loader2,
+  },
+  stale: {
+    label: "Нужен передеплой",
+    toneClass: "bg-amber-100 text-amber-800",
+    Icon: RefreshCw,
   },
   failed: {
     label: "Ошибка развёртывания",
@@ -51,11 +56,20 @@ export function deviceReadinessDetail(device: RemoteDevice): string {
     pending: "ждёт запуска скрипта на машине",
     installed: "клиент установлен, конфиг ещё применяется",
     configured: "скрипт применил конфиг",
+    stale: "конфиг в InfraScope изменился после раскатки — на машине ещё старый",
     failed: "скрипт сообщил об ошибке",
   };
   lines.push(`Раскатка: ${stateLabel[device.deploy_state]}`);
   if (device.deploy_state === "failed" && device.deploy_detail) lines.push(device.deploy_detail);
   if (device.deploy_reported_at) lines.push(`Отчёт машины: ${relTime(device.deploy_reported_at)}`);
+
+  if (device.applocker_mismatch) {
+    lines.push(
+      `⚠ ${device.os_caption ?? "Windows Home"}: AppLocker недоступен — запрет запуска клиента вручную не применился`,
+    );
+  } else if (device.os_caption) {
+    lines.push(`ОС: ${device.os_caption}`);
+  }
 
   return lines.join("\n");
 }
@@ -80,6 +94,25 @@ export function ReadinessChip({
     >
       <Icon className={`h-3.5 w-3.5 ${readiness === "deploying" ? "animate-spin" : ""}`} />
       {meta.label}
+    </span>
+  );
+}
+
+/** Small standalone warning, next to the readiness chip: block_outgoing was
+ *  asked for but this device's Windows edition can't enforce it (Home has no
+ *  AppLocker/AppIDSvc). Renders nothing unless the mismatch is confirmed -
+ *  never warns just because the edition is still unknown. */
+export function AppLockerMismatchBadge({ device, compact }: { device: RemoteDevice; compact?: boolean }) {
+  if (!device.applocker_mismatch) return null;
+  return (
+    <span
+      title={`${device.os_caption ?? "Windows Home"}: AppLocker недоступен на этой редакции — сотрудник может запустить RustDesk сам, блокировка не применилась`}
+      className={`inline-flex items-center gap-1 rounded-full bg-amber-100 font-medium text-amber-800 ${
+        compact ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-xs"
+      }`}
+    >
+      <ShieldAlert className="h-3 w-3" />
+      Home
     </span>
   );
 }

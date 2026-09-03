@@ -57,6 +57,10 @@ function makeDevice(overrides: Partial<RemoteDevice> = {}): RemoteDevice {
     deploy_reported_at: null,
     readiness: "not_deployed",
     installed_version: null,
+    os_edition: null,
+    os_caption: null,
+    applocker_supported: null,
+    applocker_mismatch: false,
     online: null,
     logged_in_user: null,
     last_ip: null,
@@ -170,5 +174,19 @@ describe("RemoteAccessPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /В книгу адресов/ }));
     expect(confirmSpy).toHaveBeenCalled();
     await waitFor(() => expect(api.syncAddressBook).toHaveBeenCalled());
+  });
+
+  it("banners a Windows edition mismatch with a count of affected devices", async () => {
+    api.getRemoteDevices.mockResolvedValue({
+      data: [
+        makeDevice({ id: "dev-1", hostname: "VNA-MGR-901" }),
+        makeDevice({ id: "dev-2", hostname: "VNA-MGR-902", applocker_mismatch: true, os_edition: "Core" }),
+      ],
+      count: 2,
+    });
+
+    renderPage();
+    expect(await screen.findByText(/на Windows Home/)).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
   });
 });

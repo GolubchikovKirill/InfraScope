@@ -369,3 +369,117 @@ def test_deploy_command_is_one_pasteable_line(monkeypatch) -> None:
     assert "\n" not in cmd
     assert "X-InfraScope-Deploy-Token" in cmd and "s3cr3t" in cmd
     assert "//10.10.99.24:8000/api/v1" in cmd  # trailing slash on the base is trimmed
+
+
+def test_bootstrap_script_self_reports_the_windows_edition(monkeypatch) -> None:
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "http://10.10.99.24:8000")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "s3cr3t")
+
+    script = deploy_script.render_bootstrap()
+    # EditionID (locale-independent) is what block_outgoing's AppLocker step
+    # needs; the report carries it on every state, not just success
+    assert "EditionID" in script
+    assert "os_edition = $OsEdition" in script and "os_caption = $OsCaption" in script
+
+
+# --------------------------------------------------------------------------- #
+# AppLocker support classification                                            #
+# --------------------------------------------------------------------------- #
+def test_classify_applocker_support_flags_home_editions(db_session) -> None:
+    del db_session  # unused; keeps the module's fixture-per-test convention
+    assert service.classify_applocker_support(None) is None
+    assert service.classify_applocker_support("") is None
+    assert service.classify_applocker_support("Core") is False  # Home
+    assert service.classify_applocker_support("CoreSingleLanguage") is False
+    assert service.classify_applocker_support("CoreCountrySpecific") is False
+    assert service.classify_applocker_support("CoreN") is False
+    assert service.classify_applocker_support("Professional") is True
+    assert service.classify_applocker_support("ProfessionalN") is True
+    assert service.classify_applocker_support("Enterprise") is True
+    assert service.classify_applocker_support("Education") is True
+    assert service.classify_applocker_support("ServerStandard") is True
+
+
+def test_apply_deploy_report_records_edition_and_derives_applocker_support(db_session) -> None:
+    service.ensure_device(db_session, hostname="VNA-MGR-305")
+
+    dev = service.apply_deploy_report(
+        db_session,
+        hostname="VNA-MGR-305",
+        state="configured",
+        os_edition="Core",
+        os_caption="Windows 10 Домашняя для одного языка",
+    )
+    assert dev.os_edition == "Core"
+    assert dev.os_caption == "Windows 10 Домашняя для одного языка"
+    assert dev.applocker_supported is False
+
+    # a later report with no edition (e.g. a retry that failed before reading
+    # it) must not erase what we already learned
+    dev = service.apply_deploy_report(db_session, hostname="VNA-MGR-305", state="configured")
+    assert dev.os_edition == "Core" and dev.applocker_supported is False
+
+
+def test_apply_deploy_report_with_a_capable_edition(db_session) -> None:
+    service.ensure_device(db_session, hostname="VNA-MGR-306")
+    dev = service.apply_deploy_report(
+        db_session, hostname="VNA-MGR-306", state="configured", os_edition="Professional"
+    )
+    assert dev.applocker_supported is True
+
+
+# --------------------------------------------------------------------------- #
+# stale config (redeploy needed)                                              #
+# --------------------------------------------------------------------------- #
+def test_rotate_password_marks_a_configured_device_stale(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-307")
+    service.apply_deploy_report(db_session, hostname="VNA-MGR-307", state="configured")
+
+    dev = service.rotate_password(db_session, dev)
+    assert dev.deploy_state == "stale"
+    assert service.readiness(dev) == "stale"
+
+
+def test_rotate_password_does_not_invent_deploy_history(db_session) -> None:
+    # a device InfraScope has never rolled out has nothing to go stale from -
+    # rotating its password ahead of the first deploy must not claim otherwise
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-308")
+    assert dev.deploy_state == "unknown"
+
+    dev = service.rotate_password(db_session, dev)
+    assert dev.deploy_state == "unknown"
+    assert service.readiness(dev) == "not_deployed"
+
+
+def test_ensure_device_marks_stale_only_on_an_actual_change(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-309", permanent_password="pw1")
+    service.apply_deploy_report(db_session, hostname="VNA-MGR-309", state="configured")
+
+    # re-saving the same password must not manufacture staleness
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-309", permanent_password="pw1")
+    assert dev.deploy_state == "configured"
+
+    # a genuinely new password does
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-309", permanent_password="pw2")
+    assert dev.deploy_state == "stale"
+
+
+def test_mark_config_stale_is_a_noop_before_first_deploy(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-310")
+    service.mark_config_stale(dev)
+    assert dev.deploy_state == "unknown"
+
+
+def test_deploy_report_reaching_configured_clears_staleness(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-311")
+    service.apply_deploy_report(db_session, hostname="VNA-MGR-311", state="configured")
+    dev = service.rotate_password(db_session, dev)
+    assert dev.deploy_state == "stale"
+
+    # the operator reruns the rollout; the script reapplies everything and
+    # reports success again, which clears the staleness naturally
+    dev = service.apply_deploy_report(db_session, hostname="VNA-MGR-311", state="configured")
+    assert dev.deploy_state == "configured"
+    assert service.readiness(dev) in ("ready", "installed_offline")

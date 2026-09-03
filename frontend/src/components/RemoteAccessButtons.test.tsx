@@ -39,6 +39,10 @@ const device: RemoteDevice = {
   deploy_reported_at: "2026-09-02T09:00:00Z",
   readiness: "ready",
   installed_version: "1.4.9",
+  os_edition: "Professional",
+  os_caption: "Windows 10 Pro",
+  applocker_supported: true,
+  applocker_mismatch: false,
   online: true,
   logged_in_user: "kassir",
   last_ip: "10.10.99.51",
@@ -84,9 +88,29 @@ describe("RemoteAccessButtons", () => {
     });
     renderButtons();
 
-    fireEvent.click(screen.getByText("Развернуть"));
+    // the fixture is readiness: "ready" - already configured once, so the
+    // button reads "Передеплоить" (it reapplies everything, not just the diff)
+    fireEvent.click(screen.getByText("Передеплоить"));
     await waitFor(() => expect(api.requestDeploy).toHaveBeenCalledWith("dev-1"));
     expect(await screen.findByText(/powershell.exe/)).toBeInTheDocument();
+  });
+
+  it("labels the button Развернуть for a device that has never been deployed", () => {
+    renderButtons({ device: { ...device, readiness: "not_deployed", deploy_state: "unknown" } });
+    expect(screen.getByText("Развернуть")).toBeInTheDocument();
+    expect(screen.queryByText("Передеплоить")).not.toBeInTheDocument();
+  });
+
+  it("labels the button Передеплоить for a device that needs a redeploy", () => {
+    renderButtons({ device: { ...device, readiness: "stale", deploy_state: "stale" } });
+    expect(screen.getByText("Передеплоить")).toBeInTheDocument();
+  });
+
+  it("flags a Windows Home device that can't enforce block_outgoing", () => {
+    renderButtons({
+      device: { ...device, applocker_mismatch: true, os_edition: "Core", os_caption: "Windows 10 Home" },
+    });
+    expect(screen.getByText("Home")).toBeInTheDocument();
   });
 
   it("opens the offline KSC package as a secondary action", async () => {
@@ -130,5 +154,6 @@ describe("RemoteAccessButtons", () => {
     renderButtons({ canManage: false });
     expect(screen.queryByText("Настроить")).not.toBeInTheDocument();
     expect(screen.queryByText("Развернуть")).not.toBeInTheDocument();
+    expect(screen.queryByText("Передеплоить")).not.toBeInTheDocument();
   });
 });

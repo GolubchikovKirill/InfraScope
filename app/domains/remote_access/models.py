@@ -61,6 +61,16 @@ class RemoteAccessDevice(SQLModel, table=True):
 
     # --- observed status ---
     installed_version: str | None = Field(default=None, max_length=32)
+    # self-reported by the endpoint script (registry EditionID: "Professional",
+    # "Enterprise", "Core" for Home, ...) - InfraScope has no other channel to
+    # learn this without a new remote-query surface, so it is only known for
+    # machines that have run the rollout script at least once.
+    os_edition: str | None = Field(default=None, max_length=64)
+    os_caption: str | None = Field(default=None, max_length=128)  # e.g. "Windows 10 Pro", for display
+    # derived from os_edition: does this Windows edition support AppLocker at
+    # all. None until the machine has reported; block_outgoing silently does
+    # nothing on a machine where this is False.
+    applocker_supported: bool | None = Field(default=None, index=True)
     # RustDesk-console truth: is the client itself reachable via the rendezvous server
     online: bool | None = Field(default=None, index=True)
     logged_in_user: str | None = Field(default=None, max_length=128)

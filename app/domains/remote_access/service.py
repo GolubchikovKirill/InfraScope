@@ -44,12 +44,16 @@ _SOURCE_RANK = {"cash_register": 3, "computer": 2, "media_player": 1}
 
 _PW_ALPHABET = string.ascii_letters + string.digits  # no symbols: avoids shell/TOML quoting traps
 
-# rollout states, exactly as the endpoint script reports them
-DEPLOY_STATES = ("unknown", "pending", "installed", "configured", "failed")
+# rollout states. The endpoint script only ever reports pending/installed/
+# configured/failed (DeployReport.state is validated to that set); "stale" is
+# InfraScope's own marker - set locally when a fully-configured device's
+# desired config changes (e.g. rotate_password) so the UI can say "needs a
+# redeploy" instead of quietly leaving the machine on the old password.
+DEPLOY_STATES = ("unknown", "pending", "installed", "configured", "failed", "stale")
 _DEPLOYED_STATES = ("configured",)
 
 # what the UI shows as one chip; see readiness()
-READINESS = ("ready", "installed_offline", "deploying", "failed", "not_deployed")
+READINESS = ("ready", "installed_offline", "deploying", "stale", "failed", "not_deployed")
 
 
 def generate_password(length: int = 20) -> str:
@@ -64,6 +68,38 @@ def _hostname_to_rid(hostname: str) -> str:
     # RustDesk custom IDs allow only [A-Za-z0-9_]
     rid = "".join(c if c.isalnum() else "_" for c in hostname)
     return rid[:32]
+
+
+def mark_config_stale(dev: RemoteAccessDevice) -> None:
+    """Drop an already-configured device to "stale" - called wherever the
+    desired config (id, password, hidden/block_outgoing/unattended) changes.
+    A no-op for a device that was never fully deployed: "unknown"/"pending"/
+    "installed"/"failed" already say plainly that the config isn't live yet."""
+    if dev.deploy_state in _DEPLOYED_STATES:
+        dev.deploy_state = "stale"
+        dev.deploy_detail = None
+
+
+# Registry EditionID prefixes (HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion)
+# that AppLocker enforcement never works on - Home-family SKUs. Locale-independent,
+# unlike the OS caption ("Домашняя" vs "Home"). Since KB5024351 (Sept 2022),
+# Windows 10 2004+/20H2/21H1 and all Windows 11 enforce AppLocker on every other
+# edition (Pro included, not just Enterprise/Education as before) - the one edge
+# case this can't see from the edition string alone is a Windows 10 Pro machine
+# still unpatched from before that update, which is not expected on a fleet this
+# far past Windows 10 end of mainstream support.
+_APPLOCKER_UNSUPPORTED_EDITION_PREFIXES = ("Core",)  # Core, CoreN, CoreSingleLanguage, CoreCountrySpecific
+
+
+def classify_applocker_support(edition_id: str | None) -> bool | None:
+    """Whether AppLocker enforcement works on a machine, from its self-reported
+    registry EditionID. None means we don't know yet (machine hasn't reported)."""
+    if not edition_id:
+        return None
+    edition_id = edition_id.strip()
+    if not edition_id:
+        return None
+    return not edition_id.startswith(_APPLOCKER_UNSUPPORTED_EDITION_PREFIXES)
 
 
 def default_password() -> str:
@@ -289,6 +325,7 @@ def ensure_device(
     """
     dev = _get_or_create_device(session, hostname)
     _link_inventory(session, dev)
+    was_rid, was_pw = dev.rustdesk_id, dev.permanent_password
     if rustdesk_id:
         dev.rustdesk_id = rustdesk_id
     elif not dev.rustdesk_id:
@@ -300,6 +337,11 @@ def ensure_device(
     elif not dev.permanent_password:
         dev.permanent_password = default_password()
         dev.password_rotated_at = _now()
+    # a manual id/password edit on an already-configured device is just as
+    # stale as a rotate_password() call - the machine keeps the old values
+    # until the next redeploy run
+    if dev.rustdesk_id != was_rid or dev.permanent_password != was_pw:
+        mark_config_stale(dev)
     dev.managed = True
     dev.updated_at = _now()
     session.add(dev)
@@ -312,11 +354,17 @@ def rotate_password(session: Session, dev: RemoteAccessDevice) -> RemoteAccessDe
     """Generate a fresh per-machine password.
 
     The machine keeps the old one until the rollout script runs again, and the
-    address-book row is marked stale so the next sync re-pushes it.
+    address-book row is marked stale so the next sync re-pushes it. If the
+    device was already fully configured, its state drops to "stale" so the UI
+    says so instead of quietly implying the new password already works -
+    "Развернуть" (now labelled "Передеплоить" for a stale device) clears it by
+    re-running the same idempotent script, which always reapplies the full
+    desired config, not just the password.
     """
     dev.permanent_password = generate_password()
     dev.password_rotated_at = _now()
     dev.ab_password_pushed = False
+    mark_config_stale(dev)
     dev.updated_at = _now()
     session.add(dev)
     session.commit()
@@ -396,6 +444,8 @@ def apply_deploy_report(
     rustdesk_id: str | None = None,
     version: str | None = None,
     detail: str | None = None,
+    os_edition: str | None = None,
+    os_caption: str | None = None,
 ) -> RemoteAccessDevice | None:
     """Record what the endpoint script says it did. Unknown hosts are ignored -
     we never invent a device row from an unauthenticated-ish report."""
@@ -412,6 +462,11 @@ def apply_deploy_report(
         dev.rustdesk_id = rustdesk_id
     if version:
         dev.installed_version = version
+    if os_edition:
+        dev.os_edition = os_edition
+        dev.applocker_supported = classify_applocker_support(os_edition)
+    if os_caption:
+        dev.os_caption = os_caption
     dev.updated_at = _now()
     session.add(dev)
     session.commit()
@@ -428,6 +483,11 @@ def readiness(dev: RemoteAccessDevice) -> str:
     """
     if dev.deploy_state == "failed":
         return "failed"
+    if dev.deploy_state == "stale":
+        # still connectable on the machine's *old* password - surfaced
+        # separately from "ready" so the operator notices the drift instead
+        # of assuming a password rotation already took effect
+        return "stale"
     if dev.deploy_state in _DEPLOYED_STATES:
         return "ready" if dev.online is True else "installed_offline"
     if dev.deploy_state == "pending":
