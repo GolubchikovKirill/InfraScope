@@ -42,6 +42,14 @@ class RemoteAccessDevice(SQLModel, table=True):
         default="", sa_column=Column(EncryptedString(512), nullable=False, server_default="")
     )
     password_rotated_at: datetime | None = Field(default=None)
+    # "client" | "admin" - which preset last set the three flags below. New
+    # devices default to "client": most of the fleet is store kiosks/kassa
+    # that must never be self-usable. A machine an engineer sits at (their own
+    # workstation) needs the opposite of every one of these - see
+    # service.DEPLOY_PROFILES. Purely a UI/bulk-action convenience: the three
+    # flags are what the rollout script actually reads, this just names the
+    # combination so an operator doesn't have to get all three right by hand.
+    deploy_profile: str = Field(default="client", max_length=16, index=True)
     desired_hidden: bool = Field(default=True)  # hide-tray + strip Start Menu/Desktop shortcuts
     desired_block_outgoing: bool = Field(default=True)  # AppLocker: no interactive rustdesk.exe for non-admins
     desired_unattended: bool = Field(default=True)  # approve-mode=password (no on-screen accept)

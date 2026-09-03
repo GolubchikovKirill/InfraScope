@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlmodel import select
 
 from app.core.config import settings
@@ -483,3 +484,97 @@ def test_deploy_report_reaching_configured_clears_staleness(db_session) -> None:
     dev = service.apply_deploy_report(db_session, hostname="VNA-MGR-311", state="configured")
     assert dev.deploy_state == "configured"
     assert service.readiness(dev) in ("ready", "installed_offline")
+
+
+def test_deploy_command_bypasses_the_self_signed_cert_before_downloading(monkeypatch) -> None:
+    """nginx hard-redirects :80 to :443 with a self-signed cert (LAN-only, no
+    public IP) - Windows PowerShell 5.1's WebClient rejects that by default
+    with a generic "unable to create a secure channel" error that gives no
+    hint it's a cert problem. Verified live against a real fleet machine
+    before this was added: the download died silently, no log, no report.
+    The bypass must land BEFORE the WebClient is even constructed."""
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "https://10.10.99.24")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "s3cr3t")
+
+    cmd = deploy_script.deploy_command()
+    bypass = cmd.index("ServerCertificateValidationCallback")
+    webclient = cmd.index("New-Object Net.WebClient")
+    assert bypass < webclient
+    assert "SecurityProtocolType]::Tls12" in cmd
+
+
+def test_bootstrap_script_is_self_sufficient_against_the_same_cert(monkeypatch) -> None:
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "https://10.10.99.24")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "s3cr3t")
+
+    script = deploy_script.render_bootstrap()
+    assert "ServerCertificateValidationCallback" in script
+
+
+def test_applocker_rule_ids_are_valid_guids() -> None:
+    """`Set-AppLockerPolicy` validates each FilePathRule Id against the GUID
+    schema and rejects the *whole* policy on one bad id - with no indication
+    in the log that it was the id, not the environment, that failed. Caught
+    live on VNA-MGR-15: the old "...infrascope01" id has letters outside a-f
+    and silently killed block_outgoing on every machine this ever ran on."""
+    import re
+
+    from app.domains.remote_access import deploy_script
+
+    guid_re = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+    script = deploy_script.render_bootstrap()
+    ids = re.findall(r'FilePathRule Id="([^"]+)"', script)
+    assert len(ids) == 3
+    for rule_id in ids:
+        assert guid_re.match(rule_id), f"{rule_id!r} is not a valid GUID"
+
+
+# --------------------------------------------------------------------------- #
+# client vs admin deploy profile                                              #
+# --------------------------------------------------------------------------- #
+def test_new_devices_default_to_the_client_profile(db_session) -> None:
+    # the fleet is overwhelmingly store kiosks/kassa - "client" (locked down)
+    # must be the safe default, never "admin" (full, unrestricted access)
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-401")
+    assert dev.deploy_profile == "client"
+    assert dev.desired_hidden is True and dev.desired_block_outgoing is True
+
+
+def test_admin_profile_gives_an_engineer_workstation_full_normal_access(db_session) -> None:
+    # found live: an engineer's own workstation (VNK-ITD-SA05) seeded with
+    # client defaults would hide its own tray icon and AppLocker-block the
+    # engineer from launching RustDesk themselves - exactly backwards
+    dev = service.ensure_device(db_session, hostname="VNK-ITD-SA05")
+    dev = service.apply_deploy_profile(db_session, dev, "admin")
+    assert dev.deploy_profile == "admin"
+    assert dev.desired_hidden is False
+    assert dev.desired_block_outgoing is False
+    assert dev.desired_unattended is False
+
+
+def test_apply_deploy_profile_rejects_an_unknown_name(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-402")
+    with pytest.raises(ValueError, match="unknown deploy profile"):
+        service.apply_deploy_profile(db_session, dev, "superadmin")
+
+
+def test_switching_profile_on_a_configured_device_marks_it_stale(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-403")
+    service.apply_deploy_report(db_session, hostname="VNA-MGR-403", state="configured")
+
+    dev = service.apply_deploy_profile(db_session, dev, "admin")
+    assert dev.deploy_state == "stale"
+    assert service.readiness(dev) == "stale"
+
+
+def test_reapplying_the_same_profile_is_not_stale(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-404")
+    service.apply_deploy_report(db_session, hostname="VNA-MGR-404", state="configured")
+
+    # already "client" (the default) - setting it again changes nothing
+    dev = service.apply_deploy_profile(db_session, dev, "client")
+    assert dev.deploy_state == "configured"

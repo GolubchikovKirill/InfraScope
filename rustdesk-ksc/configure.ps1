@@ -161,19 +161,24 @@ if (-not $NoLockdown -and $hidden) {
 if (-not $NoLockdown -and $block) {
     # AppLocker: deny interactive rustdesk.exe for Everyone, allow back for BUILTIN\Administrators.
     # The service instance (SYSTEM) is unaffected. Needs the Application Identity service.
+    # Rule Id must be a real GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, hex only) -
+    # Set-AppLockerPolicy validates the XML against that schema and rejects the
+    # whole policy on a bad one. The previous "...infrascope01" id has letters
+    # outside a-f, so block_outgoing silently never applied on any machine this
+    # ran on - caught live on VNA-MGR-15 via app/domains/remote_access/deploy_script.py.
     try {
         Set-Service AppIDSvc -StartupType Automatic -EA SilentlyContinue
         Start-Service AppIDSvc -EA SilentlyContinue
         $xml = @"
 <AppLockerPolicy Version="1">
   <RuleCollection Type="Exe" EnforcementMode="Enabled">
-    <FilePathRule Id="e1f7a1a0-0000-0000-0000-infrascope01" Name="InfraScope: allow RustDesk for admins" Description="" UserOrGroupSid="S-1-5-32-544" Action="Allow">
+    <FilePathRule Id="e1f7a1a0-0000-4000-8000-000000000001" Name="InfraScope: allow RustDesk for admins" Description="" UserOrGroupSid="S-1-5-32-544" Action="Allow">
       <Conditions><FilePathCondition Path="%PROGRAMFILES%\RustDesk\*"/></Conditions>
     </FilePathRule>
-    <FilePathRule Id="e1f7a1a0-0000-0000-0000-infrascope02" Name="InfraScope: deny RustDesk for users" Description="" UserOrGroupSid="S-1-1-0" Action="Deny">
+    <FilePathRule Id="e1f7a1a0-0000-4000-8000-000000000002" Name="InfraScope: deny RustDesk for users" Description="" UserOrGroupSid="S-1-1-0" Action="Deny">
       <Conditions><FilePathCondition Path="%PROGRAMFILES%\RustDesk\*"/></Conditions>
     </FilePathRule>
-    <FilePathRule Id="e1f7a1a0-0000-0000-0000-infrascope03" Name="(default) allow everything else" Description="" UserOrGroupSid="S-1-1-0" Action="Allow">
+    <FilePathRule Id="e1f7a1a0-0000-4000-8000-000000000003" Name="(default) allow everything else" Description="" UserOrGroupSid="S-1-1-0" Action="Allow">
       <Conditions><FilePathCondition Path="*"/></Conditions>
     </FilePathRule>
   </RuleCollection>

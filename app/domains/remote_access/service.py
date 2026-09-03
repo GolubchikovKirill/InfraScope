@@ -80,6 +80,44 @@ def mark_config_stale(dev: RemoteAccessDevice) -> None:
         dev.deploy_detail = None
 
 
+# Two presets for the three flags the rollout script actually reads. Found
+# live: seeding an engineer's own workstation (VNK-ITD-SA05) with the same
+# "client" defaults as a store kiosk would have hidden the tray icon, blocked
+# them from launching RustDesk themselves via AppLocker, and switched them to
+# password-only unattended approval - exactly backwards for a machine they sit
+# at and use to connect *out* to the fleet.
+DEPLOY_PROFILES: dict[str, dict[str, bool]] = {
+    # store kiosk / kassa / any endpoint an ordinary employee sits at: no tray
+    # icon, no shortcuts, AppLocker blocks them opening it themselves, service
+    # only accepts the permanent password - purely an inbound-connect target.
+    "client": {"desired_hidden": True, "desired_block_outgoing": True, "desired_unattended": True},
+    # an engineer's own workstation: full normal RustDesk - visible, they can
+    # launch it and connect out, and an incoming connection to *them* prompts
+    # for a click rather than auto-accepting on the permanent password alone.
+    "admin": {"desired_hidden": False, "desired_block_outgoing": False, "desired_unattended": False},
+}
+
+
+def apply_deploy_profile(session: Session, dev: RemoteAccessDevice, profile: str) -> RemoteAccessDevice:
+    """Set the three flags from a named preset. Marks the device stale if
+    anything actually changed and it was already configured - the machine
+    keeps its old settings until the next redeploy applies the new ones."""
+    if profile not in DEPLOY_PROFILES:
+        raise ValueError(f"unknown deploy profile {profile!r}")
+    preset = DEPLOY_PROFILES[profile]
+    changed = dev.deploy_profile != profile or any(getattr(dev, k) != v for k, v in preset.items())
+    dev.deploy_profile = profile
+    for field, value in preset.items():
+        setattr(dev, field, value)
+    if changed:
+        mark_config_stale(dev)
+    dev.updated_at = _now()
+    session.add(dev)
+    session.commit()
+    session.refresh(dev)
+    return dev
+
+
 # Registry EditionID prefixes (HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion)
 # that AppLocker enforcement never works on - Home-family SKUs. Locale-independent,
 # unlike the OS caption ("Домашняя" vs "Home"). Since KB5024351 (Sept 2022),

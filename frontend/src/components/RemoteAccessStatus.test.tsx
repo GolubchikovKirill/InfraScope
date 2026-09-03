@@ -14,6 +14,7 @@ function makeDevice(overrides: Partial<RemoteDevice> = {}): RemoteDevice {
     rustdesk_id: "VNK_MGR_D1",
     has_password: true,
     password_rotated_at: null,
+    deploy_profile: "client",
     desired_hidden: true,
     desired_block_outgoing: true,
     desired_unattended: true,

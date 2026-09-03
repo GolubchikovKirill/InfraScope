@@ -82,11 +82,24 @@ def public_url() -> str:
 
 
 def deploy_command(api_prefix: str = "/api/v1") -> str:
-    """The single line an operator pastes into KSC / GPO / schtasks."""
+    """The single line an operator pastes into KSC / GPO / schtasks.
+
+    nginx hard-redirects plain HTTP to HTTPS (`return 301 https://...`), and
+    that HTTPS is a self-signed cert with no public CA behind it (LAN-only
+    server, no public IP) - Windows PowerShell 5.1's WebClient rejects it by
+    default with a generic "unable to create a secure channel" error that
+    gives no hint it's a cert problem, not a network one. Verified live
+    against a real fleet machine (VNA-MGR-15) before this fix was added: the
+    trigger died before the downloaded script ever got a chance to run, so no
+    log, no report - just silence. TLS1.2 + a certificate bypass, same trust
+    model as the `curl -k` used to smoke-test this server, fixes it.
+    """
     url = f"{public_url()}{api_prefix}/remote-access/deploy/bootstrap.ps1"
     return (
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
-        f'"$c=New-Object Net.WebClient; '
+        '"[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;'
+        "[Net.ServicePointManager]::ServerCertificateValidationCallback={$true};"
+        "$c=New-Object Net.WebClient; "
         f"$c.Headers.Add('X-InfraScope-Deploy-Token','{settings.RUSTDESK_DEPLOY_TOKEN}'); "
         f"iex $c.DownloadString('{url}')\""
     )
@@ -106,6 +119,11 @@ _TEMPLATE = r"""
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# nginx serves this over a self-signed cert (LAN-only, no public IP behind
+# it) - the deploy-command wrapper already sets this same bypass before
+# fetching this file, so this line is only load-bearing if the script is
+# ever run standalone (saved to disk, invoked without that wrapper).
+[Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 
 $Base    = '@@BASE@@'
 $Token   = '@@TOKEN@@'
@@ -277,19 +295,26 @@ try {
     if ($cfg.block_outgoing) {
         # AppLocker: non-admins cannot start rustdesk.exe interactively. The
         # SYSTEM service instance is unaffected, so incoming sessions still work.
+        # Rule Id must be a real GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, hex
+        # only) - Set-AppLockerPolicy validates the XML against that schema and
+        # rejects the whole policy on a bad one. Caught live on VNA-MGR-15: the
+        # earlier "...infrascope01" id has letters outside a-f, so every prior
+        # rollout (this script and the offline rustdesk-ksc/configure.ps1) that
+        # asked for block_outgoing silently never got it - "AppLocker step
+        # skipped" in the log, with no indication it was a fixable bug.
         try {
             Set-Service AppIDSvc -StartupType Automatic -EA SilentlyContinue
             Start-Service AppIDSvc -EA SilentlyContinue
             $xml = @"
 <AppLockerPolicy Version="1">
   <RuleCollection Type="Exe" EnforcementMode="Enabled">
-    <FilePathRule Id="e1f7a1a0-0000-0000-0000-infrascope01" Name="InfraScope: allow RustDesk for admins" Description="" UserOrGroupSid="S-1-5-32-544" Action="Allow">
+    <FilePathRule Id="e1f7a1a0-0000-4000-8000-000000000001" Name="InfraScope: allow RustDesk for admins" Description="" UserOrGroupSid="S-1-5-32-544" Action="Allow">
       <Conditions><FilePathCondition Path="%PROGRAMFILES%\RustDesk\*"/></Conditions>
     </FilePathRule>
-    <FilePathRule Id="e1f7a1a0-0000-0000-0000-infrascope02" Name="InfraScope: deny RustDesk for users" Description="" UserOrGroupSid="S-1-1-0" Action="Deny">
+    <FilePathRule Id="e1f7a1a0-0000-4000-8000-000000000002" Name="InfraScope: deny RustDesk for users" Description="" UserOrGroupSid="S-1-1-0" Action="Deny">
       <Conditions><FilePathCondition Path="%PROGRAMFILES%\RustDesk\*"/></Conditions>
     </FilePathRule>
-    <FilePathRule Id="e1f7a1a0-0000-0000-0000-infrascope03" Name="(default) allow everything else" Description="" UserOrGroupSid="S-1-1-0" Action="Allow">
+    <FilePathRule Id="e1f7a1a0-0000-4000-8000-000000000003" Name="(default) allow everything else" Description="" UserOrGroupSid="S-1-1-0" Action="Allow">
       <Conditions><FilePathCondition Path="*"/></Conditions>
     </FilePathRule>
   </RuleCollection>

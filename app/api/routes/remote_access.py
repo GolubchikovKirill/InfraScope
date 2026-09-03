@@ -43,6 +43,7 @@ from app.domains.remote_access.schemas import (
     DeployReport,
     DeviceDesiredUpdate,
     DeviceEnsureRequest,
+    DeviceProfileUpdate,
     DevicePublic,
     DevicesPublic,
     PackageConfig,
@@ -118,6 +119,21 @@ def update_device(device_id: uuid.UUID, payload: DeviceDesiredUpdate, session: S
     session.add(dev)
     session.commit()
     session.refresh(dev)
+    return _to_public(dev)
+
+
+@router.post(
+    "/devices/{device_id}/profile",
+    response_model=DevicePublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def set_device_profile(device_id: uuid.UUID, payload: DeviceProfileUpdate, session: SessionDep) -> DevicePublic:
+    """"client" (default - store kiosk, AppLocker-blocked, hidden) or "admin"
+    (an engineer's own workstation - full normal RustDesk, visible, usable)."""
+    dev = session.get(RemoteAccessDevice, device_id)
+    if not dev:
+        raise not_found("Device not found")
+    dev = service.apply_deploy_profile(session, dev, payload.profile)
     return _to_public(dev)
 
 

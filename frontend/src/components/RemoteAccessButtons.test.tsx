@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   hostnameToRid: vi.fn((h: string) => h.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 32)),
   requestDeploy: vi.fn(),
   rustdeskLink: vi.fn((id: string) => `rustdesk://connection/new/${id}`),
+  setDeviceProfile: vi.fn(),
   getDeployCommand: vi.fn(),
 }));
 
@@ -27,6 +28,7 @@ const device: RemoteDevice = {
   rustdesk_id: "VNK_MGR_D1",
   has_password: true,
   password_rotated_at: null,
+  deploy_profile: "client",
   desired_hidden: true,
   desired_block_outgoing: true,
   desired_unattended: true,
@@ -155,5 +157,16 @@ describe("RemoteAccessButtons", () => {
     expect(screen.queryByText("Настроить")).not.toBeInTheDocument();
     expect(screen.queryByText("Развернуть")).not.toBeInTheDocument();
     expect(screen.queryByText("Передеплоить")).not.toBeInTheDocument();
+  });
+
+  it("switches to the admin profile from the settings dialog", async () => {
+    api.setDeviceProfile.mockResolvedValue({ ...device, deploy_profile: "admin" });
+    renderButtons();
+
+    fireEvent.click(screen.getByText("Настроить"));
+    const select = screen.getByDisplayValue(/Клиент — скрыт/);
+    fireEvent.change(select, { target: { value: "admin" } });
+
+    await waitFor(() => expect(api.setDeviceProfile).toHaveBeenCalledWith("dev-1", "admin"));
   });
 });

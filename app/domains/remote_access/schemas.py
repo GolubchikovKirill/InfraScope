@@ -10,6 +10,7 @@ __all__ = [
     "DevicePublic",
     "DevicesPublic",
     "DeviceDesiredUpdate",
+    "DeviceProfileUpdate",
     "DeviceEnsureRequest",
     "AddressBookSyncRequest",
     "AddressBookStatus",
@@ -59,6 +60,7 @@ class DevicePublic(BaseModel):
     rustdesk_id: str | None = None
     has_password: bool = False  # InfraScope holds the password the rollout will apply
     password_rotated_at: datetime | None = None
+    deploy_profile: str = "client"  # "client" | "admin" - see service.DEPLOY_PROFILES
     desired_hidden: bool
     desired_block_outgoing: bool
     desired_unattended: bool
@@ -105,6 +107,14 @@ class DeviceDesiredUpdate(BaseModel):
     @classmethod
     def _rid(cls, v: str | None) -> str | None:
         return _validate_rid(v)
+
+
+class DeviceProfileUpdate(BaseModel):
+    """Sets desired_hidden/desired_block_outgoing/desired_unattended together
+    from a named preset (service.DEPLOY_PROFILES), instead of an operator
+    having to get all three booleans right by hand for the common case."""
+
+    profile: str = Field(pattern=r"^(client|admin)$")
 
 
 class DeviceEnsureRequest(BaseModel):

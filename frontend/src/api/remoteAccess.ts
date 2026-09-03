@@ -6,6 +6,11 @@ export type SourceKind = "cash_register" | "computer" | "media_player";
  *  own marker (set locally, never sent by the script) - see Readiness. */
 export type DeployState = "unknown" | "pending" | "installed" | "configured" | "failed" | "stale";
 
+/** "client" = store kiosk: hidden, AppLocker blocks the employee from opening
+ *  RustDesk themselves, inbound-only. "admin" = an engineer's own machine:
+ *  full normal RustDesk, visible, they can launch it and connect out. */
+export type DeployProfile = "client" | "admin";
+
 /** Single chip for the device grid: can an engineer connect to this right now? */
 export type Readiness =
   | "ready" // config applied AND the console sees the client
@@ -26,6 +31,10 @@ export interface RemoteDevice {
   rustdesk_id: string | null;
   has_password: boolean;
   password_rotated_at: string | null;
+  /** "client" (store kiosk - hidden, AppLocker-blocked) or "admin" (an
+   *  engineer's own workstation - full normal RustDesk). Sets the three
+   *  fields below together; see setDeviceProfile. */
+  deploy_profile: DeployProfile;
   desired_hidden: boolean;
   desired_block_outgoing: boolean;
   desired_unattended: boolean;
@@ -70,6 +79,13 @@ export async function getRemoteDevices(params?: {
 
 export async function updateRemoteDevice(id: string, payload: Partial<RemoteDevice>) {
   const { data } = await api.patch<RemoteDevice>(`/remote-access/devices/${id}`, payload);
+  return data;
+}
+
+/** Sets desired_hidden/desired_block_outgoing/desired_unattended together
+ *  from a named preset, instead of getting all three right by hand. */
+export async function setDeviceProfile(id: string, profile: DeployProfile) {
+  const { data } = await api.post<RemoteDevice>(`/remote-access/devices/${id}/profile`, { profile });
   return data;
 }
 

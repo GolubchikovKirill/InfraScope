@@ -7,6 +7,8 @@ import {
   hostnameToRid,
   requestDeploy,
   rustdeskLink,
+  setDeviceProfile,
+  type DeployProfile,
   type RemoteDevice,
 } from "../client";
 import { showToast } from "../lib/toastBus";
@@ -54,6 +56,20 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
       setDeployModalOpen(true);
     },
     onError: () => showToast("Не удалось запросить развёртывание", "error"),
+  });
+
+  const profileMut = useMutation({
+    mutationFn: ({ id, profile }: { id: string; profile: DeployProfile }) => setDeviceProfile(id, profile),
+    onSuccess: (dev) => {
+      showToast(
+        dev.deploy_profile === "admin"
+          ? `${hostname}: профиль «Админ» — полный доступ, без ограничений`
+          : `${hostname}: профиль «Клиент» — заблокировано для пользователя`,
+        "success",
+      );
+      qc.invalidateQueries({ queryKey: ["remote-devices"] });
+    },
+    onError: () => showToast("Не удалось сменить профиль", "error"),
   });
 
   const pkg = useQuery({
@@ -159,6 +175,22 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
               Сохраняет желаемый ID и пароль для этой машины. Применяется на устройство при
               следующем прогоне раскатки — здесь ничего не устанавливается.
             </p>
+            {device && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-slate-600">Профиль</span>
+                <select
+                  className="app-input w-full px-3 py-2 text-sm"
+                  value={device.deploy_profile}
+                  disabled={profileMut.isPending}
+                  onChange={(e) =>
+                    profileMut.mutate({ id: device.id, profile: e.target.value as DeployProfile })
+                  }
+                >
+                  <option value="client">Клиент — скрыт, самому не запустить</option>
+                  <option value="admin">Админ — полный доступ, как обычный RustDesk</option>
+                </select>
+              </label>
+            )}
             <label className="block text-sm">
               <span className="mb-1 block text-slate-600">RustDesk ID</span>
               <input

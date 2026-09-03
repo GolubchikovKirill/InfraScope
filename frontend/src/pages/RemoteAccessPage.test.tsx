@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   syncAddressBook: vi.fn(),
   syncRemoteAccess: vi.fn(),
   updateRemoteDevice: vi.fn(),
+  setDeviceProfile: vi.fn(),
   getDeployCommand: vi.fn(),
 }));
 
@@ -45,6 +46,7 @@ function makeDevice(overrides: Partial<RemoteDevice> = {}): RemoteDevice {
     rustdesk_id: "VNK_MGR_D1",
     has_password: true,
     password_rotated_at: null,
+    deploy_profile: "client",
     desired_hidden: true,
     desired_block_outgoing: true,
     desired_unattended: true,
@@ -188,5 +190,18 @@ describe("RemoteAccessPage", () => {
     renderPage();
     expect(await screen.findByText(/на Windows Home/)).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
+  });
+
+  it("switches a device to the admin profile from the row selector", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [makeDevice()], count: 1 });
+    api.setDeviceProfile.mockResolvedValue(makeDevice({ deploy_profile: "admin" }));
+
+    renderPage();
+    const row = (await screen.findByText("VNK-MGR-D1")).closest("tr")!;
+    const select = within(row).getByTitle(/AppLocker не даёт запустить самому/);
+    expect(select).toHaveValue("client");
+
+    fireEvent.change(select, { target: { value: "admin" } });
+    await waitFor(() => expect(api.setDeviceProfile).toHaveBeenCalledWith("dev-1", "admin"));
   });
 });

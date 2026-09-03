@@ -19,9 +19,11 @@ import {
   requestDeploy,
   rotateRemotePassword,
   rustdeskLink,
+  setDeviceProfile,
   syncAddressBook,
   syncRemoteAccess,
   updateRemoteDevice,
+  type DeployProfile,
   type RemoteDevice,
   type SourceKind,
 } from "../client";
@@ -150,6 +152,19 @@ export default function RemoteAccessPage() {
     mutationFn: ({ id, payload }: { id: string; payload: Partial<RemoteDevice> }) =>
       updateRemoteDevice(id, payload),
     onSuccess: () => invalidate(),
+  });
+  const profileMut = useMutation({
+    mutationFn: ({ id, profile }: { id: string; profile: DeployProfile }) => setDeviceProfile(id, profile),
+    onSuccess: (dev) => {
+      showToast(
+        dev.deploy_profile === "admin"
+          ? `${dev.hostname}: профиль «Админ» — полный доступ, без ограничений`
+          : `${dev.hostname}: профиль «Клиент» — заблокировано для пользователя`,
+        "success",
+      );
+      invalidate();
+    },
+    onError: () => showToast("Не удалось сменить профиль", "error"),
   });
   const deployMut = useMutation({
     mutationFn: (id: string) => requestDeploy(id),
@@ -292,7 +307,7 @@ export default function RemoteAccessPage() {
                     <th>Точка</th>
                     <th>Готовность</th>
                     <th>Пароль</th>
-                    <th>Защита</th>
+                    <th>Профиль / защита</th>
                     <th className="text-right">Действия</th>
                   </tr>
                 </thead>
@@ -351,7 +366,23 @@ export default function RemoteAccessPage() {
                         )}
                       </td>
                       <td>
-                        <div className="flex gap-1">
+                        <select
+                          className="app-input px-2 py-1 text-xs"
+                          value={d.deploy_profile}
+                          disabled={!isSuperuser || profileMut.isPending}
+                          title={
+                            d.deploy_profile === "admin"
+                              ? "Полный доступ: видимый клиент, можно подключаться самому"
+                              : "Заблокировано для пользователя: скрыт, AppLocker не даёт запустить самому"
+                          }
+                          onChange={(e) =>
+                            profileMut.mutate({ id: d.id, profile: e.target.value as DeployProfile })
+                          }
+                        >
+                          <option value="client">Клиент</option>
+                          <option value="admin">Админ</option>
+                        </select>
+                        <div className="mt-1 flex gap-1">
                           <button
                             title={d.desired_hidden ? "Скрыт от пользователя" : "Виден пользователю"}
                             disabled={!isSuperuser}
