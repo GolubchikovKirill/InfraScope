@@ -284,11 +284,18 @@ try {
     # ---- 5. permanent password (must precede the locks) --------------------
     if ($cfg.permanent_password) {
         & $exe --password $cfg.permanent_password
-        Start-Sleep 5
+        # a flat 5s sleep was a race on slow/loaded hardware - caught live on
+        # VNA-MGR-04 right after an MSI install: the password had actually
+        # landed, just a few seconds after this check already gave up and
+        # reported "failed". Poll instead of a single fixed wait.
         $ok = $false
-        foreach ($d in $cfgDirs) {
-            $rd = Join-Path $d 'RustDesk.toml'
-            if ((Get-Content $rd -EA SilentlyContinue) -match "^\s*password\s*=\s*'.+'") { $ok = $true }
+        $deadline = (Get-Date).AddSeconds(30)
+        while (-not $ok -and (Get-Date) -lt $deadline) {
+            Start-Sleep 2
+            foreach ($d in $cfgDirs) {
+                $rd = Join-Path $d 'RustDesk.toml'
+                if ((Get-Content $rd -EA SilentlyContinue) -match "^\s*password\s*=\s*'.+'") { $ok = $true }
+            }
         }
         if ($ok) { Log 'password set + verified' }
         else { throw 'password did not persist to RustDesk.toml' }
