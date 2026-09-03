@@ -19,6 +19,7 @@ import { useAuth } from "../auth";
 import {
   deleteRemoteDevice,
   ensureRustDeskDevice,
+  getAddressBookStatus,
   getConsoleConnections,
   getRemoteDevices,
   requestDeploy,
@@ -113,6 +114,16 @@ export default function RemoteAccessPage() {
   // the console-side queries this page still makes all fail the same way when
   // the token is missing/dead, so one of them stands in for "console down"
   const consoleDown = consoleConns.isError;
+  const abStatus = useQuery({
+    queryKey: ["rd-console", "address-book-status"],
+    queryFn: getAddressBookStatus,
+    retry: false,
+    refetchInterval: 30000,
+    enabled: tab === "devices" && !consoleDown,
+  });
+  // 0 almost always - the background sync (every 2 min) both detects and
+  // fixes this on its own; a sustained nonzero reading is the one worth a look
+  const abMissing = abStatus.data?.missing ?? 0;
 
   const rows = useMemo(() => data?.data ?? [], [data]);
   const locations = useMemo(
@@ -268,6 +279,14 @@ export default function RemoteAccessPage() {
               <b>{summary.applockerMismatch}</b>{" "}
               {summary.applockerMismatch === 1 ? "устройство" : "устройств"} на Windows Home — AppLocker
               там недоступен, запрет ручного запуска клиента не применился (см. значок «Home» в строке).
+            </div>
+          )}
+
+          {abMissing > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+              <b>{abMissing}</b> {abMissing === 1 ? "устройство отмечено" : "устройств отмечены"} как «в
+              книге адресов», но в консоли этой записи сейчас нет — фон подтянет само в течение пары минут;
+              если висит дольше, нажмите «В книгу адресов».
             </div>
           )}
 

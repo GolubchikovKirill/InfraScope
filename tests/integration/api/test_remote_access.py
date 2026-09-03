@@ -1,6 +1,8 @@
-"""/deploy/* routes - called by the endpoint script itself, not an InfraScope
-session, so these go through `client` + the shared deploy token rather than
-`admin_token`/`user_token`."""
+"""Remote-access API routes: /deploy/* (called by the endpoint script itself,
+no InfraScope session - go through `client` + the shared deploy token rather
+than `admin_token`/`user_token`) and the operator-facing /devices list."""
+
+import asyncio
 
 from app.core.config import settings
 from app.domains.remote_access import service
@@ -74,3 +76,23 @@ def test_deploy_config_refused_with_no_signal_at_all(client, db_session, monkeyp
         headers={"X-InfraScope-Deploy-Token": "s3cr3t", "X-Real-IP": "10.10.99.60"},
     )
     assert resp.status_code == 404
+
+
+def test_list_devices_hides_soft_deleted_ones_by_default(client, db_session, user_token: str):
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-901")
+    asyncio.run(service.delete_device(db_session, dev))
+    service.ensure_device(db_session, hostname="VNA-MGR-902")
+
+    resp = client.get(
+        "/api/v1/remote-access/devices", headers={"Authorization": f"Bearer {user_token}"}
+    )
+    assert resp.status_code == 200
+    hostnames = {d["hostname"] for d in resp.json()["data"]}
+    assert hostnames == {"VNA-MGR-902"}
+
+    resp = client.get(
+        "/api/v1/remote-access/devices",
+        params={"include_unmanaged": True},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert {d["hostname"] for d in resp.json()["data"]} == {"VNA-MGR-901", "VNA-MGR-902"}

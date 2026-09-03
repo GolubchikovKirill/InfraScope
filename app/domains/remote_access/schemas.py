@@ -158,6 +158,9 @@ class AddressBookStatus(BaseModel):
     entries: int
     shared_with_group: str
     accounts: int
+    # devices InfraScope believes are in the book but the console doesn't
+    # actually have right now - see service.address_book_status. Normally 0.
+    missing: int = 0
 
 
 class PackageConfig(BaseModel):

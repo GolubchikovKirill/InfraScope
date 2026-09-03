@@ -76,12 +76,21 @@ def list_devices(
     location: str | None = Query(default=None),
     source_kind: str | None = Query(default=None),
     hostnames: str | None = Query(default=None, description="comma-separated exact hostnames"),
+    include_unmanaged: bool = Query(
+        default=False, description="also list devices removed from management (managed=False)"
+    ),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=2000),
 ) -> DevicesPublic:
     del current_user
     stmt = select(RemoteAccessDevice)
     count_stmt = select(func.count()).select_from(RemoteAccessDevice)
+    if not include_unmanaged:
+        # delete_device() soft-deletes (managed=False) rather than dropping the
+        # row, precisely so it stays gone from the default view instead of
+        # coming back on the next inventory/console sync
+        stmt = stmt.where(RemoteAccessDevice.managed == True)  # noqa: E712
+        count_stmt = count_stmt.where(RemoteAccessDevice.managed == True)  # noqa: E712
     if hostnames:
         names = [h.strip() for h in hostnames.split(",") if h.strip()]
         if not names:

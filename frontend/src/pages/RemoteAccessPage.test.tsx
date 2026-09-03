@@ -6,6 +6,7 @@ import type { RemoteDevice } from "../client";
 const api = vi.hoisted(() => ({
   deleteRemoteDevice: vi.fn(),
   ensureRustDeskDevice: vi.fn(),
+  getAddressBookStatus: vi.fn(),
   getConsoleConnections: vi.fn(),
   getRemoteDevices: vi.fn(),
   requestDeploy: vi.fn(),
@@ -91,6 +92,15 @@ beforeEach(() => {
   // assertions see calls left over from an earlier test.
   vi.clearAllMocks();
   api.getConsoleConnections.mockResolvedValue([]);
+  api.getAddressBookStatus.mockResolvedValue({
+    name: "InfraScope",
+    collection_id: 1,
+    owner_user_id: 1,
+    entries: 0,
+    shared_with_group: "InfraScope Admins",
+    accounts: 1,
+    missing: 0,
+  });
 });
 
 describe("RemoteAccessPage", () => {
@@ -193,6 +203,23 @@ describe("RemoteAccessPage", () => {
     renderPage();
     expect(await screen.findByText(/на Windows Home/)).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
+  });
+
+  it("banners devices the console has lost from the shared address book", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [makeDevice()], count: 1 });
+    api.getAddressBookStatus.mockResolvedValue({
+      name: "InfraScope",
+      collection_id: 1,
+      owner_user_id: 1,
+      entries: 10,
+      shared_with_group: "InfraScope Admins",
+      accounts: 1,
+      missing: 3,
+    });
+
+    renderPage();
+    expect(await screen.findByText(/в консоли этой записи сейчас нет/)).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("switches a device to the admin profile from the row selector", async () => {

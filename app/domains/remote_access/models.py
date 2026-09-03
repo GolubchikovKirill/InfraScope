@@ -24,7 +24,11 @@ class RemoteAccessDevice(SQLModel, table=True):
     """
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    hostname: str = Field(max_length=255, unique=True, index=True)
+    # Uniqueness lives on a functional index over lower(hostname), not this
+    # column directly - every lookup in this domain is case-insensitive
+    # (Windows hostnames are), see migration a0b1c2d3e4f5 and
+    # service._get_or_create_device.
+    hostname: str = Field(max_length=255)
 
     # soft links to the inventory rows this endpoint corresponds to (any subset may be set:
     # a till tracked both as a CashRegister and a Computer links to both)

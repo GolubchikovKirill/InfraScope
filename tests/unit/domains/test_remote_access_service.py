@@ -86,6 +86,35 @@ def test_seed_from_inventory_does_not_duplicate_an_existing_hostname_by_case(db_
     assert pre_existing.computer_id is not None  # still got linked to the inventory row
 
 
+def test_seed_from_inventory_does_not_revive_a_soft_deleted_device(db_session) -> None:
+    import asyncio
+
+    db_session.add(Computer(hostname="VNA-MGR-78", location="A1"))
+    db_session.commit()
+    service.seed_from_inventory(db_session)
+    dev = _dev(db_session, "VNA-MGR-78")
+    asyncio.run(service.delete_device(db_session, dev))
+    assert dev.managed is False
+
+    service.seed_from_inventory(db_session)  # the underlying Computer row is still there
+    assert _dev(db_session, "VNA-MGR-78").managed is False
+
+
+def test_sync_from_console_does_not_revive_a_soft_deleted_device(db_session, monkeypatch) -> None:
+    import asyncio
+
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-79")
+    asyncio.run(service.delete_device(db_session, dev))
+    assert dev.managed is False
+
+    async def fake_peers():
+        return [{"id": dev.rustdesk_id, "hostname": "VNA-MGR-79", "version": "1.4.9"}]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    asyncio.run(service.sync_from_console(db_session))
+    assert _dev(db_session, "VNA-MGR-79").managed is False
+
+
 def test_seed_marks_till_that_is_also_a_computer_as_cash_register(db_session) -> None:
     db_session.add(Computer(hostname="VNA-POS-09", location="Z1"))
     db_session.add(CashRegister(kkm_number="K9", hostname="VNA-POS-09", store_number="042"))
@@ -196,12 +225,16 @@ def test_hostname_type_tag_reads_the_middle_segment_of_site_type_num_names() -> 
     assert service.hostname_type_tag("VNK-PROJECT03") is None
 
 
-def test_delete_device_removes_the_row_and_best_effort_cleans_up_its_book_entry(db_session, monkeypatch) -> None:
+def test_delete_device_soft_deletes_and_best_effort_cleans_up_its_book_entry(db_session, monkeypatch) -> None:
+    # a hard delete used to get recreated within a minute by the next
+    # seed_from_inventory tick, with a fresh password and reset rollout
+    # status - caught live on HPI2E8F25
     import asyncio
 
     dev = service.ensure_device(db_session, hostname="VNA-JUNK-01", permanent_password="pw")
     dev.ab_row_id = 42
     dev.in_address_book = True
+    dev.ab_password_pushed = True
     db_session.add(dev)
     db_session.commit()
     dev_id = dev.id
@@ -216,17 +249,22 @@ def test_delete_device_removes_the_row_and_best_effort_cleans_up_its_book_entry(
     asyncio.run(service.delete_device(db_session, dev))
 
     assert calls == [(42, dev.rustdesk_id)]
-    assert _dev(db_session, "VNA-JUNK-01") is None
-    assert db_session.get(RemoteAccessDevice, dev_id) is None
+    row = db_session.get(RemoteAccessDevice, dev_id)
+    assert row is not None  # the row itself survives
+    assert row.managed is False
+    assert row.in_address_book is False
+    assert row.ab_row_id is None
+    assert row.ab_password_pushed is False
 
 
-def test_delete_device_still_drops_the_row_when_the_console_call_fails(db_session, monkeypatch) -> None:
+def test_delete_device_still_soft_deletes_when_the_console_call_fails(db_session, monkeypatch) -> None:
     import asyncio
 
     dev = service.ensure_device(db_session, hostname="VNA-JUNK-02", permanent_password="pw")
     dev.ab_row_id = 7
     db_session.add(dev)
     db_session.commit()
+    dev_id = dev.id
 
     async def fake_delete_row(*, row_id: int, peer_id: str) -> None:
         raise RuntimeError("console is down")
@@ -234,7 +272,42 @@ def test_delete_device_still_drops_the_row_when_the_console_call_fails(db_sessio
     monkeypatch.setattr(service.rustdesk_client, "delete_address_book_row", fake_delete_row)
 
     asyncio.run(service.delete_device(db_session, dev))  # must not raise
-    assert _dev(db_session, "VNA-JUNK-02") is None
+    assert db_session.get(RemoteAccessDevice, dev_id).managed is False
+
+
+def test_delete_device_keeps_the_book_row_shared_by_another_device(db_session, monkeypatch) -> None:
+    # case-duplicate hostnames used to share one console row by rustdesk_id -
+    # deleting the duplicate deleted the row both pointed at, silently
+    # dropping the survivor out of the address book too. Caught live: 28
+    # devices this way from one round of duplicate cleanup.
+    import asyncio
+
+    original = service.ensure_device(db_session, hostname="VNA-MGR-701", permanent_password="pw")
+    original.ab_row_id = 99
+    original.in_address_book = True
+    original.ab_password_pushed = True
+    db_session.add(original)
+    db_session.commit()
+
+    duplicate = service.ensure_device(db_session, hostname="VNA-MGR-701-DUP", permanent_password="pw")
+    duplicate.rustdesk_id = original.rustdesk_id  # same physical machine, different DB row
+    duplicate.ab_row_id = 99
+    db_session.add(duplicate)
+    db_session.commit()
+
+    calls: list[tuple[int, str]] = []
+
+    async def fake_delete_row(*, row_id: int, peer_id: str) -> None:
+        calls.append((row_id, peer_id))
+
+    monkeypatch.setattr(service.rustdesk_client, "delete_address_book_row", fake_delete_row)
+
+    asyncio.run(service.delete_device(db_session, duplicate))
+
+    assert calls == []  # never called - the survivor still needs that row
+    db_session.refresh(original)
+    assert original.in_address_book is True
+    assert original.ab_row_id == 99
 
 
 def test_sync_from_console_sets_online_only_for_devices_the_console_knows(db_session, monkeypatch) -> None:

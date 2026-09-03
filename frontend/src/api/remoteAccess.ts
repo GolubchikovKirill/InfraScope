@@ -176,6 +176,10 @@ export interface AddressBookStatus {
   entries: number;
   shared_with_group: string;
   accounts: number;
+  /** Devices InfraScope believes are in the book but the console doesn't
+   *  actually have right now. Normally 0 - the background sync both detects
+   *  and fixes this every 2 minutes. */
+  missing: number;
 }
 
 export async function getAddressBookStatus() {

@@ -106,6 +106,9 @@ class FakeConsole:
                 if r.get("row_id") == payload.get("row_id"):
                     console.ab_rows[i] = {**r, **payload}
 
+        async def delete_address_book_row(*, row_id, peer_id):
+            console.ab_rows = [r for r in console.ab_rows if r.get("row_id") != row_id]
+
         async def list_console_users():
             return list(console.users)
 
@@ -136,6 +139,7 @@ class FakeConsole:
             "list_address_book_rows",
             "create_address_book_row",
             "update_address_book_row",
+            "delete_address_book_row",
             "list_console_users",
             "create_console_user",
             "set_console_user_password",
@@ -218,6 +222,55 @@ def test_sync_stale_address_book_only_pushes_what_drifted(db_session, monkeypatc
     service.rotate_password(db_session, _dev(db_session, "VNA-MGR-403"))
     assert asyncio.run(service.sync_stale_address_book(db_session))["pushed"] == 1
     assert console.updates == 1
+
+
+def test_sync_stale_address_book_reconciles_against_what_the_console_actually_has(
+    db_session, monkeypatch
+) -> None:
+    """The flags alone say "present" - the console disagrees. Caught live: a
+    batch of duplicate-hostname cleanups quietly removed 28 real devices'
+    shared-book rows (delete_device dropped a row two device rows pointed
+    at), and every one of those 28 kept in_address_book=True until the next
+    sync noticed. This is that notice-and-fix step."""
+    console = FakeConsole()
+    console.install(monkeypatch)
+    db_session.add(Computer(hostname="VNA-MGR-405", location="A4"))
+    db_session.commit()
+    service.seed_from_inventory(db_session)
+    asyncio.run(service.sync_address_book(db_session))
+    dev = _dev(db_session, "VNA-MGR-405")
+    assert dev.in_address_book is True and dev.ab_row_id is not None
+
+    # the row vanishes from the console without InfraScope's own flags ever
+    # finding out - exactly what an out-of-band delete_address_book_row call
+    # (e.g. from another device's delete_device) leaves behind
+    console.ab_rows = [r for r in console.ab_rows if r["id"] != dev.rustdesk_id]
+    console.creates = console.updates = 0
+
+    res = asyncio.run(service.sync_stale_address_book(db_session))
+    assert res["pushed"] == 1 and console.creates == 1
+    db_session.refresh(dev)
+    assert dev.in_address_book is True
+    assert dev.ab_row_id is not None
+    # it's back for real, not just flagged - the console has it too
+    assert any(r["id"] == dev.rustdesk_id for r in console.ab_rows)
+
+
+def test_address_book_status_reports_devices_missing_from_the_console(db_session, monkeypatch) -> None:
+    console = FakeConsole()
+    console.install(monkeypatch)
+    db_session.add(Computer(hostname="VNA-MGR-406", location="A4"))
+    db_session.commit()
+    service.seed_from_inventory(db_session)
+    asyncio.run(service.sync_address_book(db_session))
+    dev = _dev(db_session, "VNA-MGR-406")
+
+    status = asyncio.run(service.address_book_status(db_session))
+    assert status["missing"] == 0
+
+    console.ab_rows = [r for r in console.ab_rows if r["id"] != dev.rustdesk_id]
+    status = asyncio.run(service.address_book_status(db_session))
+    assert status["missing"] == 1
 
 
 def test_provision_account_returns_the_password_but_never_stores_it(db_session, monkeypatch) -> None:

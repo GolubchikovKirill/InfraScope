@@ -429,21 +429,48 @@ def rotate_password(session: Session, dev: RemoteAccessDevice) -> RemoteAccessDe
 
 
 async def delete_device(session: Session, dev: RemoteAccessDevice) -> None:
-    """Drop a device from remote-access management entirely.
+    """Take a device off remote-access management.
 
-    Best-effort cleanup of its shared-book row first (a dead console token or
-    a row already removed there shouldn't block dropping our own record - the
-    row would just be orphaned, not catastrophic). Does not touch the
-    inventory row (Computer/CashRegister/MediaPlayer) it was linked from -
-    only the RustDesk-side tracking goes away; re-adding by hostname
-    (ensure_device) re-links it automatically.
+    Soft delete (managed = False), not a row delete - the row used to be
+    dropped outright, and the very next `remote_access_sync` beat tick
+    (seed_from_inventory, every 2 min) recreated it from its still-live
+    inventory row: caught live re-adding HPI2E8F25 within a minute, with a
+    fresh password and its rollout status reset. seed_from_inventory and
+    sync_from_console only touch `managed` on a row they create themselves,
+    never on one that already exists, so this actually sticks. Explicitly
+    re-adding the same hostname (ensure_device) still turns managed back on -
+    that one's a deliberate operator action, not a passive reseed.
+
+    Also: only actually removes the shared-book row when no *other* device
+    row still points at the same rustdesk_id (case-duplicate hostnames used
+    to share one console row - deleting the duplicate deleted the row both
+    pointed at, and the survivor kept claiming in_address_book=True for a
+    book entry that no longer existed).
     """
     if dev.ab_row_id and dev.rustdesk_id:
-        try:
-            await rustdesk_client.delete_address_book_row(row_id=dev.ab_row_id, peer_id=dev.rustdesk_id)
-        except Exception:
-            logger.warning("could not remove %s from the shared address book", dev.hostname, exc_info=True)
-    session.delete(dev)
+        shared_by_another = session.exec(
+            select(RemoteAccessDevice).where(
+                RemoteAccessDevice.id != dev.id,
+                RemoteAccessDevice.rustdesk_id == dev.rustdesk_id,
+            )
+        ).first()
+        if shared_by_another is None:
+            try:
+                await rustdesk_client.delete_address_book_row(row_id=dev.ab_row_id, peer_id=dev.rustdesk_id)
+            except Exception:
+                logger.warning("could not remove %s from the shared address book", dev.hostname, exc_info=True)
+        else:
+            logger.info(
+                "%s: kept its shared-book row - %s still points at the same rustdesk_id",
+                dev.hostname,
+                shared_by_another.hostname,
+            )
+    dev.managed = False
+    dev.in_address_book = False
+    dev.ab_row_id = None
+    dev.ab_password_pushed = False
+    dev.updated_at = _now()
+    session.add(dev)
     session.commit()
 
 
@@ -921,33 +948,71 @@ async def sync_address_book(session: Session) -> dict[str, int]:
 
 
 async def sync_stale_address_book(session: Session) -> dict[str, int]:
-    """Push only the devices whose book row is missing or carries an old password."""
-    devices = list(
-        session.exec(
-            select(RemoteAccessDevice).where(
-                RemoteAccessDevice.managed == True,  # noqa: E712
-                (RemoteAccessDevice.in_address_book == False)  # noqa: E712
-                | (RemoteAccessDevice.ab_password_pushed == False),  # noqa: E712
-            )
-        )
-    )
+    """Push whichever managed devices the shared book doesn't actually have.
+
+    The local flags (in_address_book, ab_password_pushed) alone used to
+    decide this - fine as long as nothing removes a row from the console
+    without going through here, but delete_device (or anything else that
+    calls delete_address_book_row) can, and then nothing ever rechecked
+    against the console again. Caught live: a batch of duplicate-hostname
+    cleanups quietly dropped 28 real devices out of the shared book, and
+    InfraScope kept every one of their flags saying "present" - the console
+    and the address_book_status page told two different stories until this
+    ran. So this also asks the console directly, once, and treats a device
+    whose rustdesk_id isn't in that answer as needing a push regardless of
+    what its flags say - and clears its (now-dangling) ab_row_id first, so
+    push_shared_address_book creates a fresh row instead of failing an
+    update against a row_id the console has already forgotten.
+    """
+    collection_id, owner_id = await ensure_shared_book()
+    live_ids = {
+        str(r.get("id") or "")
+        for r in await rustdesk_client.list_address_book_rows(user_id=owner_id, collection_id=collection_id)
+    }
+
+    devices = []
+    for dev in session.exec(select(RemoteAccessDevice).where(RemoteAccessDevice.managed == True)):  # noqa: E712
+        missing_from_console = bool(dev.rustdesk_id) and dev.rustdesk_id not in live_ids
+        if missing_from_console:
+            dev.ab_row_id = None
+            dev.in_address_book = False
+            dev.ab_password_pushed = False
+        if not dev.in_address_book or not dev.ab_password_pushed:
+            devices.append(dev)
     if not devices:
         return {"pushed": 0, "created": 0, "updated": 0, "failed": 0}
     return await push_shared_address_book(session, devices)
 
 
 async def address_book_status(session: Session) -> dict[str, Any]:
-    """What the page shows above the device grid: which book, how big, who sees it."""
+    """What the page shows above the device grid: which book, how big, who sees it.
+
+    `missing` is the reconciliation sync_stale_address_book also does - devices
+    InfraScope believes are in the book (in_address_book=True) but whose
+    rustdesk_id the console doesn't actually have right now. Normally 0; the
+    next beat tick (every 2 min) re-pushes and clears it on its own, so a
+    nonzero reading here is either "wait a couple minutes" or, if it's stuck
+    positive across ticks, worth a look.
+    """
     collection_id, owner_id = await ensure_shared_book()
     rows = await rustdesk_client.list_address_book_rows(
         user_id=owner_id, collection_id=collection_id
     )
+    live_ids = {str(r.get("id") or "") for r in rows}
+    believed_present = session.exec(
+        select(RemoteAccessDevice).where(
+            RemoteAccessDevice.managed == True,  # noqa: E712
+            RemoteAccessDevice.in_address_book == True,  # noqa: E712
+        )
+    ).all()
+    missing = sum(1 for d in believed_present if d.rustdesk_id and d.rustdesk_id not in live_ids)
     accounts = session.exec(
         select(RemoteAccessConsoleAccount).where(RemoteAccessConsoleAccount.active == True)  # noqa: E712
     ).all()
     return {
         "name": settings.RUSTDESK_SHARED_BOOK_NAME,
         "collection_id": collection_id,
+        "missing": missing,
         "owner_user_id": owner_id,
         "entries": len(rows),
         "shared_with_group": settings.RUSTDESK_ADMIN_GROUP_NAME,
