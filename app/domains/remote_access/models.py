@@ -15,11 +15,12 @@ SOURCE_KINDS = ("cash_register", "computer", "media_player")
 class RemoteAccessDevice(SQLModel, table=True):
     """One RustDesk endpoint InfraScope tracks, keyed by hostname and linked to inventory.
 
-    InfraScope does not push the client - that is done through Kaspersky Security
-    Center with a preconfigured package (see docs/rustdesk-ksc-deployment.md). This
-    row holds the *desired* config the package should carry for the machine, plus
-    the *observed* status folded in from the RustDesk console and InfraScope's own
-    reachability polling.
+    Holds the *desired* config the endpoint should end up with (id, password,
+    lockdown switches), the *reported* rollout state the endpoint's own script
+    sent back, and the *observed* status folded in from the RustDesk console and
+    InfraScope's own reachability polling. The three are kept apart on purpose -
+    "we asked for it", "the machine says it did it" and "the console sees it" are
+    different facts and the UI shows them as such.
     """
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -45,7 +46,18 @@ class RemoteAccessDevice(SQLModel, table=True):
     desired_block_outgoing: bool = Field(default=True)  # AppLocker: no interactive rustdesk.exe for non-admins
     desired_unattended: bool = Field(default=True)  # approve-mode=password (no on-screen accept)
     managed: bool = Field(default=True, index=True)  # unset to stop InfraScope from tracking it
-    in_address_book: bool = Field(default=False, index=True)  # pushed into the console's address book
+
+    # --- shared address book ---
+    in_address_book: bool = Field(default=False, index=True)  # present in the shared console book
+    ab_row_id: int | None = Field(default=None)  # console row id, so we update instead of re-adding
+    ab_password_pushed: bool = Field(default=False)  # the book row carries the current password
+
+    # --- rollout, as reported by the endpoint's own script ---
+    # unknown -> pending -> installed -> configured | failed
+    deploy_state: str = Field(default="unknown", max_length=16, index=True)
+    deploy_detail: str | None = Field(default=None, max_length=512)
+    deploy_requested_at: datetime | None = Field(default=None)
+    deploy_reported_at: datetime | None = Field(default=None)
 
     # --- observed status ---
     installed_version: str | None = Field(default=None, max_length=32)
@@ -59,5 +71,33 @@ class RemoteAccessDevice(SQLModel, table=True):
     host_online: bool | None = Field(default=None, index=True)
     host_last_seen_at: datetime | None = Field(default=None)
 
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
+    updated_at: datetime | None = Field(default=None)
+
+
+class RemoteAccessConsoleAccount(SQLModel, table=True):
+    """A RustDesk console login InfraScope provisions for an engineer.
+
+    Every account lands in the console group named by RUSTDESK_ADMIN_GROUP_NAME,
+    which the shared address book is shared with - so a new engineer sees the
+    whole fleet the moment they log into their RustDesk client, with no per-user
+    address-book push.
+
+    The password is deliberately **not** stored: it is generated, handed to the
+    console, and returned exactly once in the create/reset response. Losing it
+    means resetting it, not reading it back.
+    """
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    username: str = Field(max_length=64, unique=True, index=True)
+    console_user_id: int | None = Field(default=None, index=True)
+    display_name: str | None = Field(default=None, max_length=128)
+    email: str | None = Field(default=None, max_length=255)
+    is_admin: bool = Field(default=False)
+    # optional link to the InfraScope operator this console login belongs to
+    infrascope_user_id: uuid.UUID | None = Field(default=None, foreign_key="user.id", index=True)
+    active: bool = Field(default=True, index=True)
+    book_shared: bool = Field(default=False)  # the shared-book rule has been granted
+    last_synced_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
     updated_at: datetime | None = Field(default=None)

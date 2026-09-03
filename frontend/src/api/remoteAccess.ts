@@ -2,6 +2,17 @@ import api from "./http";
 
 export type SourceKind = "cash_register" | "computer" | "media_player";
 
+/** What the endpoint's own rollout script reported. Never inferred by the server. */
+export type DeployState = "unknown" | "pending" | "installed" | "configured" | "failed";
+
+/** Single chip for the device grid: can an engineer connect to this right now? */
+export type Readiness =
+  | "ready" // config applied AND the console sees the client
+  | "installed_offline" // rolled out, but the machine is not reachable
+  | "deploying" // waiting for the endpoint to run the bootstrap
+  | "failed"
+  | "not_deployed";
+
 export interface RemoteDevice {
   id: string;
   hostname: string;
@@ -18,6 +29,12 @@ export interface RemoteDevice {
   desired_unattended: boolean;
   managed: boolean;
   in_address_book: boolean;
+  ab_password_pushed: boolean;
+  deploy_state: DeployState;
+  deploy_detail: string | null;
+  deploy_requested_at: string | null;
+  deploy_reported_at: string | null;
+  readiness: Readiness;
   installed_version: string | null;
   online: boolean | null;
   logged_in_user: string | null;
@@ -49,7 +66,7 @@ export async function updateRemoteDevice(id: string, payload: Partial<RemoteDevi
 }
 
 /** Create/link a device row and stamp its desired RustDesk id + password.
- *  Records config only - the client itself is rolled out via KSC. */
+ *  Records config only - it reaches the machine on the next rollout run. */
 export async function ensureRustDeskDevice(payload: {
   hostname: string;
   rustdesk_id?: string;
@@ -78,6 +95,7 @@ export interface PackageConfig {
   unattended: boolean;
 }
 
+/** Config for an offline KSC package (a machine with no network path back here). */
 export async function getDevicePackage(id: string) {
   const { data } = await api.get<PackageConfig>(`/remote-access/devices/${id}/package`);
   return data;
@@ -88,12 +106,121 @@ export async function syncRemoteAccess() {
   return data;
 }
 
+// --------------------------------------------------------------------------- //
+// rollout                                                                     //
+// --------------------------------------------------------------------------- //
+export interface DeployCommand {
+  /** The one line to paste into a KSC "run script" task, GPO, or schtasks. */
+  command: string;
+  bootstrap_url: string;
+  installer_filename: string;
+  installer_version: string;
+  /** false when RUSTDESK_DEPLOY_TOKEN / RUSTDESK_PUBLIC_URL are unset on the server */
+  configured: boolean;
+}
+
+export async function getDeployCommand() {
+  const { data } = await api.get<DeployCommand>("/remote-access/deploy/command");
+  return data;
+}
+
+/** Mark a device as awaiting rollout. InfraScope never remote-executes: the
+ *  machine still has to run the bootstrap via KSC / GPO / schtasks. */
+export async function requestDeploy(id: string) {
+  const { data } = await api.post<RemoteDevice>(`/remote-access/devices/${id}/deploy`);
+  return data;
+}
+
+// --------------------------------------------------------------------------- //
+// shared address book                                                         //
+// --------------------------------------------------------------------------- //
+export interface AddressBookStatus {
+  name: string;
+  collection_id: number;
+  owner_user_id: number;
+  entries: number;
+  shared_with_group: string;
+  accounts: number;
+}
+
+export async function getAddressBookStatus() {
+  const { data } = await api.get<AddressBookStatus>("/remote-access/address-book/status");
+  return data;
+}
+
+/** Push devices into the shared console book, passwords included. */
 export async function syncAddressBook(payload?: {
   device_ids?: string[];
   location?: string;
   source_kind?: SourceKind;
 }) {
   const { data } = await api.post<{ message: string }>("/remote-access/address-book/sync", payload ?? {});
+  return data;
+}
+
+// --------------------------------------------------------------------------- //
+// console accounts                                                            //
+// --------------------------------------------------------------------------- //
+export interface ConsoleAccount {
+  id: string;
+  username: string;
+  console_user_id: number | null;
+  display_name: string | null;
+  email: string | null;
+  is_admin: boolean;
+  infrascope_user_id: string | null;
+  active: boolean;
+  book_shared: boolean;
+  last_synced_at: string | null;
+  created_at: string;
+}
+
+export interface ConsoleAccountsResponse {
+  data: ConsoleAccount[];
+  count: number;
+}
+
+/** Create/reset response. `password` is shown once and stored nowhere. */
+export interface ConsoleAccountSecret {
+  account: ConsoleAccount;
+  password: string;
+  note: string;
+}
+
+export async function getConsoleAccounts() {
+  const { data } = await api.get<ConsoleAccountsResponse>("/remote-access/accounts");
+  return data;
+}
+
+export async function createConsoleAccount(payload: {
+  username: string;
+  display_name?: string;
+  email?: string;
+  is_admin?: boolean;
+  password?: string;
+}) {
+  const { data } = await api.post<ConsoleAccountSecret>("/remote-access/accounts", payload);
+  return data;
+}
+
+export async function resetConsoleAccountPassword(id: string, password?: string) {
+  const { data } = await api.post<ConsoleAccountSecret>(
+    `/remote-access/accounts/${id}/reset-password`,
+    { password },
+  );
+  return data;
+}
+
+/** Disable rather than delete: the console refuses to drop its last admin. */
+export async function setConsoleAccountActive(id: string, active: boolean) {
+  const { data } = await api.post<ConsoleAccount>(`/remote-access/accounts/${id}/active`, null, {
+    params: { active },
+  });
+  return data;
+}
+
+export async function syncConsoleAccounts() {
+  const { data } = await api.post<{ message: string }>("/remote-access/accounts/sync");
   return data;
 }
 
@@ -105,6 +232,9 @@ export function hostnameToRid(hostname: string): string {
     .slice(0, 32);
 }
 
+// --------------------------------------------------------------------------- //
+// console passthrough                                                         //
+// --------------------------------------------------------------------------- //
 export interface ConsoleConnection {
   id?: number;
   from_peer?: string;
@@ -133,6 +263,8 @@ export interface ConsoleAddressBookEntry {
   online?: boolean | null;
 }
 
+/** The service account's *personal* book. The fleet lives in the shared book -
+ *  see getAddressBookStatus(). */
 export async function getConsoleAddressBook() {
   const { data } = await api.get<ConsoleAddressBookEntry[]>("/remote-access/console/address-book");
   return data;

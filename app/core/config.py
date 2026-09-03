@@ -154,17 +154,45 @@ class Settings(BaseSettings):
 
     # Remote access (self-hosted RustDesk). The rustdesk-api console + hbbs/hbbr
     # live outside this app (see ~/rustdesk on the deploy host); InfraScope wraps
-    # them: proxies the console API behind its own auth, mirrors inventory, and
-    # owns the address-book push. The client itself is rolled out via Kaspersky
-    # Security Center (docs/rustdesk-ksc-deployment.md), not by this app.
+    # them: proxies the console API behind its own auth, mirrors inventory, owns
+    # the shared address book and the console accounts, and serves the silent
+    # client rollout that endpoints pull (docs/rustdesk-v2-plan.md).
     REMOTE_ACCESS_ENABLED: bool = False
     RUSTDESK_API_URL: str = "http://10.10.99.24:21114"
-    RUSTDESK_API_TOKEN: str = ""  # admin API token from the console (Settings -> API tokens)
+    # One console token opens both API surfaces: the client API reads it from
+    # `Authorization: Bearer`, the admin API from `api-token`. Same row in the
+    # console's `user_tokens` table - we send both headers on every call.
+    RUSTDESK_API_TOKEN: str = ""
+    # Service console account. Used to mint a fresh token when RUSTDESK_API_TOKEN
+    # is empty or has been revoked, so a rotated token never silently blinds us.
+    RUSTDESK_ADMIN_USERNAME: str = ""
+    RUSTDESK_ADMIN_PASSWORD: str = ""
     RUSTDESK_ID_SERVER: str = "10.10.99.24"
     RUSTDESK_RELAY_SERVER: str = "10.10.99.24"
     RUSTDESK_KEY: str = ""  # hbbs public key (id_ed25519.pub); clients must match
-    RUSTDESK_INSTALLER_VERSION: str = "1.4.9"  # version the KSC package installs
+    RUSTDESK_INSTALLER_VERSION: str = "1.4.9"
     RUSTDESK_DEVICE_STALE_SECONDS: int = 300  # peer considered offline past this
+
+    # Fleet-wide permanent password baked into every endpoint's config. One
+    # password for the whole fleet was a deliberate call: RustDesk 1.4.x has no
+    # working passwordless unattended mode, and per-machine secrets would have to
+    # be typed by whoever connects.
+    RUSTDESK_DEFAULT_PASSWORD: str = "kentdful"
+    # Shared address book every managed console account can see, and the console
+    # group the share rule is granted to (so a new admin inherits it).
+    RUSTDESK_SHARED_BOOK_NAME: str = "InfraScope"
+    RUSTDESK_ADMIN_GROUP_NAME: str = "InfraScope Admins"
+
+    # --- silent client rollout (endpoints pull from here; nothing is pushed) ---
+    RUSTDESK_INSTALLER_KIND: str = "msi"  # msi | exe - msi is silent and returns
+    RUSTDESK_INSTALLER_FILENAME: str = "rustdesk-1.4.9-x86_64.msi"
+    RUSTDESK_INSTALLER_SHA256: str = ""  # endpoint refuses to run a mismatched file
+    RUSTDESK_PACKAGE_DIR: str = "/var/lib/infrascope/rustdesk"
+    # Shared secret the endpoint script presents (X-InfraScope-Deploy-Token).
+    # Empty disables every /remote-access/deploy/* route.
+    RUSTDESK_DEPLOY_TOKEN: str = ""
+    # How an endpoint reaches this API, e.g. http://10.10.99.24:8000
+    RUSTDESK_PUBLIC_URL: str = ""
 
     INTERNAL_SERVICE_TOKEN: str = ""
     INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0

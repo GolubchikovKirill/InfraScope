@@ -1,27 +1,46 @@
-"""Remote access (self-hosted RustDesk) - status, console passthrough, address book.
+"""Remote access (self-hosted RustDesk) - devices, console accounts, rollout.
 
-The client is rolled out through Kaspersky Security Center with a preconfigured
-package (see docs/rustdesk-ksc-deployment.md). InfraScope tracks and administers;
-it does not push the client.
+Three groups of routes, with different callers and different auth:
+
+* **Operator routes** (`/devices`, `/accounts`, `/address-book`) sit behind
+  normal InfraScope auth; the write ones require a superuser.
+* **Console passthrough** (`/console/*`) puts InfraScope's auth in front of the
+  RustDesk console so engineers need no second login.
+* **Rollout routes** (`/deploy/*`) are called by the endpoint script itself,
+  which has no InfraScope session - they are gated on the shared
+  `RUSTDESK_DEPLOY_TOKEN` and are inert until it is set.
 """
 
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy import func
 from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import not_found
-from app.domains.remote_access import rustdesk_client, service
-from app.domains.remote_access.models import RemoteAccessDevice
+from app.core.config import settings
+from app.domains.remote_access import deploy_script, rustdesk_client, service
+from app.domains.remote_access.models import RemoteAccessConsoleAccount, RemoteAccessDevice
 from app.domains.remote_access.schemas import (
+    AddressBookStatus,
     AddressBookSyncRequest,
-    AddressBookUpsert,
+    ConsoleAccountCreate,
+    ConsoleAccountPasswordReset,
+    ConsoleAccountPublic,
+    ConsoleAccountSecret,
+    ConsoleAccountsPublic,
+    DeployCommand,
+    DeployConfigRequest,
+    DeploymentConfig,
+    DeployReport,
     DeviceDesiredUpdate,
     DeviceEnsureRequest,
     DevicePublic,
@@ -37,6 +56,7 @@ logger = logging.getLogger(__name__)
 def _to_public(dev: RemoteAccessDevice) -> DevicePublic:
     data = DevicePublic.model_validate(dev)
     data.has_password = bool(dev.permanent_password)
+    data.readiness = service.readiness(dev)
     return data
 
 
@@ -124,7 +144,7 @@ def rotate_password(device_id: uuid.UUID, session: SessionDep) -> DevicePublic:
     dependencies=[Depends(get_current_active_superuser)],
 )
 def device_package(device_id: uuid.UUID, session: SessionDep) -> PackageConfig:
-    """Config the KSC post-install step needs for this machine."""
+    """Config for an offline KSC package (no network path back to InfraScope)."""
     dev = session.get(RemoteAccessDevice, device_id)
     if not dev:
         raise not_found("Device not found")
@@ -145,7 +165,87 @@ async def sync(session: SessionDep) -> Message:
 
 
 # --------------------------------------------------------------------------- #
-# console passthrough (InfraScope auth in front of the RustDesk console)     #
+# console accounts                                                            #
+# --------------------------------------------------------------------------- #
+@router.get("/accounts", response_model=ConsoleAccountsPublic)
+def list_accounts(session: SessionDep, current_user: CurrentUser) -> ConsoleAccountsPublic:
+    del current_user
+    rows = session.exec(
+        select(RemoteAccessConsoleAccount).order_by(RemoteAccessConsoleAccount.username)
+    ).all()
+    return ConsoleAccountsPublic(
+        data=[ConsoleAccountPublic.model_validate(r) for r in rows], count=len(rows)
+    )
+
+
+@router.post(
+    "/accounts", response_model=ConsoleAccountSecret, dependencies=[Depends(get_current_active_superuser)]
+)
+async def create_account(payload: ConsoleAccountCreate, session: SessionDep) -> ConsoleAccountSecret:
+    """Create a RustDesk console login for an engineer.
+
+    The account joins the console group the shared address book is shared with,
+    so the whole fleet appears in their client on first login. The password comes
+    back once in this response and is not stored anywhere.
+    """
+    account, secret = await service.provision_account(
+        session,
+        username=payload.username,
+        display_name=payload.display_name,
+        email=payload.email,
+        is_admin=payload.is_admin,
+        password=payload.password,
+        infrascope_user_id=payload.infrascope_user_id,
+    )
+    return ConsoleAccountSecret(
+        account=ConsoleAccountPublic.model_validate(account), password=secret
+    )
+
+
+@router.post(
+    "/accounts/{account_id}/reset-password",
+    response_model=ConsoleAccountSecret,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+async def reset_account_password(
+    account_id: uuid.UUID, payload: ConsoleAccountPasswordReset, session: SessionDep
+) -> ConsoleAccountSecret:
+    account = session.get(RemoteAccessConsoleAccount, account_id)
+    if not account:
+        raise not_found("Account not found")
+    secret = await service.reset_account_password(session, account, payload.password)
+    return ConsoleAccountSecret(
+        account=ConsoleAccountPublic.model_validate(account), password=secret
+    )
+
+
+@router.post(
+    "/accounts/{account_id}/active",
+    response_model=ConsoleAccountPublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+async def set_account_active(
+    account_id: uuid.UUID, session: SessionDep, active: bool = Query(...)
+) -> ConsoleAccountPublic:
+    """Enable/disable a console login. Disabling rather than deleting: the console
+    refuses to delete its last admin and its delete payload is undocumented."""
+    account = session.get(RemoteAccessConsoleAccount, account_id)
+    if not account:
+        raise not_found("Account not found")
+    account = await service.set_account_active(session, account, active)
+    return ConsoleAccountPublic.model_validate(account)
+
+
+@router.post(
+    "/accounts/sync", response_model=Message, dependencies=[Depends(get_current_active_superuser)]
+)
+async def sync_accounts(session: SessionDep) -> Message:
+    result = await service.sync_accounts(session)
+    return Message(message=f"console accounts synced: {result['accounts_seen']}")
+
+
+# --------------------------------------------------------------------------- #
+# shared address book                                                         #
 # --------------------------------------------------------------------------- #
 @router.post("/address-book/sync", response_model=Message, dependencies=[Depends(get_current_active_superuser)])
 async def address_book_sync(payload: AddressBookSyncRequest, session: SessionDep) -> Message:
@@ -158,10 +258,24 @@ async def address_book_sync(payload: AddressBookSyncRequest, session: SessionDep
     )
     if not devices:
         raise HTTPException(status_code=400, detail="address-book sync scope resolved to no devices")
-    res = await service.push_address_book(session, devices)
-    return Message(message=f"address book: {res['pushed']} pushed, {res['failed']} failed")
+    res = await service.push_shared_address_book(session, devices)
+    return Message(
+        message=(
+            f"общая книга: добавлено {res['created']}, обновлено {res['updated']}, "
+            f"ошибок {res['failed']}"
+        )
+    )
 
 
+@router.get("/address-book/status", response_model=AddressBookStatus)
+async def address_book_status(session: SessionDep, current_user: CurrentUser) -> AddressBookStatus:
+    del current_user
+    return AddressBookStatus(**await service.address_book_status(session))
+
+
+# --------------------------------------------------------------------------- #
+# console passthrough (InfraScope auth in front of the RustDesk console)      #
+# --------------------------------------------------------------------------- #
 @router.get("/console/connections")
 async def console_connections(current_user: CurrentUser, limit: int = Query(default=200, ge=1, le=1000)) -> list[dict]:
     del current_user
@@ -176,19 +290,129 @@ async def console_users(current_user: CurrentUser) -> list[dict]:
 
 @router.get("/console/address-book")
 async def console_address_book(current_user: CurrentUser) -> list[dict]:
+    """The token account's *personal* book. The fleet lives in the shared book -
+    see /address-book/status."""
     del current_user
     return await rustdesk_client.get_address_book()
 
 
-@router.post("/console/address-book", response_model=Message,
-             dependencies=[Depends(get_current_active_superuser)])
-async def console_address_book_upsert(payload: AddressBookUpsert) -> Message:
-    await rustdesk_client.upsert_address_book_entry(payload.model_dump())
-    return Message(message="address-book entry saved")
+# --------------------------------------------------------------------------- #
+# rollout                                                                     #
+# --------------------------------------------------------------------------- #
+def _deploy_ready() -> bool:
+    return bool(settings.RUSTDESK_DEPLOY_TOKEN.strip() and settings.RUSTDESK_PUBLIC_URL.strip())
 
 
-@router.delete("/console/address-book/{peer_id}", response_model=Message,
-               dependencies=[Depends(get_current_active_superuser)])
-async def console_address_book_delete(peer_id: str) -> Message:
-    await rustdesk_client.delete_address_book_entry(peer_id)
-    return Message(message="address-book entry deleted")
+def require_deploy_token(
+    request: Request,
+    x_infrascope_deploy_token: str | None = Header(default=None),
+) -> None:
+    """Auth for the endpoint script, which has no InfraScope session.
+
+    A compare_digest check on a shared secret, and nothing at all when the secret
+    is unset - an unconfigured install must not serve fleet passwords.
+    """
+    expected = settings.RUSTDESK_DEPLOY_TOKEN.strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="rollout is not configured (RUSTDESK_DEPLOY_TOKEN)")
+    if not x_infrascope_deploy_token or not hmac.compare_digest(x_infrascope_deploy_token, expected):
+        logger.warning("rustdesk deploy call with a bad token from %s", request.client.host if request.client else "?")
+        raise HTTPException(status_code=401, detail="invalid deploy token")
+
+
+@router.get("/deploy/command", response_model=DeployCommand, dependencies=[Depends(get_current_active_superuser)])
+def deploy_command() -> DeployCommand:
+    """The line to paste into a KSC "run script" task, a GPO startup script, or a
+    one-off `schtasks /S <host> /RU SYSTEM`."""
+    return DeployCommand(
+        command=deploy_script.deploy_command() if _deploy_ready() else "",
+        bootstrap_url=f"{deploy_script.public_url()}/api/v1/remote-access/deploy/bootstrap.ps1",
+        installer_filename=settings.RUSTDESK_INSTALLER_FILENAME,
+        installer_version=settings.RUSTDESK_INSTALLER_VERSION,
+        configured=_deploy_ready(),
+    )
+
+
+@router.post(
+    "/devices/{device_id}/deploy",
+    response_model=DevicePublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def request_deploy(device_id: uuid.UUID, session: SessionDep) -> DevicePublic:
+    """Mark a device as awaiting rollout.
+
+    Nothing is executed here: InfraScope never remote-executes on the fleet. The
+    machine still has to run the bootstrap (KSC / GPO / schtasks); this only
+    makes the wait visible and resets any previous failure.
+    """
+    dev = session.get(RemoteAccessDevice, device_id)
+    if not dev:
+        raise not_found("Device not found")
+    if not dev.permanent_password:
+        dev.permanent_password = service.default_password()
+    return _to_public(service.mark_deploy_requested(session, dev))
+
+
+@router.get(
+    "/deploy/bootstrap.ps1",
+    response_class=PlainTextResponse,
+    dependencies=[Depends(require_deploy_token)],
+)
+def deploy_bootstrap() -> PlainTextResponse:
+    return PlainTextResponse(deploy_script.render_bootstrap(), media_type="text/plain; charset=utf-8")
+
+
+@router.post(
+    "/deploy/config", response_model=DeploymentConfig, dependencies=[Depends(require_deploy_token)]
+)
+def deploy_config(payload: DeployConfigRequest, session: SessionDep, request: Request) -> DeploymentConfig:
+    """The endpoint asks what it should become.
+
+    Only a known, managed device gets an answer - an unknown hostname must not be
+    able to fish the fleet password out of an unconfigured row.
+    """
+    dev = session.exec(
+        select(RemoteAccessDevice).where(RemoteAccessDevice.hostname == payload.hostname.strip())
+    ).first()
+    if dev is None or not dev.managed:
+        logger.warning(
+            "rustdesk deploy config for unknown/unmanaged host %s from %s",
+            payload.hostname,
+            request.client.host if request.client else "?",
+        )
+        raise not_found("Device not found")
+    logger.info(
+        "rustdesk deploy config served for %s to %s",
+        dev.hostname,
+        request.client.host if request.client else "?",
+    )
+    return DeploymentConfig(**service.deployment_config(dev))
+
+
+@router.get("/deploy/installer", dependencies=[Depends(require_deploy_token)])
+def deploy_installer() -> FileResponse:
+    """Serve the pinned installer from the server so endpoints need no internet."""
+    name = os.path.basename(settings.RUSTDESK_INSTALLER_FILENAME)
+    path = os.path.join(settings.RUSTDESK_PACKAGE_DIR, name)
+    if not os.path.isfile(path):
+        raise HTTPException(
+            status_code=503,
+            detail=f"installer {name} is not present in RUSTDESK_PACKAGE_DIR",
+        )
+    return FileResponse(path, filename=name, media_type="application/octet-stream")
+
+
+@router.post("/deploy/report", response_model=Message, dependencies=[Depends(require_deploy_token)])
+def deploy_report(payload: DeployReport, session: SessionDep) -> Message:
+    """The endpoint says what it actually did. Stored verbatim, never inferred."""
+    dev = service.apply_deploy_report(
+        session,
+        hostname=payload.hostname,
+        state=payload.state,
+        rustdesk_id=payload.rustdesk_id,
+        version=payload.version,
+        detail=payload.detail,
+    )
+    if dev is None:
+        raise not_found("Device not found")
+    return Message(message=f"{dev.hostname}: {dev.deploy_state}")

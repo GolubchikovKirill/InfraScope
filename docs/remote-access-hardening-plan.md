@@ -1,65 +1,48 @@
-# RustDesk (remote_access) — статус
+# RustDesk (remote_access) — история
 
-Обновлено 2026-09-02. **Раскатка клиента переведена на Kaspersky Security
-Center** — Windows-агент и очередь задач убраны (коммит "drop deploy queue").
-Полное руководство по KSC: [rustdesk-ksc-deployment.md](rustdesk-ksc-deployment.md).
+Актуальные документы:
 
-Почему не агентом из приложения: удалённый запуск с Linux-сервера
-(`impacket`/`wmiexec`) неотличим от lateral movement и блокируется самим
-Касперским на парке. KSC — родной путь и уже управляет всеми машинами.
+* **[rustdesk-v2-plan.md](rustdesk-v2-plan.md)** — архитектура, находки по API
+  консоли и документации RustDesk, схема БД, эндпоинты, что делает фронт.
+* **[rustdesk-ksc-deployment.md](rustdesk-ksc-deployment.md)** — практическая
+  инструкция по раскатке.
 
-Проверять после правок:
-```bash
-cd frontend && npx tsc --noEmit && npx vitest run
-uv run ruff check app tests && uv run pytest tests/unit -q
-```
+Этот файл оставлен как журнал: тут видно, какие выводы были сделаны раньше и
+какие из них потом оказались неверными.
 
 ---
 
-## Что теперь делает InfraScope
+## Что делает InfraScope сейчас
 
 - **Инвентарь → устройства.** `seed_from_inventory` мирроит все кассы,
   компьютеры и медиаплееры типа `nettop` в `remoteaccessdevice`.
 - **Желаемый конфиг на устройство.** `rustdesk_id` (по hostname), пароль,
-  `hidden`/`block_outgoing`/`unattended`. Отдаётся для KSC:
-  `GET /remote-access/devices/{id}/package` → ключи 1:1 для `rustdesk-ksc.json`.
-- **Статусы из консоли.** `sync_from_console` тянет peer list → `online`,
-  `logged_in_user`, `installed_version`, `last_seen_at`. Отдельно
-  `host_online`/`host_last_seen_at` — из собственного пуллинга InfraScope
-  (пингуется ≠ RustDesk на связи).
-- **Книга адресов.** `POST /remote-access/address-book/sync` проталкивает
-  управляемые устройства в консоль с тегами `[класс, точка]`. Кнопка «В книгу
-  адресов» на странице + иконка на карточке.
-- **Карточки товаров.** Кнопка «Подключиться» (deep link), «Настроить»
-  (ID + пароль), «Пакет KSC» (готовый `rustdesk-ksc.json`).
+  `hidden`/`block_outgoing`/`unattended`.
+- **Раскатка pull-моделью.** Машина сама забирает скрипт, MSI и свой конфиг
+  (`/remote-access/deploy/*`) и отчитывается о результате. Триггер — KSC, GPO
+  или `schtasks`.
+- **Учётки инженеров.** `POST /remote-access/accounts` заводит логин в консоли
+  RustDesk в группе `InfraScope Admins`; пароль показывается один раз.
+- **Общая адресная книга.** Одна коллекция с паролями устройств, расшаренная на
+  группу — каждый инженер видит весь парк без персонального пуша.
+- **Статусы.** `deploy_state` от самой машины, `online` из консоли,
+  `host_online` из пуллинга InfraScope; сводится в `readiness`.
 
 ---
 
-## Консоль: как устроена авторизация (выяснено 2026-09-02)
+## Ревизия ранних выводов (2026-09-02)
 
-- Бирер для REST — это **JWT из `POST /api/login`** (`{username,password}` →
-  `access_token`, начинается с `eyJ`). Значение из таблицы `user_tokens` (то, что
-  показывает `_admin` в UserToken) — **не** бирер, по нему `401`.
-- Работает только **клиентский API** `/api/*` (`/api/peers`, `/api/users`,
-  `/api/ab`). `/api/admin/*` этим токеном не открыть — админка использует свою
-  сессию. `rustdesk_client.py` переписан на `/api/*`; лог подключений
-  (`/api/audit/conn`) — только в админке, будет пустым.
-- **Каждый вход (веб-консоль ИЛИ `/api/login`) ротирует токен и убивает
-  предыдущий.** Один токен в `.env` проживёт ровно до следующего входа `admin`
-  в веб-консоль. → нужен **отдельный сервисный пользователь** консоли
-  (`infrascope`, admin), под которым в веб никто не логинится.
-- `token-expire` / `jwt.expire-duration` в `~/rustdesk/conf/config.yaml` подняты
-  до `87600h` (10 лет). Бэкап: `config.yaml.bak-token-expire-*`.
+Три вывода прошлых сессий были неверны и стоили функциональности:
 
-## Осталось (блокеры на пользователе)
+| Тогда считали | На самом деле |
+|---|---|
+| «`/api/admin/*` не открыть API-токеном, только сессией админки» | Открывается — но заголовком `api-token`, а не `Authorization: Bearer`. Слали не тот заголовок. См. `http/middleware/admin.go`. |
+| «Каждый вход ротирует токен и убивает предыдущий» | `UserService.Login()` делает `DB.Create(ut)` — токены добавляются, старые живут. Вход `admin` в веб-консоль токен InfraScope не ломает. |
+| «Книгу адресов можно пушить только личную (`guid 1-1-0`)» | Через админский API есть общие коллекции (`address_book_collection`) с правилами доступа на пользователя или группу, и запись в них несёт пароль устройства. |
 
-| Что | Зачем | Кто |
-|---|---|---|
-| Завести пользователя консоли `infrascope` (admin) | чтобы токен InfraScope не убивался при каждом входе `admin` в веб | пользователь: консоль → System → UserManage → Add |
-| `RUSTDESK_API_TOKEN` = `access_token` этого юзера в серверный `.env` | статусы «онлайн», пользователи, книга адресов | `ssh infrascope-server 'curl -s http://10.10.99.24:21114/api/login -H "Content-Type: application/json" -d ...'`, вписать, рестарт `backend`+`worker` |
-| Свериться с write-API книги адресов | `POST /api/ab` (legacy blob `{data:"<json>"}`) — форма peer'а ещё не подтверждена (400 на разных попытках) | после токена: `show-swagger: 1`, сверить, вернуть `0` |
-| Книга адресов: личная vs общая | `/api/ab` — **личная** книга того аккаунта, под которым InfraScope. Техники видят её, только если логинятся тем же аккаунтом. Иначе нужна shared-книга (`address_book_collections`) | пользователь: решить, под каким аккаунтом заходят техники |
-| Собрать пакет(ы) KSC | 1 пакет = 1 пароль; нужны разные по классам — 3 пакета | пользователь по [rustdesk-ksc-deployment.md](rustdesk-ksc-deployment.md) |
+Верным остался вывод про раскатку: удалённый запуск с Linux-сервера
+(`impacket`/`wmiexec`) неотличим от lateral movement и блокируется Касперским.
+Отсюда pull-модель вместо push.
 
 ---
 
@@ -68,7 +51,25 @@ uv run ruff check app tests && uv run pytest tests/unit -q
 - **Инвентарь — 3 источника** + `source_kind` + `cash_register_id` (миграция `f7e8d9c0b1a2`).
 - **Честные статусы** — `host_online` отдельно от `online` (миграция `b8c9d0e1f2a3`).
 - **Разворот на KSC** — убраны `RemoteAccessDeployJob`, Windows-агент,
-  `deploy_state`/`deploy_detail`/`last_deployed_at`/`last_error`/`password_confirmed_at`;
-  добавлен `in_address_book` (миграция `c9d0e1f2a3b4`). Добавлены `rustdesk-ksc/`
-  (configure.ps1 + пример конфига) и руководство.
-- **Пути консольного API** переписаны на `/api/admin/*` (read-пути подтверждены).
+  `deploy_state`/`deploy_detail`/`last_deployed_at`/`last_error`/`password_confirmed_at`
+  (миграция `c9d0e1f2a3b4`). Добавлен `in_address_book`.
+- **v2** (миграция `d1e2f3a4b5c6`) — `remoteaccessconsoleaccount`,
+  `ab_row_id`/`ab_password_pushed`, `deploy_state` возвращён, но теперь его
+  **сообщает сама машина**, а не выводит планировщик задач.
+
+## Консоль: авторизация (проверено 2026-09-02)
+
+- Токен — строка из таблицы `user_tokens`. Получается через
+  `POST /api/admin/login` (`{username,password}` → `data.token`) или
+  `POST /api/login`. Одна и та же строка работает на обеих поверхностях.
+- `/api/*` читает `Authorization: Bearer <t>`, `/api/admin/*` читает
+  `api-token: <t>`. `rustdesk_client` шлёт оба заголовка всегда.
+- `token-expire` / `jwt.expire-duration` в `~/rustdesk/conf/config.yaml` подняты
+  до `87600h` (10 лет). Плюс `RUSTDESK_ADMIN_USERNAME`/`PASSWORD` в `.env` —
+  тогда протухший токен InfraScope перевыпустит сам.
+
+Проверять после правок:
+```bash
+uv run ruff check app tests && uv run pytest tests/unit -q
+cd frontend && npx tsc --noEmit && npx vitest run
+```

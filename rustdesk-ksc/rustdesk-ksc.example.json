@@ -1,4 +1,5 @@
 {
+  "_comment": "Offline KSC package only. When the machine can reach InfraScope over HTTP, use the pull rollout instead (docs/rustdesk-ksc-deployment.md) - it fetches these same values at run time and reports the result back. Per-machine values: GET /api/v1/remote-access/devices/{id}/package",
   "id_server": "10.10.99.24",
   "relay_server": "10.10.99.24",
   "api_server": "http://10.10.99.24:21114",

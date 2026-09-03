@@ -1,6 +1,11 @@
 <#
-    configure.ps1 - RustDesk post-install step, run ON the endpoint by Kaspersky
-    Security Center (Application -> Installation package -> "Run after install").
+    configure.ps1 - RustDesk post-install step for the OFFLINE rollout path,
+    run ON the endpoint by Kaspersky Security Center ("Run after install").
+
+    Prefer the online path when the machine can reach InfraScope over HTTP: it
+    fetches the same config at run time and reports the result back, so a
+    password rotation needs no new package. See docs/rustdesk-ksc-deployment.md.
+    This script exists for machines that cannot.
 
     Points an already-installed RustDesk at the self-hosted server, sets the
     hostname-based ID, applies the permanent password, and (optionally) the
@@ -57,54 +62,89 @@ function Stop-RD {
     Start-Sleep 2
 }
 
-# ---- server + id config -------------------------------------------------
-$toml = @"
-rendezvous_server = '$idServer'
-nat_type = 1
-serial = 0
-
-[options]
-custom-rendezvous-server = '$idServer'
-relay-server = '$relay'
-api-server = '$apiServer'
-key = '$key'
-enable-check-update = 'N'
-"@
-if ($hidden)     { $toml += "hide-tray = 'Y'`r`nallow-hide-cm = 'Y'`r`n" }
-if ($unattended) { $toml += "approve-mode = 'password'`r`nverification-method = 'use-permanent-password'`r`n" }
-
-$cfgFiles = @(
-    (Join-Path $env:WINDIR 'ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk2.toml'),
-    (Join-Path $env:WINDIR 'System32\config\systemprofile\AppData\Roaming\RustDesk\config\RustDesk2.toml')
+# The SYSTEM service reads its config from the systemprofile directory; the
+# LocalService one can hold stale rs-ny.rustdesk.com defaults. Write both.
+$cfgDirs = @(
+    (Join-Path $env:WINDIR 'ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config'),
+    (Join-Path $env:WINDIR 'System32\config\systemprofile\AppData\Roaming\RustDesk\config')
 )
-Stop-RD
-foreach ($t in $cfgFiles) {
-    $idf = $t -replace 'RustDesk2\.toml$', 'RustDesk.toml'
-    $lines = @()
-    if (Test-Path $idf) { $lines = Get-Content $idf | Where-Object { $_ -notmatch '^\s*(enc_id|id)\s*=' } }
-    $lines = @("id = '$rid'") + $lines
-    $null = New-Item -ItemType Directory -Force -Path (Split-Path $idf)
-    Set-Content $idf $lines -Encoding UTF8
-    $null = New-Item -ItemType Directory -Force -Path (Split-Path $t)
-    Set-Content $t $toml -Encoding UTF8
+
+# `[options]` keys, mirroring app/domains/remote_access/deploy_script.py.
+# allow-logon-screen-password is what lets an engineer in when the store PC sits
+# at the lock screen; without it a locked machine refuses the permanent password.
+function Write-Config([bool]$WithLocks) {
+    $lines = @("rendezvous_server = '$idServer'", 'nat_type = 1', 'serial = 0', '', '[options]')
+    $lines += "custom-rendezvous-server = '$idServer'"
+    $lines += "relay-server = '$relay'"
+    $lines += "api-server = '$apiServer'"
+    $lines += "key = '$key'"
+    $lines += "enable-check-update = 'N'"
+    $lines += "enable-lan-discovery = 'N'"
+    $lines += "direct-server = 'N'"
+    $lines += "allow-logon-screen-password = 'Y'"
+    $lines += "remove-preset-password-warning = 'Y'"
+    $lines += "hide-help-cards = 'Y'"
+    if ($hidden) {
+        $lines += "hide-tray = 'Y'"
+        $lines += "hide-stop-service = 'Y'"
+        $lines += "allow-hide-cm = 'Y'"
+        $lines += "hide-security-settings = 'Y'"
+        $lines += "hide-network-settings = 'Y'"
+        $lines += "hide-server-settings = 'Y'"
+    }
+    if ($unattended) {
+        $lines += "approve-mode = 'password'"
+        $lines += "verification-method = 'use-permanent-password'"
+    }
+    # These block `--password` and `--id`, so they only go on the second pass.
+    if ($WithLocks) {
+        $lines += "disable-change-permanent-password = 'Y'"
+        $lines += "disable-change-id = 'Y'"
+    }
+    $toml = ($lines -join "`r`n") + "`r`n"
+    foreach ($d in $cfgDirs) {
+        $null = New-Item -ItemType Directory -Force -Path $d
+        Set-Content (Join-Path $d 'RustDesk2.toml') $toml -Encoding UTF8
+        $idf = Join-Path $d 'RustDesk.toml'
+        $keep = @()
+        if (Test-Path $idf) { $keep = Get-Content $idf | Where-Object { $_ -notmatch '^\s*(enc_id|id)\s*=' } }
+        Set-Content $idf (@("id = '$rid'") + $keep) -Encoding UTF8
+    }
 }
+
+# ---- pass 1: working config, no write locks -----------------------------
+Stop-RD
+Write-Config $false
 try { Start-Service RustDesk } catch { & sc.exe start RustDesk | Out-Null }
 Start-Sleep 6
 Log "server + id written"
 
-# ---- permanent password ----------------------------------------------
+# ---- permanent password (must precede the locks) ------------------------
+$passwordOk = $false
 if ($unattended -and $pw) {
     & $exe --password $pw
     Start-Sleep 5
-    $rdToml = Join-Path $env:WINDIR 'ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml'
-    if ((Get-Content $rdToml -EA SilentlyContinue) -match "^\s*password\s*=\s*'.+'") {
+    foreach ($d in $cfgDirs) {
+        $rdToml = Join-Path $d 'RustDesk.toml'
+        if ((Get-Content $rdToml -EA SilentlyContinue) -match "^\s*password\s*=\s*'.+'") { $passwordOk = $true }
+    }
+    if ($passwordOk) {
         Log "password set + verified"
     } else {
         Log "WARN: password did not persist to RustDesk.toml - set it manually (elevated): `"$exe`" --password <pw>"
     }
 }
 
-# ---- lockdown -------------------------------------------------------
+# ---- pass 2: same config plus the write locks ---------------------------
+# Skipped when the password never landed, or the machine would be left both
+# unreachable (no password) and unfixable (locked).
+if ($unattended -and $passwordOk) {
+    Write-Config $true
+    try { Restart-Service RustDesk -EA Stop } catch { }
+    Log "config locked"
+}
+
+# ---- lockdown -----------------------------------------------------------
 if (-not $NoLockdown -and $hidden) {
     foreach ($lnk in @(
         "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\RustDesk.lnk",

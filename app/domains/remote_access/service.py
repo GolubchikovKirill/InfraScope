@@ -1,9 +1,20 @@
-"""Reconciliation between the RustDesk console, InfraScope inventory and the address book.
+"""Reconciliation between the RustDesk console, InfraScope inventory and the fleet.
 
-InfraScope tracks and administers the self-hosted RustDesk fleet; it does not push
-the client. The preconfigured client package is rolled out through Kaspersky
-Security Center (see docs/rustdesk-ksc-deployment.md). This module keeps the
-device rows in sync with inventory + the console, and owns the address-book push.
+Four jobs live here:
+
+* **Inventory mirror.** Every cash register, computer and nettop media player
+  becomes a `RemoteAccessDevice` row carrying the config that machine should end
+  up with (id, password, lockdown switches).
+* **Console accounts.** Engineers get their own RustDesk login, in a console
+  group that the shared address book is shared with, so each of them sees the
+  whole fleet without a per-user push.
+* **Shared address book.** One console collection holds every managed device
+  *with its password*, so connecting is one click and nobody types a secret.
+* **Rollout state.** The endpoint script reports what it actually did; we store
+  that verbatim and never infer it.
+
+InfraScope does not remote-execute anything: the endpoint pulls its installer
+and config (see `deploy_script`). What lands here is the report.
 """
 
 from __future__ import annotations
@@ -13,14 +24,15 @@ import secrets
 import string
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.domains.inventory.models import Computer, MediaPlayer
 from app.domains.operations.models import CashRegister
-from app.domains.remote_access import rustdesk_client
-from app.domains.remote_access.models import RemoteAccessDevice
+from app.domains.remote_access import deploy_script, rustdesk_client
+from app.domains.remote_access.models import RemoteAccessConsoleAccount, RemoteAccessDevice
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +43,13 @@ _NETTOP = "nettop"
 _SOURCE_RANK = {"cash_register": 3, "computer": 2, "media_player": 1}
 
 _PW_ALPHABET = string.ascii_letters + string.digits  # no symbols: avoids shell/TOML quoting traps
+
+# rollout states, exactly as the endpoint script reports them
+DEPLOY_STATES = ("unknown", "pending", "installed", "configured", "failed")
+_DEPLOYED_STATES = ("configured",)
+
+# what the UI shows as one chip; see readiness()
+READINESS = ("ready", "installed_offline", "deploying", "failed", "not_deployed")
 
 
 def generate_password(length: int = 20) -> str:
@@ -47,6 +66,11 @@ def _hostname_to_rid(hostname: str) -> str:
     return rid[:32]
 
 
+def default_password() -> str:
+    """Fleet-wide permanent password, or a generated one if it was left unset."""
+    return settings.RUSTDESK_DEFAULT_PASSWORD.strip() or generate_password()
+
+
 # --------------------------------------------------------------------------- #
 # device inventory sync                                                       #
 # --------------------------------------------------------------------------- #
@@ -55,7 +79,9 @@ def _get_or_create_device(session: Session, hostname: str) -> RemoteAccessDevice
     dev = session.exec(select(RemoteAccessDevice).where(RemoteAccessDevice.hostname == host)).first()
     if dev:
         return dev
-    dev = RemoteAccessDevice(hostname=host, rustdesk_id=_hostname_to_rid(host))
+    dev = RemoteAccessDevice(
+        hostname=host, rustdesk_id=_hostname_to_rid(host), permanent_password=default_password()
+    )
     session.add(dev)
     session.flush()
     return dev
@@ -136,6 +162,7 @@ def seed_from_inventory(session: Session) -> int:
                 rustdesk_id=_hostname_to_rid(hostname),
                 source_kind=kind,
                 location=location,
+                permanent_password=default_password(),
             )
             existing[hostname] = dev
             session.add(dev)
@@ -145,6 +172,8 @@ def seed_from_inventory(session: Session) -> int:
                 dev.source_kind = kind
             if not dev.location and location:
                 dev.location = location
+            if not dev.permanent_password:
+                dev.permanent_password = default_password()
         _link_inventory(session, dev)
     session.commit()
     return created
@@ -186,34 +215,44 @@ def _inventory_status(session: Session, dev: RemoteAccessDevice) -> tuple[bool |
     return None, None
 
 
+def _peer_online(peer: dict[str, Any], now: datetime) -> bool:
+    """The admin peer list has no boolean - derive it from `last_online_time`."""
+    last = peer.get("last_online_time")
+    try:
+        last_ts = int(last)
+    except (TypeError, ValueError):
+        return False
+    if last_ts <= 0:
+        return False
+    return (now.timestamp() - last_ts) <= settings.RUSTDESK_DEVICE_STALE_SECONDS
+
+
 async def sync_from_console(session: Session) -> dict[str, int]:
     """Fold live RustDesk-console status into RemoteAccessDevice rows.
 
-    Client-API `/api/peers` is thin: id + info{device_name, os, username} + status.
-    `/api/ab` carries an explicit per-peer `online` flag, so we cross-reference it.
+    The admin peer list (`/api/admin/peer/list`) is the richer source: it carries
+    the installed client `version`, `os`, `hostname` and `last_online_time`,
+    none of which the client API's `/api/peers` returns. The shared address book
+    is not consulted for status - it caches an `online` flag that goes stale.
     """
     now = _now()
-    # rid -> online, merged from both sources (address book's flag wins over peer status)
     status: dict[str, bool] = {}
-    for p in await rustdesk_client.get_address_book():
-        rid = (p.get("id") or "").strip() if isinstance(p, dict) else ""
-        if rid:
-            status[rid] = bool(p.get("online"))
-
+    peers = await rustdesk_client.list_admin_peers()
     seen = 0
-    for p in await rustdesk_client.list_peers():
-        info = p.get("info") or {}
-        hostname = (info.get("device_name") or p.get("hostname") or "").strip()
-        rid = str(p.get("id") or "").strip() or None
-        if not hostname and not rid:
+    for peer in peers:
+        rid = str(peer.get("id") or "").strip()
+        hostname = (peer.get("hostname") or "").strip()
+        if not rid and not hostname:
             continue
         seen += 1
         dev = _get_or_create_device(session, hostname or rid)
         _link_inventory(session, dev)
         if rid:
             dev.rustdesk_id = rid
-            status.setdefault(rid, bool(p.get("status")))
-        dev.logged_in_user = (info.get("username") or None) or dev.logged_in_user
+            status[rid] = _peer_online(peer, now)
+        dev.installed_version = (peer.get("version") or None) or dev.installed_version
+        dev.logged_in_user = (peer.get("username") or None) or dev.logged_in_user
+        dev.last_ip = (peer.get("last_online_ip") or None) or dev.last_ip
         dev.updated_at = now
 
     # one pass over every tracked device: online == exactly what the console says,
@@ -246,7 +285,7 @@ def ensure_device(
     """Create/link a device row and stamp its desired id + password.
 
     Used by the RustDesk buttons on the device cards. Does not touch any machine -
-    the config it records is what the KSC package should carry.
+    the config it records is what the next rollout run will apply.
     """
     dev = _get_or_create_device(session, hostname)
     _link_inventory(session, dev)
@@ -257,8 +296,9 @@ def ensure_device(
     if permanent_password:
         dev.permanent_password = permanent_password
         dev.password_rotated_at = _now()
+        dev.ab_password_pushed = False
     elif not dev.permanent_password:
-        dev.permanent_password = generate_password()
+        dev.permanent_password = default_password()
         dev.password_rotated_at = _now()
     dev.managed = True
     dev.updated_at = _now()
@@ -269,10 +309,14 @@ def ensure_device(
 
 
 def rotate_password(session: Session, dev: RemoteAccessDevice) -> RemoteAccessDevice:
-    """Generate a fresh password. The operator must re-push the KSC package to
-    actually apply it on the machine."""
+    """Generate a fresh per-machine password.
+
+    The machine keeps the old one until the rollout script runs again, and the
+    address-book row is marked stale so the next sync re-pushes it.
+    """
     dev.permanent_password = generate_password()
     dev.password_rotated_at = _now()
+    dev.ab_password_pushed = False
     dev.updated_at = _now()
     session.add(dev)
     session.commit()
@@ -281,9 +325,10 @@ def rotate_password(session: Session, dev: RemoteAccessDevice) -> RemoteAccessDe
 
 
 def package_config(dev: RemoteAccessDevice) -> dict:
-    """Everything the KSC post-install step needs for this machine.
+    """Everything an offline KSC package needs for this machine.
 
-    `configure.ps1` in rustdesk-ksc/ consumes exactly these keys.
+    `rustdesk-ksc/configure.ps1` consumes exactly these keys. The online path
+    (`deployment_config`) is richer and should be preferred.
     """
     return {
         "hostname": dev.hostname,
@@ -292,7 +337,7 @@ def package_config(dev: RemoteAccessDevice) -> dict:
         "relay_server": settings.RUSTDESK_RELAY_SERVER,
         "api_server": settings.RUSTDESK_API_URL,
         "key": settings.RUSTDESK_KEY,
-        "permanent_password": dev.permanent_password,
+        "permanent_password": dev.permanent_password or default_password(),
         "installer_version": settings.RUSTDESK_INSTALLER_VERSION,
         "hidden": dev.desired_hidden,
         "block_outgoing": dev.desired_block_outgoing,
@@ -301,39 +346,417 @@ def package_config(dev: RemoteAccessDevice) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# address book (console passthrough, InfraScope-owned)                        #
+# rollout                                                                     #
 # --------------------------------------------------------------------------- #
-def _ab_entry(dev: RemoteAccessDevice) -> dict:
+def deployment_config(dev: RemoteAccessDevice) -> dict:
+    """What the endpoint script fetches for itself at run time.
+
+    `options` is applied before the password is set; `lock_options` afterwards,
+    because `disable-change-permanent-password` makes `--password` a no-op.
+    """
+    return {
+        "hostname": dev.hostname,
+        "rustdesk_id": dev.rustdesk_id or _hostname_to_rid(dev.hostname),
+        "id_server": settings.RUSTDESK_ID_SERVER,
+        "relay_server": settings.RUSTDESK_RELAY_SERVER,
+        "api_server": settings.RUSTDESK_API_URL,
+        "key": settings.RUSTDESK_KEY,
+        "permanent_password": dev.permanent_password or default_password(),
+        "installer_filename": settings.RUSTDESK_INSTALLER_FILENAME,
+        "installer_version": settings.RUSTDESK_INSTALLER_VERSION,
+        "installer_sha256": settings.RUSTDESK_INSTALLER_SHA256,
+        "hidden": dev.desired_hidden,
+        "block_outgoing": dev.desired_block_outgoing,
+        "unattended": dev.desired_unattended,
+        "options": deploy_script.client_options(
+            hidden=dev.desired_hidden, unattended=dev.desired_unattended
+        ),
+        "lock_options": dict(deploy_script.LOCK_OPTIONS) if dev.desired_unattended else {},
+    }
+
+
+def mark_deploy_requested(session: Session, dev: RemoteAccessDevice) -> RemoteAccessDevice:
+    """Operator asked for a rollout. Nothing runs yet - the machine still has to
+    be reached by KSC / GPO / schtasks; this only makes the wait visible."""
+    dev.deploy_state = "pending"
+    dev.deploy_detail = None
+    dev.deploy_requested_at = _now()
+    dev.updated_at = _now()
+    session.add(dev)
+    session.commit()
+    session.refresh(dev)
+    return dev
+
+
+def apply_deploy_report(
+    session: Session,
+    *,
+    hostname: str,
+    state: str,
+    rustdesk_id: str | None = None,
+    version: str | None = None,
+    detail: str | None = None,
+) -> RemoteAccessDevice | None:
+    """Record what the endpoint script says it did. Unknown hosts are ignored -
+    we never invent a device row from an unauthenticated-ish report."""
+    dev = session.exec(
+        select(RemoteAccessDevice).where(RemoteAccessDevice.hostname == hostname.strip())
+    ).first()
+    if dev is None:
+        logger.warning("rustdesk deploy report from unknown host %s", hostname)
+        return None
+    dev.deploy_state = state if state in DEPLOY_STATES else "failed"
+    dev.deploy_detail = (detail or None) and detail[:512]
+    dev.deploy_reported_at = _now()
+    if rustdesk_id:
+        dev.rustdesk_id = rustdesk_id
+    if version:
+        dev.installed_version = version
+    dev.updated_at = _now()
+    session.add(dev)
+    session.commit()
+    session.refresh(dev)
+    return dev
+
+
+def readiness(dev: RemoteAccessDevice) -> str:
+    """One word for "can I connect to this right now?".
+
+    Deliberately conservative: `ready` needs both the endpoint's own "I applied
+    the config" report *and* the console seeing the client. Either alone is not
+    enough to promise an engineer a working session.
+    """
+    if dev.deploy_state == "failed":
+        return "failed"
+    if dev.deploy_state in _DEPLOYED_STATES:
+        return "ready" if dev.online is True else "installed_offline"
+    if dev.deploy_state == "pending":
+        return "deploying"
+    # never reported, but the console knows the client - a machine deployed
+    # before InfraScope owned the rollout (or by hand)
+    if dev.online is not None:
+        return "ready" if dev.online else "installed_offline"
+    return "not_deployed"
+
+
+# --------------------------------------------------------------------------- #
+# console accounts                                                            #
+# --------------------------------------------------------------------------- #
+async def ensure_console_group() -> int:
+    """The console group every InfraScope-managed engineer account joins."""
+    name = settings.RUSTDESK_ADMIN_GROUP_NAME.strip()
+    for group in await rustdesk_client.list_groups():
+        if str(group.get("name") or "").strip() == name:
+            return int(group["id"])
+    await rustdesk_client.create_group(name, rustdesk_client.GROUP_TYPE_SHARED)
+    for group in await rustdesk_client.list_groups():
+        if str(group.get("name") or "").strip() == name:
+            return int(group["id"])
+    raise RuntimeError(f"console group {name!r} was created but does not list")
+
+
+async def ensure_shared_book() -> tuple[int, int]:
+    """Ensure the shared address book exists and the engineer group can read it.
+
+    Returns (collection_id, owner_user_id). The collection is owned by whichever
+    console account our token belongs to; everyone else reaches it through the
+    group share rule, so adding an engineer needs no address-book work at all.
+    """
+    owner_id = await rustdesk_client.current_console_user_id()
+    if not owner_id:
+        raise RuntimeError("console did not identify the account behind the API token")
+
+    name = settings.RUSTDESK_SHARED_BOOK_NAME.strip()
+    collection_id = 0
+    for col in await rustdesk_client.list_collections():
+        if str(col.get("name") or "").strip() == name:
+            collection_id = int(col["id"])
+            break
+    if not collection_id:
+        await rustdesk_client.create_collection(name, owner_id)
+        for col in await rustdesk_client.list_collections():
+            if str(col.get("name") or "").strip() == name:
+                collection_id = int(col["id"])
+                break
+    if not collection_id:
+        raise RuntimeError(f"shared address book {name!r} was created but does not list")
+
+    group_id = await ensure_console_group()
+    rules = await rustdesk_client.list_collection_rules(collection_id)
+    shared = any(
+        int(r.get("type") or 0) == rustdesk_client.RULE_TYPE_GROUP
+        and int(r.get("to_id") or 0) == group_id
+        for r in rules
+    )
+    if not shared:
+        await rustdesk_client.create_collection_rule(
+            collection_id=collection_id,
+            owner_id=owner_id,
+            to_id=group_id,
+            rule_type=rustdesk_client.RULE_TYPE_GROUP,
+            rule=rustdesk_client.RULE_READ,
+        )
+    return collection_id, owner_id
+
+
+async def provision_account(
+    session: Session,
+    *,
+    username: str,
+    display_name: str | None = None,
+    email: str | None = None,
+    is_admin: bool = False,
+    password: str | None = None,
+    infrascope_user_id: uuid.UUID | None = None,
+) -> tuple[RemoteAccessConsoleAccount, str]:
+    """Create a console login for an engineer and hand back its password once.
+
+    The password is never persisted here - the caller shows it and it is gone.
+    """
+    username = username.strip()
+    group_id = await ensure_console_group()
+    secret = (password or "").strip() or generate_password(16)
+
+    existing_console = {
+        str(u.get("username") or "").strip(): u for u in await rustdesk_client.list_console_users()
+    }
+    if username not in existing_console:
+        await rustdesk_client.create_console_user(
+            username=username,
+            group_id=group_id,
+            is_admin=is_admin,
+            email=(email or "").strip(),
+            nickname=(display_name or "").strip(),
+        )
+        existing_console = {
+            str(u.get("username") or "").strip(): u for u in await rustdesk_client.list_console_users()
+        }
+    console_user = existing_console.get(username)
+    if not console_user:
+        raise RuntimeError(f"console account {username!r} was created but does not list")
+    console_user_id = int(console_user["id"])
+    await rustdesk_client.set_console_user_password(console_user_id, secret)
+
+    # already in the group -> already sees the shared book
+    await ensure_shared_book()
+
+    row = session.exec(
+        select(RemoteAccessConsoleAccount).where(RemoteAccessConsoleAccount.username == username)
+    ).first()
+    if row is None:
+        row = RemoteAccessConsoleAccount(username=username)
+        session.add(row)
+    row.console_user_id = console_user_id
+    row.display_name = (display_name or "").strip() or None
+    row.email = (email or "").strip() or None
+    row.is_admin = is_admin
+    row.infrascope_user_id = infrascope_user_id
+    row.active = True
+    row.book_shared = True
+    row.last_synced_at = _now()
+    row.updated_at = _now()
+    session.commit()
+    session.refresh(row)
+    return row, secret
+
+
+async def reset_account_password(
+    session: Session, account: RemoteAccessConsoleAccount, password: str | None = None
+) -> str:
+    if not account.console_user_id:
+        raise RuntimeError("account has no console user id - run an account sync first")
+    secret = (password or "").strip() or generate_password(16)
+    await rustdesk_client.set_console_user_password(account.console_user_id, secret)
+    account.updated_at = _now()
+    session.add(account)
+    session.commit()
+    return secret
+
+
+async def set_account_active(
+    session: Session, account: RemoteAccessConsoleAccount, active: bool
+) -> RemoteAccessConsoleAccount:
+    """Enable/disable the console login.
+
+    Disabling rather than deleting: the console refuses to delete its last admin
+    and its delete payload is undocumented, while `status` is a plain toggle.
+    """
+    if not account.console_user_id:
+        raise RuntimeError("account has no console user id - run an account sync first")
+    group_id = await ensure_console_group()
+    await rustdesk_client.update_console_user(
+        user_id=account.console_user_id,
+        username=account.username,
+        group_id=group_id,
+        is_admin=account.is_admin,
+        status=rustdesk_client.STATUS_ENABLED if active else rustdesk_client.STATUS_DISABLED,
+        email=account.email or "",
+        nickname=account.display_name or "",
+    )
+    account.active = active
+    account.updated_at = _now()
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+    return account
+
+
+async def sync_accounts(session: Session) -> dict[str, int]:
+    """Pull the console's user list into our account rows.
+
+    Accounts created directly in the console show up here too, so the page is a
+    true picture of who can connect - not just of what InfraScope created.
+    """
+    rows = {
+        r.username: r
+        for r in session.exec(select(RemoteAccessConsoleAccount)).all()
+    }
+    now = _now()
+    seen = 0
+    for user in await rustdesk_client.list_console_users():
+        username = str(user.get("username") or "").strip()
+        if not username:
+            continue
+        seen += 1
+        row = rows.get(username)
+        if row is None:
+            row = RemoteAccessConsoleAccount(username=username)
+            session.add(row)
+            rows[username] = row
+        row.console_user_id = int(user.get("id") or 0) or None
+        row.is_admin = bool(user.get("is_admin"))
+        row.email = (user.get("email") or None) or row.email
+        row.display_name = (user.get("nickname") or None) or row.display_name
+        row.active = int(user.get("status") or rustdesk_client.STATUS_ENABLED) == rustdesk_client.STATUS_ENABLED
+        row.last_synced_at = now
+        row.updated_at = now
+    session.commit()
+    return {"accounts_seen": seen}
+
+
+# --------------------------------------------------------------------------- #
+# shared address book                                                         #
+# --------------------------------------------------------------------------- #
+def _ab_payload(dev: RemoteAccessDevice, *, collection_id: int, owner_id: int) -> dict:
     tags = [dev.source_kind]
     if dev.location:
         tags.append(dev.location)
     return {
         "id": dev.rustdesk_id or _hostname_to_rid(dev.hostname),
         "alias": dev.hostname,
+        "hostname": dev.hostname,
+        "platform": "Windows",
         "tags": tags,
+        # a shared-book row stores the peer password in `password` (the personal
+        # book uses `hash`) - this is what makes connecting one click
+        "password": dev.permanent_password or default_password(),
+        "user_id": owner_id,
+        "collection_id": collection_id,
     }
 
 
-async def push_address_book(session: Session, devices: list[RemoteAccessDevice]) -> dict[str, int]:
-    """Upsert the given managed devices into the console's address book (one write)."""
+async def push_shared_address_book(
+    session: Session, devices: list[RemoteAccessDevice]
+) -> dict[str, int]:
+    """Upsert managed devices into the shared console address book.
+
+    Existing rows are updated in place (matched by the console's `row_id`, which
+    we cache) so tags and passwords stay current instead of piling up duplicates.
+    """
     targets = [d for d in devices if d.managed and d.rustdesk_id]
     if not targets:
-        return {"pushed": 0, "failed": 0}
-    await rustdesk_client.upsert_address_book_entries([_ab_entry(d) for d in targets])
+        return {"pushed": 0, "created": 0, "updated": 0, "failed": 0}
+
+    collection_id, owner_id = await ensure_shared_book()
+    existing = {
+        str(r.get("id") or ""): r
+        for r in await rustdesk_client.list_address_book_rows(
+            user_id=owner_id, collection_id=collection_id
+        )
+    }
+
     now = _now()
+    created = updated = failed = 0
     for dev in targets:
+        payload = _ab_payload(dev, collection_id=collection_id, owner_id=owner_id)
+        current = existing.get(payload["id"])
+        row_id = int(current["row_id"]) if current and current.get("row_id") else dev.ab_row_id
+        try:
+            if row_id:
+                await rustdesk_client.update_address_book_row({**payload, "row_id": row_id})
+                updated += 1
+            else:
+                await rustdesk_client.create_address_book_row(payload)
+                created += 1
+        except Exception as exc:  # noqa: BLE001 - one bad row must not sink the push
+            logger.warning("address-book push failed for %s: %s", dev.hostname, exc)
+            failed += 1
+            continue
+        dev.ab_row_id = row_id or dev.ab_row_id
         dev.in_address_book = True
+        dev.ab_password_pushed = True
         dev.updated_at = now
         session.add(dev)
     session.commit()
-    return {"pushed": len(targets), "failed": 0}
+
+    # a row created just now has no row_id yet; pick it up so the next push updates
+    if created:
+        fresh = {
+            str(r.get("id") or ""): r
+            for r in await rustdesk_client.list_address_book_rows(
+                user_id=owner_id, collection_id=collection_id
+            )
+        }
+        for dev in targets:
+            row = fresh.get(dev.rustdesk_id or "")
+            if row and row.get("row_id") and not dev.ab_row_id:
+                dev.ab_row_id = int(row["row_id"])
+                session.add(dev)
+        session.commit()
+
+    return {"pushed": created + updated, "created": created, "updated": updated, "failed": failed}
 
 
 async def sync_address_book(session: Session) -> dict[str, int]:
     devices = list(
         session.exec(select(RemoteAccessDevice).where(RemoteAccessDevice.managed == True))  # noqa: E712
     )
-    return await push_address_book(session, devices)
+    return await push_shared_address_book(session, devices)
+
+
+async def sync_stale_address_book(session: Session) -> dict[str, int]:
+    """Push only the devices whose book row is missing or carries an old password."""
+    devices = list(
+        session.exec(
+            select(RemoteAccessDevice).where(
+                RemoteAccessDevice.managed == True,  # noqa: E712
+                (RemoteAccessDevice.in_address_book == False)  # noqa: E712
+                | (RemoteAccessDevice.ab_password_pushed == False),  # noqa: E712
+            )
+        )
+    )
+    if not devices:
+        return {"pushed": 0, "created": 0, "updated": 0, "failed": 0}
+    return await push_shared_address_book(session, devices)
+
+
+async def address_book_status(session: Session) -> dict[str, Any]:
+    """What the page shows above the device grid: which book, how big, who sees it."""
+    collection_id, owner_id = await ensure_shared_book()
+    rows = await rustdesk_client.list_address_book_rows(
+        user_id=owner_id, collection_id=collection_id
+    )
+    accounts = session.exec(
+        select(RemoteAccessConsoleAccount).where(RemoteAccessConsoleAccount.active == True)  # noqa: E712
+    ).all()
+    return {
+        "name": settings.RUSTDESK_SHARED_BOOK_NAME,
+        "collection_id": collection_id,
+        "owner_user_id": owner_id,
+        "entries": len(rows),
+        "shared_with_group": settings.RUSTDESK_ADMIN_GROUP_NAME,
+        "accounts": len(accounts),
+    }
 
 
 def resolve_scope(

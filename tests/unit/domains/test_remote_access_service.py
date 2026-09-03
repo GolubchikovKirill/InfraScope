@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import select
 
+from app.core.config import settings
 from app.domains.inventory.models import Computer, MediaPlayer
 from app.domains.operations.models import CashRegister
 from app.domains.remote_access import service
@@ -129,16 +130,23 @@ def test_package_config_carries_server_key_and_flags(db_session) -> None:
     assert cfg["block_outgoing"] is False and cfg["hidden"] is True
 
 
-def test_ab_entry_tags_by_kind_and_location(db_session) -> None:
+def test_ab_payload_carries_tags_and_the_peer_password(db_session) -> None:
     db_session.add(CashRegister(kkm_number="K3", hostname="VNA-POS-03", store_number="003"))
     db_session.commit()
     service.seed_from_inventory(db_session)
     dev = _dev(db_session, "VNA-POS-03")
+    dev.permanent_password = "kentdful"
+    db_session.add(dev)
+    db_session.commit()
 
-    entry = service._ab_entry(dev)
+    entry = service._ab_payload(dev, collection_id=7, owner_id=1)
     assert entry["id"] == "VNA_POS_03"
     assert entry["alias"] == "VNA-POS-03"
     assert entry["tags"] == ["cash_register", "003"]
+    # a shared-book row stores the password in `password` (personal books use `hash`),
+    # which is what lets an engineer connect without typing anything
+    assert entry["password"] == "kentdful"
+    assert entry["collection_id"] == 7 and entry["user_id"] == 1
 
 
 def test_sync_from_console_sets_online_only_for_devices_the_console_knows(db_session, monkeypatch) -> None:
@@ -156,21 +164,47 @@ def test_sync_from_console_sets_online_only_for_devices_the_console_knows(db_ses
     db_session.commit()
 
     async def fake_peers():
-        return [{"id": "VNA_MGR_101", "info": {"device_name": "VNA-MGR-101", "username": "kassir"}, "status": 1}]
+        return [
+            {
+                "id": "VNA_MGR_101",
+                "hostname": "VNA-MGR-101",
+                "username": "kassir",
+                "version": "1.4.9",
+                "last_online_ip": "10.10.99.51",
+                "last_online_time": int(datetime.now(UTC).timestamp()),
+            }
+        ]
 
-    async def fake_ab():
-        return [{"id": "VNA_MGR_101", "online": True, "hostname": "vna-mgr-101"}]
-
-    monkeypatch.setattr(service.rustdesk_client, "list_peers", fake_peers)
-    monkeypatch.setattr(service.rustdesk_client, "get_address_book", fake_ab)
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
 
     res = asyncio.run(service.sync_from_console(db_session))
     assert res["peers_seen"] == 1
 
     a = _dev(db_session, "VNA-MGR-101")
     assert a.online is True and a.logged_in_user == "kassir" and a.last_seen_at is not None
+    # the admin peer list is the only source that carries these
+    assert a.installed_version == "1.4.9" and a.last_ip == "10.10.99.51"
     b = _dev(db_session, "VNA-MGR-102")
     assert b.online is None  # console never saw it -> stale True cleared
+
+
+def test_sync_from_console_marks_a_long_silent_peer_offline(db_session, monkeypatch) -> None:
+    import asyncio
+
+    db_session.add(Computer(hostname="VNA-MGR-201", location="A1"))
+    db_session.commit()
+    service.seed_from_inventory(db_session)
+
+    stale = int((datetime.now(UTC) - timedelta(hours=3)).timestamp())
+
+    async def fake_peers():
+        return [{"id": "VNA_MGR_201", "hostname": "VNA-MGR-201", "last_online_time": stale}]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    asyncio.run(service.sync_from_console(db_session))
+
+    # the console knows the peer (so not None) but it has not checked in
+    assert _dev(db_session, "VNA-MGR-201").online is False
 
 
 def test_resolve_scope_by_ids_location_kind_and_all(db_session) -> None:
@@ -198,3 +232,140 @@ def test_resolve_scope_by_ids_location_kind_and_all(db_session) -> None:
         )
     } == {"h-a"}
     assert service.resolve_scope(db_session, device_ids=None, location=None, all_managed=False) == []
+
+
+# --------------------------------------------------------------------------- #
+# rollout state                                                               #
+# --------------------------------------------------------------------------- #
+def test_readiness_needs_both_the_endpoint_report_and_the_console(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNK-MGR-D1")
+
+    # nothing known at all
+    assert service.readiness(dev) == "not_deployed"
+
+    dev.deploy_state = "pending"
+    assert service.readiness(dev) == "deploying"
+
+    dev.deploy_state = "failed"
+    assert service.readiness(dev) == "failed"
+
+    # the machine applied the config but the console cannot see it -> not connectable
+    dev.deploy_state = "configured"
+    dev.online = False
+    assert service.readiness(dev) == "installed_offline"
+
+    dev.online = True
+    assert service.readiness(dev) == "ready"
+
+
+def test_readiness_trusts_the_console_for_machines_deployed_before_infrascope(db_session) -> None:
+    # rolled out by hand / by the old KSC package: no report will ever arrive
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-901")
+    dev.online = True
+    assert service.readiness(dev) == "ready"
+    dev.online = False
+    assert service.readiness(dev) == "installed_offline"
+
+
+def test_apply_deploy_report_records_what_the_endpoint_said(db_session) -> None:
+    service.ensure_device(db_session, hostname="VNA-MGR-301")
+
+    dev = service.apply_deploy_report(
+        db_session,
+        hostname="VNA-MGR-301",
+        state="configured",
+        rustdesk_id="VNA_MGR_301",
+        version="1.4.9",
+    )
+    assert dev.deploy_state == "configured" and dev.installed_version == "1.4.9"
+    assert dev.deploy_reported_at is not None
+
+    dev = service.apply_deploy_report(
+        db_session, hostname="VNA-MGR-301", state="failed", detail="msiexec exit 1603"
+    )
+    assert dev.deploy_state == "failed" and dev.deploy_detail == "msiexec exit 1603"
+
+
+def test_apply_deploy_report_ignores_hosts_we_do_not_track(db_session) -> None:
+    # a report must never conjure a device row - that would let any caller with
+    # the deploy token seed the fleet inventory
+    assert service.apply_deploy_report(db_session, hostname="STRANGER-01", state="configured") is None
+
+
+def test_mark_deploy_requested_clears_a_previous_failure(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-302")
+    service.apply_deploy_report(db_session, hostname="VNA-MGR-302", state="failed", detail="boom")
+
+    dev = service.mark_deploy_requested(db_session, dev)
+    assert dev.deploy_state == "pending"
+    assert dev.deploy_detail is None and dev.deploy_requested_at is not None
+    assert service.readiness(dev) == "deploying"
+
+
+def test_deployment_config_keeps_the_write_locks_out_of_the_first_pass(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-POS-11", permanent_password="kentdful")
+
+    cfg = service.deployment_config(dev)
+    assert cfg["permanent_password"] == "kentdful"
+    assert cfg["options"]["approve-mode"] == "password"
+    assert cfg["options"]["allow-logon-screen-password"] == "Y"
+    assert cfg["options"]["hide-tray"] == "Y"
+    # disable-change-permanent-password would make `--password` a no-op, so it
+    # must only appear in the pass that runs after the password is set
+    assert "disable-change-permanent-password" not in cfg["options"]
+    assert cfg["lock_options"]["disable-change-permanent-password"] == "Y"
+
+
+def test_deployment_config_drops_the_locks_for_an_attended_device(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-303")
+    dev.desired_unattended = False
+    dev.desired_hidden = False
+    db_session.add(dev)
+    db_session.commit()
+
+    cfg = service.deployment_config(dev)
+    assert cfg["lock_options"] == {}
+    assert "approve-mode" not in cfg["options"] and "hide-tray" not in cfg["options"]
+
+
+def test_rotate_password_marks_the_address_book_row_stale(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-304")
+    dev.in_address_book = True
+    dev.ab_password_pushed = True
+    db_session.add(dev)
+    db_session.commit()
+
+    dev = service.rotate_password(db_session, dev)
+    # the console still hands out the old password until the next push
+    assert dev.ab_password_pushed is False and dev.in_address_book is True
+
+
+# --------------------------------------------------------------------------- #
+# endpoint script                                                             #
+# --------------------------------------------------------------------------- #
+def test_bootstrap_script_installs_silently_and_leaves_no_shortcuts(monkeypatch) -> None:
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "http://10.10.99.24:8000")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "s3cr3t")
+
+    script = deploy_script.render_bootstrap()
+    assert "http://10.10.99.24:8000/api/v1/remote-access/deploy" in script
+    assert "s3cr3t" in script
+    # /qn returns a real exit code, unlike `--silent-install`
+    assert "'/qn'" in script and "CREATEDESKTOPSHORTCUTS=N" in script
+    assert "CREATESTARTMENUSHORTCUTS=N" in script and "INSTALLPRINTER=N" in script
+    # a failed run must not leave the device stuck on "deploying"
+    assert "Report 'failed'" in script
+
+
+def test_deploy_command_is_one_pasteable_line(monkeypatch) -> None:
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "http://10.10.99.24:8000/")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "s3cr3t")
+
+    cmd = deploy_script.deploy_command()
+    assert "\n" not in cmd
+    assert "X-InfraScope-Deploy-Token" in cmd and "s3cr3t" in cmd
+    assert "//10.10.99.24:8000/api/v1" in cmd  # trailing slash on the base is trimmed

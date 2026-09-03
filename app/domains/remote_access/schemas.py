@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -11,14 +12,24 @@ __all__ = [
     "DeviceDesiredUpdate",
     "DeviceEnsureRequest",
     "AddressBookSyncRequest",
+    "AddressBookStatus",
     "PackageConfig",
-    "AddressBookEntry",
-    "AddressBookUpsert",
+    "DeploymentConfig",
+    "DeployConfigRequest",
+    "DeployReport",
+    "DeployCommand",
+    "ConsoleAccountPublic",
+    "ConsoleAccountsPublic",
+    "ConsoleAccountCreate",
+    "ConsoleAccountSecret",
+    "ConsoleAccountPasswordReset",
     "ConsoleUser",
     "ConnectionRecord",
+    "AddressBookEntry",
 ]
 
 _HOSTNAME_RE = r"^[A-Za-z0-9._-]{1,255}$"
+_USERNAME_RE = r"^[A-Za-z0-9._-]{2,32}$"
 
 
 def _validate_rid(v: str | None) -> str | None:
@@ -46,13 +57,21 @@ class DevicePublic(BaseModel):
     media_player_id: uuid.UUID | None = None
     cash_register_id: uuid.UUID | None = None
     rustdesk_id: str | None = None
-    has_password: bool = False  # InfraScope holds the password the KSC package should carry
+    has_password: bool = False  # InfraScope holds the password the rollout will apply
     password_rotated_at: datetime | None = None
     desired_hidden: bool
     desired_block_outgoing: bool
     desired_unattended: bool
     managed: bool
     in_address_book: bool = False
+    ab_password_pushed: bool = False
+    # rollout, as reported by the endpoint itself
+    deploy_state: str = "unknown"
+    deploy_detail: str | None = None
+    deploy_requested_at: datetime | None = None
+    deploy_reported_at: datetime | None = None
+    # single chip for the UI: ready | installed_offline | deploying | failed | not_deployed
+    readiness: str = "not_deployed"
     installed_version: str | None = None
     online: bool | None = None  # RustDesk console: client reachable via rendezvous
     logged_in_user: str | None = None
@@ -86,7 +105,8 @@ class DeviceEnsureRequest(BaseModel):
     """Create/link a device row and stamp its desired id + password.
 
     Backs the "Настроить RustDesk" button on the computer / cash-register /
-    media-player cards. Records config only - nothing is applied to the machine.
+    media-player cards. Records config only - nothing is applied to the machine
+    until the rollout script runs there.
     """
 
     hostname: str = Field(pattern=_HOSTNAME_RE)
@@ -111,8 +131,17 @@ class AddressBookSyncRequest(BaseModel):
     source_kind: str | None = Field(default=None, pattern=r"^(cash_register|computer|media_player)$")
 
 
+class AddressBookStatus(BaseModel):
+    name: str
+    collection_id: int
+    owner_user_id: int
+    entries: int
+    shared_with_group: str
+    accounts: int
+
+
 class PackageConfig(BaseModel):
-    """What the KSC post-install step (`rustdesk-ksc/configure.ps1`) needs."""
+    """What an offline KSC package needs (`rustdesk-ksc/configure.ps1`)."""
 
     hostname: str
     rustdesk_id: str
@@ -128,25 +157,100 @@ class PackageConfig(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# rollout                                                                     #
+# --------------------------------------------------------------------------- #
+class DeployConfigRequest(BaseModel):
+    hostname: str = Field(pattern=_HOSTNAME_RE)
+
+
+class DeploymentConfig(PackageConfig):
+    """What the endpoint script pulls for itself at run time.
+
+    `options` goes into `[options]` before the password is set; `lock_options`
+    only afterwards - `disable-change-permanent-password` would otherwise make
+    `rustdesk.exe --password` a no-op.
+    """
+
+    installer_filename: str
+    installer_sha256: str
+    options: dict[str, str]
+    lock_options: dict[str, str]
+
+
+class DeployReport(BaseModel):
+    """What the endpoint script says it did. Stored verbatim."""
+
+    hostname: str = Field(pattern=_HOSTNAME_RE)
+    state: str = Field(pattern=r"^(pending|installed|configured|failed)$")
+    rustdesk_id: str | None = None
+    version: str | None = Field(default=None, max_length=32)
+    detail: str | None = Field(default=None, max_length=512)
+
+    @field_validator("rustdesk_id")
+    @classmethod
+    def _rid(cls, v: str | None) -> str | None:
+        return _validate_rid(v)
+
+
+class DeployCommand(BaseModel):
+    """The one line an operator pastes into KSC / GPO / schtasks."""
+
+    command: str
+    bootstrap_url: str
+    installer_filename: str
+    installer_version: str
+    configured: bool  # false when RUSTDESK_DEPLOY_TOKEN / PUBLIC_URL are unset
+
+
+# --------------------------------------------------------------------------- #
+# console accounts                                                            #
+# --------------------------------------------------------------------------- #
+class ConsoleAccountPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    username: str
+    console_user_id: int | None = None
+    display_name: str | None = None
+    email: str | None = None
+    is_admin: bool = False
+    infrascope_user_id: uuid.UUID | None = None
+    active: bool = True
+    book_shared: bool = False
+    last_synced_at: datetime | None = None
+    created_at: datetime
+
+
+class ConsoleAccountsPublic(BaseModel):
+    data: list[ConsoleAccountPublic]
+    count: int
+
+
+class ConsoleAccountCreate(BaseModel):
+    username: str = Field(pattern=_USERNAME_RE)
+    display_name: str | None = Field(default=None, max_length=128)
+    email: str | None = Field(default=None, max_length=255)
+    is_admin: bool = False
+    # left empty a strong one is generated; either way it is shown exactly once
+    password: str | None = Field(default=None, min_length=8, max_length=64)
+    infrascope_user_id: uuid.UUID | None = None
+
+
+class ConsoleAccountPasswordReset(BaseModel):
+    password: str | None = Field(default=None, min_length=8, max_length=64)
+
+
+class ConsoleAccountSecret(BaseModel):
+    """Create/reset response. `password` is shown once and never stored."""
+
+    account: ConsoleAccountPublic
+    password: str
+    note: str = "Пароль показывается один раз и не хранится в InfraScope."
+
+
+# --------------------------------------------------------------------------- #
 # console passthrough (shapes we re-expose; loose on purpose)                 #
 # --------------------------------------------------------------------------- #
-class AddressBookEntry(BaseModel):
-    id: str
-    alias: str | None = None
-    hostname: str | None = None
-    username: str | None = None
-    platform: str | None = None
-    tags: list[str] = []
-    online: bool | None = None
-
-
-class AddressBookUpsert(BaseModel):
-    id: str = Field(min_length=1, max_length=64)
-    alias: str | None = None
-    tags: list[str] = []
-    force_always_relay: bool = False
-
-
 class ConsoleUser(BaseModel):
     id: int | None = None
     username: str
@@ -163,3 +267,13 @@ class ConnectionRecord(BaseModel):
     action: str | None = None
     created_at: str | None = None
     close_time: str | None = None
+
+
+class AddressBookEntry(BaseModel):
+    id: str
+    alias: str | None = None
+    hostname: str | None = None
+    username: str | None = None
+    platform: str | None = None
+    tags: list[Any] = []
+    online: bool | None = None

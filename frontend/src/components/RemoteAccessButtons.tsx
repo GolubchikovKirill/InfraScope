@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MonitorSmartphone, Settings2, Copy, X, FileCog, CircleCheck, CircleX, CircleDashed } from "lucide-react";
+import { MonitorSmartphone, Settings2, Copy, X, FileCog, Rocket } from "lucide-react";
 import {
   ensureRustDeskDevice,
   getDevicePackage,
   hostnameToRid,
+  requestDeploy,
   rustdeskLink,
   type RemoteDevice,
 } from "../client";
 import { showToast } from "../lib/toastBus";
+import { ReadinessChip, deviceReadinessDetail } from "./RemoteAccessStatus";
+import DeployCommandModal from "./DeployCommandModal";
 
 type Props = {
   hostname: string;
@@ -19,23 +22,38 @@ type Props = {
 
 /** Connect + config controls for one endpoint, shown on the computer /
  *  cash-register / media-player cards. `device` comes from useRemoteDeviceMap.
- *  The client is rolled out via KSC - these buttons only connect and record
- *  the desired config. */
+ *  InfraScope rolls the client out itself now (pull model, see
+ *  docs/rustdesk-v2-plan.md) - "Развернуть" only marks the machine as awaiting
+ *  the bootstrap and shows the one-line command; nothing runs from here. */
 export default function RemoteAccessButtons({ hostname, device, canManage, compact }: Props) {
   const qc = useQueryClient();
   const [dlgOpen, setDlgOpen] = useState(false);
   const [pkgOpen, setPkgOpen] = useState(false);
+  const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [rid, setRid] = useState("");
   const [pw, setPw] = useState("");
 
   const ensureMut = useMutation({
-    mutationFn: ensureRustDeskDevice,
+    // wrapped (not point-free): a bare `mutationFn: ensureRustDeskDevice` would
+    // still work at runtime - TanStack Query's extra context arg is silently
+    // ignored - but it is an implicit dependency on that being harmless
+    mutationFn: (payload: Parameters<typeof ensureRustDeskDevice>[0]) => ensureRustDeskDevice(payload),
     onSuccess: () => {
       showToast(`Конфиг RustDesk для ${hostname} сохранён`, "success");
       qc.invalidateQueries({ queryKey: ["remote-devices"] });
       setDlgOpen(false);
     },
     onError: () => showToast("Не удалось сохранить конфиг", "error"),
+  });
+
+  const deployMut = useMutation({
+    mutationFn: (id: string) => requestDeploy(id),
+    onSuccess: () => {
+      showToast(`${hostname}: ждёт запуска скрипта на машине`, "success");
+      qc.invalidateQueries({ queryKey: ["remote-devices"] });
+      setDeployModalOpen(true);
+    },
+    onError: () => showToast("Не удалось запросить развёртывание", "error"),
   });
 
   const pkg = useQuery({
@@ -46,7 +64,6 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
   });
 
   const rustId = device?.rustdesk_id ?? null;
-  const online = device?.online ?? null;
   const btn = `inline-flex items-center gap-1.5 rounded-lg font-medium ${
     compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
   }`;
@@ -85,22 +102,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
             <Copy className="h-3.5 w-3.5" />
           </button>
         )}
-        {device && (
-          <span
-            className="inline-flex items-center gap-1 text-xs text-slate-500"
-            title="RustDesk-консоль: клиент на связи"
-          >
-            {online === true ? (
-              <CircleCheck className="h-3.5 w-3.5 text-emerald-500" />
-            ) : online === false ? (
-              <CircleX className="h-3.5 w-3.5 text-slate-400" />
-            ) : (
-              <CircleDashed className="h-3.5 w-3.5 text-slate-300" />
-            )}
-            RustDesk
-            {device.in_address_book && <span className="text-emerald-600"> · в книге</span>}
-          </span>
-        )}
+        {device && <ReadinessChip readiness={device.readiness} title={deviceReadinessDetail(device)} compact />}
         {canManage && (
           <>
             <button onClick={openDialog} className={`${btn} app-btn-secondary`} title="Задать RustDesk ID и пароль">
@@ -109,12 +111,22 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
             </button>
             {device && (
               <button
-                onClick={() => setPkgOpen(true)}
-                className={`${btn} app-btn-secondary`}
-                title="Показать конфиг для пакета KSC"
+                onClick={() => deployMut.mutate(device.id)}
+                disabled={deployMut.isPending}
+                className={`${btn} app-btn-secondary disabled:opacity-50`}
+                title="Тихо развернуть через InfraScope"
               >
-                <FileCog className="h-4 w-4" />
-                Пакет KSC
+                <Rocket className="h-4 w-4" />
+                Развернуть
+              </button>
+            )}
+            {device && (
+              <button
+                onClick={() => setPkgOpen(true)}
+                className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:bg-slate-100 hover:text-[var(--brand)]"
+                title="Оффлайн-пакет KSC (для машин без сети до InfraScope)"
+              >
+                <FileCog className="h-3.5 w-3.5" />
               </button>
             )}
           </>
@@ -132,7 +144,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
             </div>
             <p className="text-xs text-slate-500">
               Сохраняет желаемый ID и пароль для этой машины. Применяется на устройство при
-              раскатке пакета через KSC — здесь ничего не устанавливается.
+              следующем прогоне раскатки — здесь ничего не устанавливается.
             </p>
             <label className="block text-sm">
               <span className="mb-1 block text-slate-600">RustDesk ID</span>
@@ -184,6 +196,10 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
                 <X className="h-5 w-5" />
               </button>
             </div>
+            <p className="text-xs text-slate-500">
+              Только для машин без сети до InfraScope — конфиг зашивается в пакет KSC, InfraScope не
+              узнает о результате установки. Если сеть есть, используйте «Развернуть».
+            </p>
             {pkg.isLoading && <div className="text-sm text-slate-400">Загрузка…</div>}
             {pkg.isError && (
               <div className="text-sm text-rose-600">Не удалось получить конфиг.</div>
@@ -222,6 +238,8 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
           </div>
         </div>
       )}
+
+      <DeployCommandModal open={deployModalOpen} onClose={() => setDeployModalOpen(false)} />
     </>
   );
 }

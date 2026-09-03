@@ -98,6 +98,7 @@ services:
       POSTGRES_SERVER: db
       REDIS_URL: redis://redis:6379/0
       MEDIA_LIBRARY_DIR: /var/lib/infrascope/media-library
+      RUSTDESK_PACKAGE_DIR: /var/lib/infrascope/rustdesk
       NETWORK_CONTROL_SERVICE_ENABLED: ${NETWORK_CONTROL_SERVICE_ENABLED:-true}
       NETWORK_CONTROL_SERVICE_URL: http://network-control-service:8013
       KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
@@ -111,6 +112,9 @@ services:
       - ${DNS_SEARCH_DOMAIN:-}
     volumes:
       - media_library:/var/lib/infrascope/media-library
+      # the pinned RustDesk installer endpoints download from /remote-access/deploy/installer;
+      # host-mounted (not a named volume) so it can be dropped in without a rebuild
+      - ${RUSTDESK_PACKAGE_HOST_DIR:-./rustdesk-ksc/packages}:/var/lib/infrascope/rustdesk:ro
     depends_on:
       db:
         condition: service_healthy

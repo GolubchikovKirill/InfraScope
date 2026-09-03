@@ -25,7 +25,7 @@ from app.domains.ml.models import (
     MLTonerPrediction,
 )
 from app.domains.operations.models import AppSetting, CashRegister, EventLog
-from app.domains.remote_access.models import RemoteAccessDevice
+from app.domains.remote_access.models import RemoteAccessConsoleAccount, RemoteAccessDevice
 
 __all__ = [
     "AppSetting",
@@ -45,6 +45,7 @@ __all__ = [
     "MLTonerPrediction",
     "NetworkSwitch",
     "Printer",
+    "RemoteAccessConsoleAccount",
     "RemoteAccessDevice",
     "SwitchAccessPoint",
     "SwitchPortSnapshot",

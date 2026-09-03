@@ -720,12 +720,21 @@ def remote_access_sync_task(self) -> dict:
             # a dead console token must not sink the whole sync (inventory + host
             # status still work); the page's "console down" banner surfaces it
             peers_seen = 0
+            accounts_seen = 0
+            book_pushed = 0
             console_error = None
             if _rustdesk_client.enabled():
                 try:
                     peers_seen = asyncio.run(
                         _remote_access_service.sync_from_console(session)
                     ).get("peers_seen", 0)
+                    accounts_seen = asyncio.run(
+                        _remote_access_service.sync_accounts(session)
+                    ).get("accounts_seen", 0)
+                    # only rows the console is missing or whose password went stale
+                    book_pushed = asyncio.run(
+                        _remote_access_service.sync_stale_address_book(session)
+                    ).get("pushed", 0)
                 except Exception as exc:  # noqa: BLE001
                     console_error = str(exc)
             statuses = _remote_access_service.refresh_status_from_inventory(session)
@@ -734,6 +743,8 @@ def remote_access_sync_task(self) -> dict:
             "operation": operation,
             "seeded": seeded,
             "peers_seen": peers_seen,
+            "accounts_seen": accounts_seen,
+            "address_book_pushed": book_pushed,
             "statuses_from_polling": statuses,
             "console_error": console_error,
             "finished_at": datetime.now(UTC).isoformat(),
