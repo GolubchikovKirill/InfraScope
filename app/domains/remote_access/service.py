@@ -26,6 +26,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -149,8 +150,16 @@ def default_password() -> str:
 # device inventory sync                                                       #
 # --------------------------------------------------------------------------- #
 def _get_or_create_device(session: Session, hostname: str) -> RemoteAccessDevice:
+    """Windows hostnames are case-insensitive - VNA-MGR-101 and vna-mgr-101 are
+    the same machine, whether InfraScope's own inventory or a RustDesk client's
+    self-reported hostname (sync_from_console) spells it. Matching case-sensitively
+    here used to mint a second, permanently "pending" row for every device whose
+    console-reported casing didn't exactly match inventory's - caught live: 22
+    such duplicates on one sync pass. Keeps whichever casing was seen first."""
     host = hostname.strip()
-    dev = session.exec(select(RemoteAccessDevice).where(RemoteAccessDevice.hostname == host)).first()
+    dev = session.exec(
+        select(RemoteAccessDevice).where(func.lower(RemoteAccessDevice.hostname) == host.lower())
+    ).first()
     if dev:
         return dev
     dev = RemoteAccessDevice(
@@ -166,22 +175,27 @@ def _cr_location(cr: CashRegister) -> str | None:
 
 
 def _link_inventory(session: Session, dev: RemoteAccessDevice) -> None:
-    """(Re)bind a device row to every inventory row that shares its hostname."""
-    host = dev.hostname
+    """(Re)bind a device row to every inventory row that shares its hostname.
+
+    Case-insensitive, same reasoning as _get_or_create_device - a device row
+    minted from the console's self-reported hostname casing must still find
+    its inventory row even when that row's own hostname is cased differently.
+    """
+    host = dev.hostname.lower()
     if dev.computer_id is None:
-        comp = session.exec(select(Computer).where(Computer.hostname == host)).first()
+        comp = session.exec(select(Computer).where(func.lower(Computer.hostname) == host)).first()
         if comp:
             dev.computer_id = comp.id
             dev.location = dev.location or comp.location
     if dev.cash_register_id is None:
-        cr = session.exec(select(CashRegister).where(CashRegister.hostname == host)).first()
+        cr = session.exec(select(CashRegister).where(func.lower(CashRegister.hostname) == host)).first()
         if cr:
             dev.cash_register_id = cr.id
             dev.location = dev.location or _cr_location(cr)
     if dev.media_player_id is None:
         mp = session.exec(
             select(MediaPlayer).where(
-                MediaPlayer.hostname == host, MediaPlayer.device_type == _NETTOP
+                func.lower(MediaPlayer.hostname) == host, MediaPlayer.device_type == _NETTOP
             )
         ).first()
         if mp:
@@ -226,10 +240,13 @@ def seed_from_inventory(session: Session) -> int:
     (if still blank) location refreshed; its desired config and password are never
     touched here.
     """
-    existing = {d.hostname: d for d in session.exec(select(RemoteAccessDevice)).all()}
+    # keyed lower() - same case-insensitivity fix as _get_or_create_device,
+    # so this loop doesn't mint a duplicate for a hostname it already has
+    # under different casing (e.g. seen from CashRegister once, Computer since)
+    existing = {d.hostname.lower(): d for d in session.exec(select(RemoteAccessDevice)).all()}
     created = 0
     for hostname, kind, location in _inventory_rows(session):
-        dev = existing.get(hostname)
+        dev = existing.get(hostname.lower())
         if dev is None:
             dev = RemoteAccessDevice(
                 hostname=hostname,
@@ -238,7 +255,7 @@ def seed_from_inventory(session: Session) -> int:
                 location=location,
                 permanent_password=default_password(),
             )
-            existing[hostname] = dev
+            existing[hostname.lower()] = dev
             session.add(dev)
             created += 1
         else:

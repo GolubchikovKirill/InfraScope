@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import func
 from sqlmodel import select
 
 from app.core.config import settings
@@ -68,6 +69,23 @@ def test_seed_from_inventory_covers_registers_computers_and_nettops(db_session) 
     assert _dev(db_session, "VNA-STICK-01") is None
 
 
+def test_seed_from_inventory_does_not_duplicate_an_existing_hostname_by_case(db_session) -> None:
+    # a row that already exists under different casing than inventory's -
+    # e.g. minted earlier by sync_from_console off the client's self-reported
+    # hostname (see test_ensure_device_matches_an_existing_hostname_case_insensitively)
+    pre_existing = service.ensure_device(db_session, hostname="vna-mgr-77")
+    db_session.add(Computer(hostname="VNA-MGR-77", location="A1"))
+    db_session.commit()
+
+    created = service.seed_from_inventory(db_session)
+    assert created == 0
+    rows = db_session.exec(
+        select(RemoteAccessDevice).where(func.lower(RemoteAccessDevice.hostname) == "vna-mgr-77")
+    ).all()
+    assert rows == [pre_existing]
+    assert pre_existing.computer_id is not None  # still got linked to the inventory row
+
+
 def test_seed_marks_till_that_is_also_a_computer_as_cash_register(db_session) -> None:
     db_session.add(Computer(hostname="VNA-POS-09", location="Z1"))
     db_session.add(CashRegister(kkm_number="K9", hostname="VNA-POS-09", store_number="042"))
@@ -109,6 +127,20 @@ def test_ensure_device_creates_links_and_mints_id_and_password(db_session) -> No
     )
     assert dev2.id == dev.id
     assert dev2.rustdesk_id == "VNA_POS_07_X" and dev2.permanent_password == "kentdful"
+
+
+def test_ensure_device_matches_an_existing_hostname_case_insensitively(db_session) -> None:
+    """Windows hostnames are case-insensitive; a RustDesk client self-reporting
+    "vna-mgr-101" (sync_from_console) must land on the same row inventory
+    already seeded as "VNA-MGR-101" - not mint a second, forever-pending one.
+    Caught live: 22 such duplicate rows appeared from one console sync pass."""
+    dev = service.ensure_device(db_session, hostname="VNA-MGR-101", permanent_password="kentdful")
+    dev2 = service.ensure_device(db_session, hostname="vna-mgr-101")
+    assert dev2.id == dev.id
+    assert dev2.hostname == "VNA-MGR-101"  # first-seen casing wins, not overwritten
+    assert db_session.exec(
+        select(RemoteAccessDevice).where(func.lower(RemoteAccessDevice.hostname) == "vna-mgr-101")
+    ).all() == [dev]
 
 
 def test_rotate_password_changes_secret_only(db_session) -> None:
