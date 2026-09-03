@@ -93,15 +93,37 @@ def deploy_command(api_prefix: str = "/api/v1") -> str:
     trigger died before the downloaded script ever got a chance to run, so no
     log, no report - just silence. TLS1.2 + a certificate bypass, same trust
     model as the `curl -k` used to smoke-test this server, fixes it.
+
+    Everything is wrapped in one try/catch that logs locally on failure - this
+    line runs *before* the downloaded script's own logging exists, so without
+    this a failure here is invisible everywhere (no local log, and nothing to
+    report to InfraScope, since reporting needs this same HTTP call to work).
+    Verified live on VNA-MGR-04: its PowerShell hosts .NET CLR 2.0, which
+    predates TLS 1.1/1.2 support in System.Net.ServicePointManager entirely -
+    `SecurityProtocolType.Tls12` isn't a valid enum member there, so the very
+    first line throws. No amount of registry/GPO tweaking fixes that; the
+    fix is upgrading PowerShell/WMF on that machine, or - since it needs no
+    outbound HTTPS call at all - the offline rustdesk-ksc package instead.
+    The catch block detects this exact failure shape and says so.
     """
     url = f"{public_url()}{api_prefix}/remote-access/deploy/bootstrap.ps1"
     return (
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "
-        '"[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;'
+        '"$ErrorActionPreference=\'Stop\'; try{'
+        "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;"
         "[Net.ServicePointManager]::ServerCertificateValidationCallback={$true};"
         "$c=New-Object Net.WebClient; "
         f"$c.Headers.Add('X-InfraScope-Deploy-Token','{settings.RUSTDESK_DEPLOY_TOKEN}'); "
-        f"iex $c.DownloadString('{url}')\""
+        f"iex $c.DownloadString('{url}')"
+        "}catch{"
+        "$d='C:\\ProgramData\\InfraScope'; $null=New-Item -ItemType Directory -Force -Path $d;"
+        "$m=$_.Exception.Message; $hint='';"
+        "if($m -match 'SecurityProtocolType'){"
+        "$hint=' -- PowerShell/.NET here is too old for TLS1.2 (CLR '+[Environment]::Version+"
+        "'); use the offline rustdesk-ksc package instead, it makes no outbound HTTPS call'};"
+        "Add-Content (Join-Path $d 'rustdesk-configure.log') "
+        "((Get-Date -Format o)+'  BOOTSTRAP FAILED before config fetch: '+$m+$hint)"
+        '}"'
     )
 
 

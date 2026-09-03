@@ -505,6 +505,28 @@ def test_deploy_command_bypasses_the_self_signed_cert_before_downloading(monkeyp
     assert "SecurityProtocolType]::Tls12" in cmd
 
 
+def test_deploy_command_logs_locally_when_the_bootstrap_fetch_itself_fails(monkeypatch) -> None:
+    """This line runs before the downloaded script's own logging exists, so a
+    failure here has nowhere to go except a local file - InfraScope can't
+    learn about it either, since reporting needs this same HTTP call to work.
+    Verified live on VNA-MGR-04: its PowerShell hosts .NET CLR 2.0, which
+    predates TLS 1.1/1.2 support in ServicePointManager - `Tls12` isn't a
+    valid enum member there, so the very first line throws with no trace
+    anywhere. The catch block must write to the same log file the downloaded
+    script uses, and name the CLR-too-old case specifically since no
+    registry/GPO fix helps it - only a WMF upgrade or the offline package do."""
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "https://10.10.99.24")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "s3cr3t")
+
+    cmd = deploy_script.deploy_command()
+    assert "try{" in cmd and "}catch{" in cmd
+    assert "rustdesk-configure.log" in cmd
+    assert "SecurityProtocolType" in cmd.split("}catch{")[1]  # the CLR-too-old hint check
+    assert "offline rustdesk-ksc package" in cmd
+
+
 def test_bootstrap_script_is_self_sufficient_against_the_same_cert(monkeypatch) -> None:
     from app.domains.remote_access import deploy_script
 
