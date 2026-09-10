@@ -5,6 +5,7 @@ the stable import surface for existing route, service, test, and Alembic code
 while the codebase moves toward domain-local imports.
 """
 
+from app.domains.credentials.models import Credential
 from app.domains.identity.models import User
 from app.domains.integrations.models import HonestSignTargetOverride
 from app.domains.inventory.models import (
@@ -33,6 +34,7 @@ __all__ = [
     "CartridgeStock",
     "CartridgeStockMovement",
     "Computer",
+    "Credential",
     "EventLog",
     "HonestSignTargetOverride",
     "MediaPlayer",

@@ -7,6 +7,7 @@ from app.api.routes import (
     boarding_pass,
     cash_registers,
     computers,
+    credentials,
     honest_sign,
     logs,
     media_center,
@@ -34,6 +35,7 @@ api_router.include_router(media_center.router, prefix="/media-center")
 api_router.include_router(switches.router, prefix="/switches")
 api_router.include_router(cash_registers.router, prefix="/cash-registers")
 api_router.include_router(computers.router, prefix="/computers")
+api_router.include_router(credentials.router, prefix="/credentials")
 api_router.include_router(remote_access.router, prefix="/remote-access")
 api_router.include_router(honest_sign.router, prefix="/honest-sign")
 api_router.include_router(ml.router, prefix="/ml")

@@ -13,6 +13,7 @@ from app.models import (  # noqa: F401
     CartridgeStock,
     CartridgeStockMovement,
     CashRegister,
+    Credential,
     EventLog,
     MediaAsset,
     MediaAssignment,
