@@ -26,10 +26,13 @@ CATEGORIES = (
     "server",
     "service",
     "website",
+    "email",
     "other",
 )
 
-_CATEGORY_RE = r"^(switch|printer|cash_register|computer|media_player|camera|server|service|website|other)$"
+_CATEGORY_RE = (
+    r"^(switch|printer|cash_register|computer|media_player|camera|server|service|website|email|other)$"
+)
 
 
 def _clean(v: str | None, *, limit: int) -> str | None:

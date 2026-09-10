@@ -99,11 +99,3 @@ export function generatePasswordLocal(params: PasswordGenParams): LocalPasswordR
     error: null,
   };
 }
-
-/** Rough label + 0..4 bucket for a strength meter, keyed off total entropy. */
-export function strength(entropyBits: number): { label: string; level: 0 | 1 | 2 | 3 | 4 } {
-  if (entropyBits < 40) return { label: "Слабый", level: 1 };
-  if (entropyBits < 66) return { label: "Средний", level: 2 };
-  if (entropyBits < 100) return { label: "Хороший", level: 3 };
-  return { label: "Очень сильный", level: 4 };
-}

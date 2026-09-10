@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
@@ -29,12 +29,7 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { showToast } from "../lib/toastBus";
 import { relTime } from "../lib/relTime";
 import { EmptyState, ErrorState, LoadingState, SectionCard } from "../components/ui/AsyncState";
-import {
-  DEFAULT_PARAMS,
-  generatePasswordLocal,
-  strength,
-  type LocalPasswordResult,
-} from "../lib/passwordGen";
+import { DEFAULT_PARAMS, generatePasswordLocal, type LocalPasswordResult } from "../lib/passwordGen";
 import type { PasswordGenParams } from "../api/credentials";
 
 const CATEGORY_LABEL: Record<CredentialCategory, string> = Object.fromEntries(
@@ -52,6 +47,7 @@ function categoryTone(category: CredentialCategory): string {
     server: "bg-rose-100 text-rose-700",
     service: "bg-emerald-100 text-emerald-700",
     website: "bg-blue-100 text-blue-700",
+    email: "bg-orange-100 text-orange-700",
   };
   return map[category] ?? "bg-slate-100 text-slate-600";
 }
@@ -497,9 +493,13 @@ function GeneratorSection() {
   );
 }
 
+const MIN_LENGTH = 8;
+const MAX_LENGTH = 128;
+
 function InlineGenerator({ onUse }: { onUse?: (password: string) => void }) {
   const [params, setParams] = useState<PasswordGenParams>(DEFAULT_PARAMS);
   const [result, setResult] = useState<LocalPasswordResult>(() => generatePasswordLocal(DEFAULT_PARAMS));
+  const [lengthText, setLengthText] = useState(String(DEFAULT_PARAMS.length));
 
   const regenerate = (p: PasswordGenParams) => setResult(generatePasswordLocal(p));
 
@@ -509,7 +509,13 @@ function InlineGenerator({ onUse }: { onUse?: (password: string) => void }) {
     regenerate(merged);
   };
 
-  const meter = useMemo(() => strength(result.entropyBits), [result.entropyBits]);
+  const commitLength = (raw: string) => {
+    const n = parseInt(raw, 10);
+    const clamped = Number.isFinite(n) ? Math.min(MAX_LENGTH, Math.max(MIN_LENGTH, n)) : params.length;
+    setLengthText(String(clamped));
+    if (clamped !== params.length) patch({ length: clamped });
+  };
+
   const classCount = ["uppercase", "lowercase", "digits", "symbols"].filter(
     (k) => params[k as keyof PasswordGenParams],
   ).length;
@@ -546,35 +552,22 @@ function InlineGenerator({ onUse }: { onUse?: (password: string) => void }) {
         ) : null}
       </div>
 
-      {!result.error ? (
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-            <div
-              className={`h-full transition-all ${
-                meter.level <= 1 ? "bg-rose-500" : meter.level === 2 ? "bg-amber-500" : meter.level === 3 ? "bg-lime-500" : "bg-emerald-500"
-              }`}
-              style={{ width: `${(meter.level / 4) * 100}%` }}
-            />
-          </div>
-          <span className="text-xs text-slate-500">
-            {meter.label} · ~{Math.round(result.entropyBits)} бит
-          </span>
-        </div>
-      ) : null}
-
       <div className="space-y-3">
         <label className="block text-sm">
-          <div className="mb-1 flex justify-between text-slate-600 dark:text-slate-300">
-            <span>Длина</span>
-            <span className="font-mono">{params.length}</span>
-          </div>
+          <span className="mb-1 block text-slate-600 dark:text-slate-300">Длина ({MIN_LENGTH}–{MAX_LENGTH})</span>
           <input
-            type="range"
-            min={8}
-            max={64}
-            value={params.length}
-            onChange={(e) => patch({ length: Number(e.target.value) })}
-            className="w-full accent-[var(--brand)]"
+            type="number"
+            inputMode="numeric"
+            min={MIN_LENGTH}
+            max={MAX_LENGTH}
+            className="app-input w-28 py-2 px-3 text-sm"
+            value={lengthText}
+            onChange={(e) => {
+              setLengthText(e.target.value);
+              const n = parseInt(e.target.value, 10);
+              if (Number.isFinite(n) && n >= MIN_LENGTH && n <= MAX_LENGTH) patch({ length: n });
+            }}
+            onBlur={(e) => commitLength(e.target.value)}
           />
         </label>
 

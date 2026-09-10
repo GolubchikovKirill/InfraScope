@@ -10,6 +10,7 @@ export type CredentialCategory =
   | "server"
   | "service"
   | "website"
+  | "email"
   | "other";
 
 export const CREDENTIAL_CATEGORIES: { value: CredentialCategory; label: string }[] = [
@@ -22,6 +23,7 @@ export const CREDENTIAL_CATEGORIES: { value: CredentialCategory; label: string }
   { value: "server", label: "Сервер" },
   { value: "service", label: "Сервис" },
   { value: "website", label: "Веб-панель" },
+  { value: "email", label: "Почта Outlook (ящики пользователей)" },
   { value: "other", label: "Прочее" },
 ];
 

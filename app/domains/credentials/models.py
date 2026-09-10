@@ -20,6 +20,7 @@ CATEGORIES = (
     "server",
     "service",
     "website",
+    "email",
     "other",
 )
 
