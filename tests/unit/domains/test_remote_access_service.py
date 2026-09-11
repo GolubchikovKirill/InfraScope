@@ -387,6 +387,139 @@ def test_sync_from_console_marks_a_long_silent_peer_offline(db_session, monkeypa
     assert _dev(db_session, "VNA-MGR-201").online is False
 
 
+def test_sync_from_console_prefers_the_canonical_peer_over_a_numeric_duplicate(db_session, monkeypatch) -> None:
+    import asyncio
+
+    db_session.add(
+        RemoteAccessDevice(hostname="VNA-MGR-1504", rustdesk_id="1332940773", source_kind="computer")
+    )
+    db_session.commit()
+    fresh = int(datetime.now(UTC).timestamp())
+
+    async def fake_peers():
+        return [
+            {"id": "1332940773", "hostname": "VNA-MGR-1504", "version": "1.4.9", "last_online_time": fresh - 4000},
+            {"id": "VNA_MGR_1504", "hostname": "VNA-MGR-1504", "version": "1.4.9", "last_online_time": fresh},
+        ]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    asyncio.run(service.sync_from_console(db_session))
+
+    d = _dev(db_session, "VNA-MGR-1504")
+    # the numeric leftover appeared first and last-wins would have latched it;
+    # the peer whose id is the hostname-derived rid is the one running our config
+    assert d.rustdesk_id == "VNA_MGR_1504"
+    assert d.online is True
+
+
+def test_sync_from_console_clears_stale_once_the_client_is_back_under_our_id(db_session, monkeypatch) -> None:
+    import asyncio
+
+    db_session.add(
+        RemoteAccessDevice(
+            hostname="VNA-MGR-15",
+            rustdesk_id="VNA_MGR_15",
+            source_kind="computer",
+            deploy_state="stale",
+            ab_password_pushed=True,
+        )
+    )
+    db_session.commit()
+
+    async def fake_peers():
+        return [
+            {
+                "id": "VNA_MGR_15",
+                "hostname": "VNA-MGR-15",
+                "version": "1.4.9",
+                "last_online_time": int(datetime.now(UTC).timestamp()),
+            }
+        ]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    asyncio.run(service.sync_from_console(db_session))
+
+    d = _dev(db_session, "VNA-MGR-15")
+    assert d.deploy_state == "configured"
+    assert d.online is True and d.deploy_reported_at is not None
+
+
+def test_sync_from_console_clears_pending_once_the_client_is_online_under_our_id(db_session, monkeypatch) -> None:
+    import asyncio
+
+    db_session.add(
+        RemoteAccessDevice(
+            hostname="VNA-MGR-1504",
+            rustdesk_id="VNA_MGR_1504",
+            source_kind="computer",
+            deploy_state="pending",
+        )
+    )
+    db_session.commit()
+
+    async def fake_peers():
+        return [
+            {"id": "VNA_MGR_1504", "hostname": "VNA-MGR-1504", "last_online_time": int(datetime.now(UTC).timestamp())}
+        ]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    asyncio.run(service.sync_from_console(db_session))
+
+    assert _dev(db_session, "VNA-MGR-1504").deploy_state == "configured"
+
+
+def test_sync_from_console_keeps_stale_when_only_a_factory_id_peer_is_online(db_session, monkeypatch) -> None:
+    import asyncio
+
+    db_session.add(
+        RemoteAccessDevice(
+            hostname="VNA-MGR-15",
+            rustdesk_id="VNA_MGR_15",
+            source_kind="computer",
+            deploy_state="stale",
+            ab_password_pushed=True,
+        )
+    )
+    db_session.commit()
+
+    async def fake_peers():
+        return [
+            {"id": "469991971", "hostname": "VNA-MGR-15", "last_online_time": int(datetime.now(UTC).timestamp())}
+        ]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    asyncio.run(service.sync_from_console(db_session))
+
+    d = _dev(db_session, "VNA-MGR-15")
+    # a factory-numeric-id client is not proof our config (which sets the custom id) ran
+    assert d.deploy_state == "stale"
+
+
+def test_sync_from_console_keeps_stale_until_the_new_password_is_in_the_book(db_session, monkeypatch) -> None:
+    import asyncio
+
+    db_session.add(
+        RemoteAccessDevice(
+            hostname="VNA-MGR-15",
+            rustdesk_id="VNA_MGR_15",
+            source_kind="computer",
+            deploy_state="stale",
+            ab_password_pushed=False,
+        )
+    )
+    db_session.commit()
+
+    async def fake_peers():
+        return [
+            {"id": "VNA_MGR_15", "hostname": "VNA-MGR-15", "last_online_time": int(datetime.now(UTC).timestamp())}
+        ]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    asyncio.run(service.sync_from_console(db_session))
+
+    assert _dev(db_session, "VNA-MGR-15").deploy_state == "stale"
+
+
 def test_resolve_scope_by_ids_location_kind_and_all(db_session) -> None:
     a = RemoteAccessDevice(hostname="h-a", location="A1", source_kind="computer")
     b = RemoteAccessDevice(hostname="h-b", location="A2", source_kind="cash_register")
