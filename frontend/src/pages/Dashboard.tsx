@@ -26,6 +26,7 @@ import { useAuth } from "../auth";
 import PrinterCard from "../components/PrinterCard";
 import ZebraCard from "../components/ZebraCard";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
+import { useQueryParamState } from "../hooks/useQueryParamState";
 import PrinterForm from "../components/PrinterForm";
 import CartridgeStockPanel from "../components/CartridgeStockPanel";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -48,7 +49,7 @@ export default function Dashboard() {
   const confirm = useConfirm();
 
   const [activeTab, setActiveTab] = useState<TabKey>("laser");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useQueryParamState("q");
   const [showForm, setShowForm] = useState(false);
   const [editingPrinter, setEditingPrinter] = useState<Printer | null>(null);
   const [pollingIds, setPollingIds] = useState<Set<string>>(new Set());

@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import type { Credential } from "../client";
 
 const api = vi.hoisted(() => ({
   CREDENTIAL_CATEGORIES: [
     { value: "switch", label: "Свитч" },
+    { value: "computer", label: "Компьютер" },
     { value: "server", label: "Сервер" },
     { value: "other", label: "Прочее" },
   ],
@@ -14,6 +16,7 @@ const api = vi.hoisted(() => ({
   updateCredential: vi.fn(),
   deleteCredential: vi.fn(),
   revealCredential: vi.fn(),
+  getRemoteDevices: vi.fn(),
 }));
 
 vi.mock("../client", () => api);
@@ -51,14 +54,17 @@ function makeCredential(overrides: Partial<Credential> = {}): Credential {
 
 const renderPage = () =>
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      <CredentialsPage />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
+        <CredentialsPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 
 beforeEach(() => {
   vi.clearAllMocks();
   api.getCredentials.mockResolvedValue({ data: [makeCredential()], count: 1 });
+  api.getRemoteDevices.mockResolvedValue({ data: [], count: 0 });
 });
 
 describe("CredentialsPage", () => {
@@ -99,5 +105,42 @@ describe("CredentialsPage", () => {
         expect.objectContaining({ title: "New router", secret: "hunter2hunter2" }),
       ),
     );
+  });
+
+  it("links a credential row to its device's fleet page", async () => {
+    api.getCredentials.mockResolvedValue({
+      data: [makeCredential({ category: "computer", host: "VNA-MGR-101" })],
+      count: 1,
+    });
+    renderPage();
+
+    const link = await screen.findByTitle("Открыть карточку устройства");
+    expect(link).toHaveAttribute("href", "/computers?q=VNA-MGR-101&focus=VNA-MGR-101");
+  });
+
+  it("offers a RustDesk connect button when the host is a managed endpoint", async () => {
+    api.getCredentials.mockResolvedValue({
+      data: [makeCredential({ category: "computer", host: "VNA-MGR-101" })],
+      count: 1,
+    });
+    api.getRemoteDevices.mockResolvedValue({
+      data: [{ id: "dev-1", hostname: "VNA-MGR-101", rustdesk_id: "VNA_MGR_101" }],
+      count: 1,
+    });
+    renderPage();
+
+    const connect = await screen.findByTitle("Подключиться через RustDesk");
+    expect(connect).toHaveAttribute("href", "rustdesk://connection/new/VNA_MGR_101");
+  });
+
+  it("does not offer device links for categories without a fleet section", async () => {
+    api.getCredentials.mockResolvedValue({
+      data: [makeCredential({ category: "server", host: "10.0.0.1" })],
+      count: 1,
+    });
+    renderPage();
+
+    await screen.findByText("10.0.0.1");
+    expect(screen.queryByTitle("Открыть карточку устройства")).not.toBeInTheDocument();
   });
 });

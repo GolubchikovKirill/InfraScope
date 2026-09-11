@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CircleCheck, CircleX } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CircleCheck, CircleX, KeyRound } from "lucide-react";
 import { useAuth } from "../auth";
 import {
   createComputer,
@@ -13,8 +14,12 @@ import {
 } from "../client";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useQueryParamState } from "../hooks/useQueryParamState";
+import { useRowFocus } from "../hooks/useRowFocus";
 import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
+import { useCredentialIndex } from "../hooks/useCredentialIndex";
 import { describeOfflineReason } from "../lib/offlineReason";
+import { credentialsHref, normalizeHostKey, rowDomId } from "../lib/deviceLinks";
 import RemoteAccessButtons from "../components/RemoteAccessButtons";
 
 type StatusFilter = "all" | "online" | "offline";
@@ -34,7 +39,8 @@ export default function ComputersPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isSuperuser = Boolean(user?.is_superuser);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useQueryParamState("q");
+  const [focus] = useQueryParamState("focus");
   const debouncedQ = useDebouncedValue(q, 300);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<Computer | null>(null);
@@ -49,7 +55,10 @@ export default function ComputersPage() {
   });
 
   const { map: remoteMap } = useRemoteDeviceMap();
+  const credIndex = useCredentialIndex();
   const rows = useMemo(() => data?.data ?? [], [data]);
+  const focusRows = useMemo(() => rows.map((row) => ({ id: row.hostname, keys: [row.hostname] })), [rows]);
+  useRowFocus(focus, focusRows);
   const sortedRows = useMemo(() => {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
     return [...rows].sort((a, b) => rank(a.is_online) - rank(b.is_online));
@@ -217,8 +226,9 @@ export default function ComputersPage() {
         ) : (
           visibleRows.map((row) => {
             const polledAt = row.last_polled_at ? new Date(row.last_polled_at).toLocaleString("ru-RU") : null;
+            const credCount = credIndex.get(normalizeHostKey(row.hostname)) ?? 0;
             return (
-            <div key={row.id} className="app-panel p-4">
+            <div key={row.id} id={rowDomId(row.hostname)} className="app-panel p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -268,6 +278,16 @@ export default function ComputersPage() {
                     <Copy className="h-4 w-4" />
                     Копировать hostname
                   </button>
+                  {isSuperuser && (
+                    <Link
+                      to={credentialsHref(row.hostname)}
+                      className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm"
+                      title="Пароли и учётные данные этого устройства"
+                    >
+                      <KeyRound className="h-4 w-4" />
+                      Пароли{credCount > 0 ? ` (${credCount})` : ""}
+                    </Link>
+                  )}
                   <button
                     onClick={() => pollMut.mutate(row.id)}
                     disabled={pollingIds.has(row.id)}

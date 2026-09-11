@@ -20,7 +20,7 @@ const CLASSES: { key: keyof PasswordGenParams; chars: string }[] = [
 ];
 
 export const DEFAULT_PARAMS: PasswordGenParams = {
-  length: 20,
+  length: 8,
   uppercase: true,
   lowercase: true,
   digits: true,

@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AlertOctagon, AlertTriangle, Info, RefreshCw, Search, Siren } from "lucide-react";
 import { getEventLogs, type EventSeverity } from "../client";
+import { useQueryParamState } from "../hooks/useQueryParamState";
+import { CATEGORY_TO_ROUTE } from "../lib/deviceLinks";
+
+type DeviceKindFilter = "all" | "printer" | "media_player" | "switch" | "cash_register";
 
 const SEVERITIES: Array<{ key: EventSeverity | "all"; label: string }> = [
   { key: "all", label: "Все" },
@@ -19,7 +24,7 @@ const EVENT_FAMILIES: Array<{ key: string; label: string }> = [
   { key: "ap_auto_reboot", label: "Автоматизация ТД" },
 ];
 
-const DEVICE_KINDS: Array<{ key: "all" | "printer" | "media_player" | "switch" | "cash_register"; label: string }> = [
+const DEVICE_KINDS: Array<{ key: DeviceKindFilter; label: string }> = [
   { key: "all", label: "Все устройства" },
   { key: "printer", label: "Принтеры" },
   { key: "media_player", label: "Медиаплееры" },
@@ -42,9 +47,10 @@ function severityBadge(severity: EventSeverity) {
 
 export default function LogsPage() {
   const [severity, setSeverity] = useState<EventSeverity | "all">("all");
-  const [deviceKind, setDeviceKind] = useState<"all" | "printer" | "media_player" | "switch" | "cash_register">("all");
+  const [deviceKindParam, setDeviceKindParam] = useQueryParamState("device_kind", "all");
+  const deviceKind = deviceKindParam as DeviceKindFilter;
   const [eventFamily, setEventFamily] = useState<string>("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useQueryParamState("q");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["event-logs", severity, deviceKind, eventFamily, search],
@@ -110,7 +116,7 @@ export default function LogsPage() {
           {DEVICE_KINDS.map((item) => (
             <button
               key={item.key}
-              onClick={() => setDeviceKind(item.key)}
+              onClick={() => setDeviceKindParam(item.key)}
               className={`app-btn-secondary px-3 py-1.5 text-xs ${deviceKind === item.key ? "ring-2 ring-[var(--brand-border)]" : ""}`}
             >
               {item.label}
@@ -156,7 +162,19 @@ export default function LogsPage() {
                   </td>
                   <td>{severityBadge(log.severity)}</td>
                   <td>
-                    <div>{log.device_name || "—"}</div>
+                    <div>
+                      {log.device_name && log.device_kind && CATEGORY_TO_ROUTE[log.device_kind] ? (
+                        <Link
+                          to={`${CATEGORY_TO_ROUTE[log.device_kind]}?q=${encodeURIComponent(log.device_name)}&focus=${encodeURIComponent(log.device_name)}`}
+                          className="text-[var(--brand)] hover:underline"
+                          title="Открыть карточку устройства"
+                        >
+                          {log.device_name}
+                        </Link>
+                      ) : (
+                        log.device_name || "—"
+                      )}
+                    </div>
                     <div className="app-mono app-card-meta">{log.ip_address || "—"}</div>
                   </td>
                   <td className="app-mono text-[var(--text-faint)]">{log.event_type}</td>

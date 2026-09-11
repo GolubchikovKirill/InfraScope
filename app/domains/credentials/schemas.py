@@ -129,7 +129,7 @@ class CredentialSecret(BaseModel):
 
 
 class PasswordGenerateRequest(BaseModel):
-    length: int = Field(default=20, ge=8, le=128)
+    length: int = Field(default=8, ge=6, le=128)
     uppercase: bool = True
     lowercase: bool = True
     digits: bool = True

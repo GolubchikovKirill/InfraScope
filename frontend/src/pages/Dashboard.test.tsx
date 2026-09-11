@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -93,11 +94,13 @@ describe("Dashboard", () => {
 
     const queryClient = new QueryClient();
     render(
-      <QueryClientProvider client={queryClient}>
-        <ConfirmProvider>
-          <Dashboard />
-        </ConfirmProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <ConfirmProvider>
+            <Dashboard />
+          </ConfirmProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByText("HP M404")).toBeInTheDocument();

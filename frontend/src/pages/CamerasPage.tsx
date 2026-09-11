@@ -4,6 +4,7 @@ import { Camera, ChevronDown, ChevronUp, Loader2, Power, RefreshCw, Search } fro
 import { useAuth } from "../auth";
 import { getSwitches, getSwitchCameraPorts, rebootAllCameraPorts } from "../client";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useQueryParamState } from "../hooks/useQueryParamState";
 import { useConfirm } from "../components/ConfirmDialog";
 import { showToast } from "../lib/toastBus";
 import { apiErrorMessage } from "../lib/apiError";
@@ -12,7 +13,7 @@ import CameraPortRow from "../components/CameraPortRow";
 export default function CamerasPage() {
   const { user } = useAuth();
   const isSuperuser = user?.is_superuser ?? false;
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useQueryParamState("q");
   const debouncedSearch = useDebouncedValue(search, 300);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 

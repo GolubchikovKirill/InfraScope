@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -12,6 +13,7 @@ const api = vi.hoisted(() => ({
   getMediaAssignments: vi.fn(),
   getMediaAssets: vi.fn(),
   getMediaClientHeartbeats: vi.fn(),
+  getCredentials: vi.fn(),
   iconbitBulkPlay: vi.fn(),
   iconbitBulkStop: vi.fn(),
   iconbitBulkUpload: vi.fn(),
@@ -56,6 +58,10 @@ import MediaPlayersPage from "./MediaPlayersPage";
 import { ConfirmProvider } from "../components/ConfirmDialog";
 
 describe("MediaPlayersPage", () => {
+  beforeEach(() => {
+    api.getCredentials.mockResolvedValue({ data: [], count: 0 });
+  });
+
   it("shows iconbit bulk controls and runs bulk stop", async () => {
     api.getMediaPlayers.mockResolvedValue({
       data: [
@@ -84,11 +90,13 @@ describe("MediaPlayersPage", () => {
 
     const queryClient = new QueryClient();
     render(
-      <QueryClientProvider client={queryClient}>
-        <ConfirmProvider>
-          <MediaPlayersPage />
-        </ConfirmProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <ConfirmProvider>
+            <MediaPlayersPage />
+          </ConfirmProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByText("Iconbit Hall")).toBeInTheDocument();

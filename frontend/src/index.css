@@ -801,6 +801,25 @@ body {
   animation: toast-in 150ms ease-out;
 }
 
+/* Briefly flags the row a cross-link (?focus=) landed on - see useRowFocus. */
+@keyframes app-row-flash {
+  0%,
+  100% {
+    box-shadow: none;
+    background-color: transparent;
+  }
+  15%,
+  60% {
+    box-shadow: 0 0 0 2px var(--brand-border);
+    background-color: var(--brand-soft);
+  }
+}
+
+.row-flash {
+  animation: app-row-flash 1.6s ease-out;
+  border-radius: 0.75rem;
+}
+
 /* A scrollbar is furniture, not an accent. The crimson one was the loudest
    thing on a quiet page. */
 .app-compact-scroll {
@@ -1000,7 +1019,8 @@ body {
   }
 
   .route-fade,
-  .toast-in {
+  .toast-in,
+  .row-flash {
     animation: none;
   }
 }

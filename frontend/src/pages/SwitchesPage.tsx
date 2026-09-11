@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, Search, Network } from "lucide-react";
+import { Plus, RefreshCw, Search, Network, KeyRound } from "lucide-react";
 import { useAuth } from "../auth";
 import type { NetworkSwitch } from "../client";
 import { getSwitches, createSwitch, updateSwitch, deleteSwitch, pollSwitch, pollAllSwitches } from "../client";
@@ -10,7 +11,17 @@ import SwitchPortsTable from "../components/SwitchPortsTable";
 import PathSuspectBanner from "../components/PathSuspectBanner";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useQueryParamState } from "../hooks/useQueryParamState";
+import { useRowFocus } from "../hooks/useRowFocus";
+import { useCredentialIndex } from "../hooks/useCredentialIndex";
+import { credentialsHref, normalizeHostKey, rowDomId } from "../lib/deviceLinks";
 import { useConfirm } from "../components/ConfirmDialog";
+
+/** Best identity for a switch: what an operator is most likely to have
+ *  pasted into a credential's host field. */
+function switchIdentity(sw: Pick<NetworkSwitch, "hostname" | "ip_address" | "name">): string {
+  return sw.hostname || sw.ip_address || sw.name;
+}
 
 type StatusFilter = "all" | "online" | "offline";
 
@@ -20,7 +31,9 @@ export default function SwitchesPage() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useQueryParamState("q");
+  const [focus] = useQueryParamState("focus");
+  const credIndex = useCredentialIndex();
   const debouncedSearch = useDebouncedValue(search, 300);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<NetworkSwitch | null>(null);
@@ -47,6 +60,10 @@ export default function SwitchesPage() {
     if (statusFilter === "offline") return sw.is_online === false;
     return true;
   });
+  useRowFocus(
+    focus,
+    visibleSwitches.map((sw) => ({ id: switchIdentity(sw), keys: [sw.hostname, sw.ip_address, sw.name] })),
+  );
 
   const pollMut = useMutation({
     mutationFn: (id: string) => pollSwitch(id),
@@ -151,18 +168,33 @@ export default function SwitchesPage() {
         </div>
       ) : visibleSwitches.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleSwitches.map((sw) => (
-            <SwitchCard
-              key={sw.id}
-              sw={sw}
-              onPoll={(id) => pollMut.mutate(id)}
-              onEdit={(s) => { setEditTarget(s); setShowForm(true); }}
-              onDelete={handleDelete}
-              onOpenPorts={(s) => setPortsTarget(s)}
-              isPolling={pollingId === sw.id}
-              isSuperuser={isSuperuser}
-            />
-          ))}
+          {visibleSwitches.map((sw) => {
+            const identity = switchIdentity(sw);
+            const credCount = credIndex.get(normalizeHostKey(identity)) ?? 0;
+            return (
+              <div key={sw.id} id={rowDomId(identity)} className="flex flex-col gap-1.5">
+                <SwitchCard
+                  sw={sw}
+                  onPoll={(id) => pollMut.mutate(id)}
+                  onEdit={(s) => { setEditTarget(s); setShowForm(true); }}
+                  onDelete={handleDelete}
+                  onOpenPorts={(s) => setPortsTarget(s)}
+                  isPolling={pollingId === sw.id}
+                  isSuperuser={isSuperuser}
+                />
+                {isSuperuser && (
+                  <Link
+                    to={credentialsHref(identity)}
+                    className="app-btn-secondary inline-flex w-fit items-center gap-1.5 self-end px-2.5 py-1 text-xs"
+                    title="Пароли и учётные данные этого устройства"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Пароли{credCount > 0 ? ` (${credCount})` : ""}
+                  </Link>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="app-empty text-center py-16 text-gray-400">

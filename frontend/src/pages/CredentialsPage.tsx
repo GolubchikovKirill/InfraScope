@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
+  ExternalLink,
   Eye,
   EyeOff,
   KeyRound,
+  MonitorSmartphone,
   Pencil,
   Plus,
   RefreshCw,
@@ -25,9 +28,13 @@ import {
   type CredentialInput,
 } from "../client";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useQueryParamState } from "../hooks/useQueryParamState";
+import { useRowFocus } from "../hooks/useRowFocus";
+import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
 import { useConfirm } from "../components/ConfirmDialog";
 import { showToast } from "../lib/toastBus";
 import { relTime } from "../lib/relTime";
+import { deviceHrefForCredential, rowDomId, rustdeskHrefForHost } from "../lib/deviceLinks";
 import { EmptyState, ErrorState, LoadingState, SectionCard } from "../components/ui/AsyncState";
 import { DEFAULT_PARAMS, generatePasswordLocal, type LocalPasswordResult } from "../lib/passwordGen";
 import type { PasswordGenParams } from "../api/credentials";
@@ -76,12 +83,20 @@ export default function CredentialsPage() {
 function VaultSection() {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const [q, setQ] = useState("");
+  const [q, setQ] = useQueryParamState("q");
+  const [focus] = useQueryParamState("focus");
   const debouncedQ = useDebouncedValue(q, 300);
   const [category, setCategory] = useState<"" | CredentialCategory>("");
   const [editing, setEditing] = useState<Credential | null>(null);
   const [creating, setCreating] = useState(false);
-  const [reveal, setReveal] = useState<{ title: string; secret: string; notes: string | null } | null>(null);
+  const [reveal, setReveal] = useState<{
+    title: string;
+    secret: string;
+    notes: string | null;
+    deviceHref: string | null;
+    connectHref: string | null;
+  } | null>(null);
+  const { map: remoteMap } = useRemoteDeviceMap();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["credentials", debouncedQ, category],
@@ -97,7 +112,14 @@ function VaultSection() {
 
   const revealMut = useMutation({
     mutationFn: (c: Credential) => revealCredential(c.id),
-    onSuccess: (secret, c) => setReveal({ title: c.title, secret: secret.secret, notes: secret.notes }),
+    onSuccess: (secret, c) =>
+      setReveal({
+        title: c.title,
+        secret: secret.secret,
+        notes: secret.notes,
+        deviceHref: deviceHrefForCredential(c),
+        connectHref: rustdeskHrefForHost(c.host, remoteMap),
+      }),
     onError: () => showToast("Не удалось получить пароль", "error"),
   });
 
@@ -111,6 +133,10 @@ function VaultSection() {
   });
 
   const rows = data?.data ?? [];
+  useRowFocus(
+    focus,
+    rows.map((c) => ({ id: c.id, keys: [c.host, c.title] })),
+  );
 
   return (
     <SectionCard className="space-y-4">
@@ -174,8 +200,15 @@ function VaultSection() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((c) => (
-                <tr key={c.id} className="border-b border-[var(--app-panel-border)]/60 align-top">
+              {rows.map((c) => {
+                const deviceHref = deviceHrefForCredential(c);
+                const connectHref = rustdeskHrefForHost(c.host, remoteMap);
+                return (
+                <tr
+                  key={c.id}
+                  id={rowDomId(c.id)}
+                  className="border-b border-[var(--app-panel-border)]/60 align-top"
+                >
                   <td className="py-2 pr-3">
                     <div className="font-medium text-slate-800 dark:text-slate-100">{c.title}</div>
                     {c.tags ? (
@@ -211,7 +244,13 @@ function VaultSection() {
                   </td>
                   <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">
                     {c.url ? (
-                      <a href={c.url} target="_blank" rel="noreferrer" className="text-[var(--brand)] hover:underline">
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[var(--brand)] hover:underline"
+                        title="Открыть панель"
+                      >
                         {c.host || c.url}
                       </a>
                     ) : (
@@ -226,6 +265,24 @@ function VaultSection() {
                   </td>
                   <td className="py-2 pr-1">
                     <div className="flex items-center justify-end gap-1">
+                      {connectHref && (
+                        <a
+                          href={connectHref}
+                          className="rounded-lg p-1.5 text-[var(--brand)] hover:bg-slate-100 dark:hover:bg-slate-800"
+                          title="Подключиться через RustDesk"
+                        >
+                          <MonitorSmartphone className="h-4 w-4" />
+                        </a>
+                      )}
+                      {deviceHref && (
+                        <Link
+                          to={deviceHref}
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+                          title="Открыть карточку устройства"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Link>
+                      )}
                       <button
                         className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40 dark:hover:bg-slate-800"
                         title="Показать пароль"
@@ -254,7 +311,8 @@ function VaultSection() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -286,11 +344,15 @@ function RevealDialog({
   title,
   secret,
   notes,
+  deviceHref,
+  connectHref,
   onClose,
 }: {
   title: string;
   secret: string;
   notes: string | null;
+  deviceHref: string | null;
+  connectHref: string | null;
   onClose: () => void;
 }) {
   const [shown, setShown] = useState(false);
@@ -328,6 +390,22 @@ function RevealDialog({
             <pre className="whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm dark:bg-slate-800">{notes}</pre>
           </div>
         ) : null}
+        {(connectHref || deviceHref) && (
+          <div className="flex flex-wrap gap-2 border-t border-[var(--app-panel-border)] pt-3">
+            {connectHref && (
+              <a href={connectHref} className="app-btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs">
+                <MonitorSmartphone className="h-3.5 w-3.5" />
+                Подключиться
+              </a>
+            )}
+            {deviceHref && (
+              <Link to={deviceHref} onClick={onClose} className="app-btn-secondary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Открыть устройство
+              </Link>
+            )}
+          </div>
+        )}
         <p className="text-xs text-slate-400">Просмотр записан в журнал событий. Окно закроется автоматически.</p>
       </div>
     </Modal>
@@ -493,7 +571,7 @@ function GeneratorSection() {
   );
 }
 
-const MIN_LENGTH = 8;
+const MIN_LENGTH = 6;
 const MAX_LENGTH = 128;
 
 function InlineGenerator({ onUse }: { onUse?: (password: string) => void }) {

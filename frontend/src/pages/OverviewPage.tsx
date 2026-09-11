@@ -311,9 +311,16 @@ function PriorityRow({ priority }: { priority: Priority }) {
   return <Link to={priority.to} className="group flex items-center gap-3 px-5 py-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/50"><div className={`rounded-xl p-2.5 ${HEALTH_TONE_CLASSES[priority.tone].icon}`}><Icon className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="font-medium text-slate-800 dark:text-slate-100">{priority.title}</p><p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">{priority.detail}</p></div><ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand)]" /></Link>;
 }
 
+function eventLogHref(event: EventLog): string {
+  if (!event.device_name) return "/logs";
+  const params = new URLSearchParams({ q: event.device_name });
+  if (event.device_kind) params.set("device_kind", event.device_kind);
+  return `/logs?${params.toString()}`;
+}
+
 function EventRow({ event }: { event: EventLog }) {
   const tone = eventTone(event);
-  return <Link to="/logs" className="group flex items-start gap-3 px-5 py-3.5 transition hover:bg-slate-50 dark:hover:bg-slate-800/50"><div className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${tone === "danger" ? "bg-red-500" : "bg-amber-500"}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${HEALTH_TONE_CLASSES[tone].badge}`}>{eventLabel(event)}</span><span className="truncate text-xs text-slate-500 dark:text-slate-400">{event.device_name ?? event.category}</span></div><p className="mt-1 line-clamp-2 text-sm text-slate-700 dark:text-slate-200">{event.message}</p></div><span className="shrink-0 text-[11px] text-slate-400">{formatEventTime(event.created_at)}</span></Link>;
+  return <Link to={eventLogHref(event)} className="group flex items-start gap-3 px-5 py-3.5 transition hover:bg-slate-50 dark:hover:bg-slate-800/50"><div className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${tone === "danger" ? "bg-red-500" : "bg-amber-500"}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${HEALTH_TONE_CLASSES[tone].badge}`}>{eventLabel(event)}</span><span className="truncate text-xs text-slate-500 dark:text-slate-400">{event.device_name ?? event.category}</span></div><p className="mt-1 line-clamp-2 text-sm text-slate-700 dark:text-slate-200">{event.message}</p></div><span className="shrink-0 text-[11px] text-slate-400">{formatEventTime(event.created_at)}</span></Link>;
 }
 
 function FleetCard({ fleet, extra }: { fleet: FleetSection; extra?: ReactNode }) {

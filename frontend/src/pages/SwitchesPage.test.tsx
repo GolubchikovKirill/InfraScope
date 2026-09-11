@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -9,6 +10,7 @@ const api = vi.hoisted(() => ({
   deleteSwitch: vi.fn(),
   pollSwitch: vi.fn(),
   pollAllSwitches: vi.fn(),
+  getCredentials: vi.fn(),
 }));
 
 vi.mock("../auth", () => ({
@@ -43,6 +45,10 @@ import SwitchesPage from "./SwitchesPage";
 import { ConfirmProvider } from "../components/ConfirmDialog";
 
 describe("SwitchesPage", () => {
+  beforeEach(() => {
+    api.getCredentials.mockResolvedValue({ data: [], count: 0 });
+  });
+
   it("runs poll-all action from toolbar", async () => {
     api.getSwitches.mockResolvedValue({
       data: [
@@ -54,11 +60,13 @@ describe("SwitchesPage", () => {
 
     const queryClient = new QueryClient();
     render(
-      <QueryClientProvider client={queryClient}>
-        <ConfirmProvider>
-          <SwitchesPage />
-        </ConfirmProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <ConfirmProvider>
+            <SwitchesPage />
+          </ConfirmProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByText("SW-1")).toBeInTheDocument();

@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
+import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace } from "lucide-react";
+import { RefreshCw, Plus, Search, Monitor, Music, Play, Square, Upload, Replace, KeyRound } from "lucide-react";
 import {
   getMediaPlayers,
   pollAllMediaPlayers,
@@ -24,10 +25,14 @@ import {
 import { useAuth } from "../auth";
 import MediaPlayerCard from "../components/MediaPlayerCard";
 import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
+import { useCredentialIndex } from "../hooks/useCredentialIndex";
 import MediaPlayerForm from "../components/MediaPlayerForm";
 import MediaAssignmentPanel from "../components/MediaAssignmentPanel";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useQueryParamState } from "../hooks/useQueryParamState";
+import { useRowFocus } from "../hooks/useRowFocus";
+import { credentialsHref, normalizeHostKey, rowDomId } from "../lib/deviceLinks";
 import { useConfirm } from "../components/ConfirmDialog";
 
 type FilterKey = "all" | DeviceType;
@@ -46,9 +51,11 @@ export default function MediaPlayersPage() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { map: remoteMap } = useRemoteDeviceMap();
+  const credIndex = useCredentialIndex();
 
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useQueryParamState("q");
+  const [focus] = useQueryParamState("focus");
   const debouncedSearch = useDebouncedValue(search, 300);
   const [showForm, setShowForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<MediaPlayer | null>(null);
@@ -229,6 +236,10 @@ export default function MediaPlayersPage() {
     if (statusFilter === "offline") return player.is_online === false;
     return true;
   });
+  useRowFocus(
+    focus,
+    visiblePlayers.filter((p) => p.hostname).map((p) => ({ id: p.hostname!, keys: [p.hostname] })),
+  );
   const total = players.length;
   const online = players.filter((p) => p.is_online === true).length;
   const offline = players.filter((p) => p.is_online === false).length;
@@ -361,21 +372,35 @@ export default function MediaPlayersPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visiblePlayers.map((player) => (
-            <MediaPlayerCard
-              key={player.id}
-              player={player}
-              onPoll={(id) => pollOneMut.mutate(id)}
-              onEdit={(p) => { setEditingPlayer(p); setFormError(null); setShowForm(true); }}
-              onDelete={handleDelete}
-              onManageMedia={(p) => { setMediaTarget(p); setMediaError(null); }}
-              isPolling={pollingIds.has(player.id) || pollAllMut.isPending}
-              isSuperuser={isSuperuser}
-              mediaAssignment={assignmentByPlayer.get(player.id)}
-              mediaHeartbeat={heartbeatByPlayer.get(player.id)}
-              remote={player.hostname ? remoteMap.get(player.hostname) : undefined}
-            />
-          ))}
+          {visiblePlayers.map((player) => {
+            const credCount = player.hostname ? (credIndex.get(normalizeHostKey(player.hostname)) ?? 0) : 0;
+            return (
+            <div key={player.id} id={player.hostname ? rowDomId(player.hostname) : undefined} className="flex flex-col gap-1.5">
+              <MediaPlayerCard
+                player={player}
+                onPoll={(id) => pollOneMut.mutate(id)}
+                onEdit={(p) => { setEditingPlayer(p); setFormError(null); setShowForm(true); }}
+                onDelete={handleDelete}
+                onManageMedia={(p) => { setMediaTarget(p); setMediaError(null); }}
+                isPolling={pollingIds.has(player.id) || pollAllMut.isPending}
+                isSuperuser={isSuperuser}
+                mediaAssignment={assignmentByPlayer.get(player.id)}
+                mediaHeartbeat={heartbeatByPlayer.get(player.id)}
+                remote={player.hostname ? remoteMap.get(player.hostname) : undefined}
+              />
+              {isSuperuser && player.hostname && (
+                <Link
+                  to={credentialsHref(player.hostname)}
+                  className="app-btn-secondary inline-flex w-fit items-center gap-1.5 self-end px-2.5 py-1 text-xs"
+                  title="Пароли и учётные данные этого устройства"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Пароли{credCount > 0 ? ` (${credCount})` : ""}
+                </Link>
+              )}
+            </div>
+            );
+          })}
         </div>
       )}
 
