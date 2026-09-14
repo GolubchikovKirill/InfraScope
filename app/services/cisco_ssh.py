@@ -8,6 +8,7 @@ Supports:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import socket
@@ -17,6 +18,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 
 import paramiko
+import paramiko.rsakey
+from cryptography.hazmat.primitives import hashes
+from paramiko.kex_group14 import KexGroup14SHA256
 
 from app.observability.metrics import (
     observe_duration,
@@ -27,6 +31,50 @@ from app.observability.metrics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _KexGroup14SHA1(KexGroup14SHA256):
+    """diffie-hellman-group14-sha1 - same 2048-bit MODP group as paramiko's
+    own KexGroup14SHA256, just with the legacy SHA-1 exchange hash. Paramiko
+    5.0 (pulled in by 63b92b1, "Update vulnerable backend and frontend
+    dependencies") dropped every SHA-1 KEX algorithm and the bare "ssh-rsa"
+    host-key type entirely - which is all the store fleet's aging Cisco IOS
+    switches speak. That silently broke every SSH path in this module; it
+    only surfaced as a user-visible outage on /camera-ports because every
+    other switch feature has an SNMP fallback (see CiscoSwitchProvider) that
+    papers over an SSH failure. This class and _install_legacy_ssh_compat()
+    below re-add just enough of the old algorithm set for paramiko to talk to
+    those switches again, appended at the *lowest* priority so any switch
+    capable of a modern algorithm keeps using it - this is only ever chosen
+    when a peer offers nothing else.
+    """
+
+    name = "diffie-hellman-group14-sha1"
+    hash_algo = hashlib.sha1
+
+
+def _install_legacy_ssh_compat() -> None:
+    kex_info = paramiko.Transport._kex_info
+    if _KexGroup14SHA1.name not in kex_info:
+        kex_info[_KexGroup14SHA1.name] = _KexGroup14SHA1
+    preferred_kex = paramiko.Transport._preferred_kex
+    if _KexGroup14SHA1.name not in preferred_kex:
+        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup14SHA1.name)
+
+    # ssh-rsa host keys: same RSA key blob format as rsa-sha2-*, paramiko
+    # still implements RSAKey fully - it was only delisted as a host-key
+    # *type* and its SHA-1 signature hash was dropped from RSAKey.HASHES.
+    key_info = paramiko.Transport._key_info
+    if "ssh-rsa" not in key_info:
+        key_info["ssh-rsa"] = paramiko.RSAKey
+    if "ssh-rsa" not in paramiko.rsakey.RSAKey.HASHES:
+        paramiko.rsakey.RSAKey.HASHES["ssh-rsa"] = hashes.SHA1
+    preferred_keys = paramiko.Transport._preferred_keys
+    if "ssh-rsa" not in preferred_keys:
+        paramiko.Transport._preferred_keys = (*preferred_keys, "ssh-rsa")
+
+
+_install_legacy_ssh_compat()
 
 SSH_TIMEOUT = 15
 CMD_TIMEOUT = 30
