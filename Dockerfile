@@ -20,6 +20,16 @@ FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
 WORKDIR /app
 
+# iputils-ping backs the ICMP reachability fallback in app/services/device_poll.py:
+# general-purpose media player boxes (nettop/twix) often answer only to ping,
+# with every TCP port we scan and SNMP both closed by their own firewall.
+# Debian's package installer sets cap_net_raw+p on the binary, which is enough
+# for the unprivileged "app" user given the NET_RAW capability Docker grants
+# containers by default - no extra --cap-add needed at deploy time.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends iputils-ping && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 1000 app && \
     useradd --uid 1000 --gid app --shell /bin/bash --create-home app
 
