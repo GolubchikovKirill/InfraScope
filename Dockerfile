@@ -26,8 +26,17 @@ WORKDIR /app
 # Debian's package installer sets cap_net_raw+p on the binary, which is enough
 # for the unprivileged "app" user given the NET_RAW capability Docker grants
 # containers by default - no extra --cap-add needed at deploy time.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends iputils-ping && \
+#
+# This host's container egress is known-flaky (see the docker-hub-egress
+# incidents): short requests come back fine, but index/blob transfers stall
+# mid-copy and apt never times out on its own, so each attempt gets a hard
+# ceiling and a few tries instead of hanging the build indefinitely.
+RUN for i in 1 2 3 4 5 6; do \
+        timeout 90 sh -c 'apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15 && apt-get install -y --no-install-recommends iputils-ping' && break; \
+        echo "apt-get attempt $i/6 failed, retrying in 5s..." >&2; \
+        sleep 5; \
+    done; \
+    dpkg -s iputils-ping > /dev/null && \
     rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1000 app && \
