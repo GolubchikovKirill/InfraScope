@@ -34,7 +34,7 @@ from app.domains.inventory.reachability import (
         (TimeoutError("timed out"), REASON_NO_RESPONSE),
         # socket.timeout is an alias of TimeoutError, and both subclass
         # OSError - so the isinstance ordering in _classify_os_error matters.
-        (socket.timeout("timed out"), REASON_NO_RESPONSE),
+        (socket.timeout("timed out"), REASON_NO_RESPONSE),  # noqa: UP041 - alias is the point of this case
         (OSError(errno.EHOSTUNREACH, "no route to host"), REASON_NO_ROUTE),
         (OSError(errno.ENETUNREACH, "network unreachable"), REASON_NO_ROUTE),
         (OSError(errno.EPIPE, "unrelated"), REASON_NO_RESPONSE),

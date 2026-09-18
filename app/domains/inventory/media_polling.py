@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.domains.inventory.models import MediaPlayer
+from app.domains.inventory.reachability import probe_tcp_endpoint
 from app.domains.inventory.schemas import MediaPlayersPublic
 from app.observability.metrics import (
     media_player_ops_total,
@@ -25,7 +26,6 @@ from app.services.device_poll import poll_device, poll_device_sync
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_media_player_snapshot
-from app.domains.inventory.reachability import probe_tcp_endpoint
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 
 logger = logging.getLogger(__name__)

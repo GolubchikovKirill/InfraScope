@@ -11,13 +11,13 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.domains.inventory.models import Printer
+from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint
 from app.domains.inventory.schemas import PrintersPublic
 from app.observability.metrics import printer_polls_total, set_device_counts
 from app.services.cache import invalidate_entity_cache
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_printer_snapshots
-from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 from app.services.snmp import get_snmp_mac, poll_printer, poll_printer_light
 
