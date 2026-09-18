@@ -169,14 +169,14 @@ docker info >/dev/null 2>&1 || {
   exit 1
 }
 
-echo "[1/7] Validate compose config..."
+echo "[1/8] Validate compose config..."
 "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" config -q
 
 if [ "$SKIP_GIT_PULL" -eq 0 ]; then
-  echo "[2/7] Pull latest changes..."
+  echo "[2/8] Pull latest changes..."
   git pull --ff-only
 else
-  echo "[2/7] Git pull skipped."
+  echo "[2/8] Git pull skipped."
 fi
 
 backup_db() {
@@ -223,16 +223,16 @@ if [ "$MODE" = "reset-volumes" ]; then
 fi
 
 if [ "$MODE" = "clean" ]; then
-  echo "[3/7] Clean restart requested: removing containers and networks, keeping volumes..."
+  echo "[3/8] Clean restart requested: removing containers and networks, keeping volumes..."
   "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" down --remove-orphans
 elif [ "$MODE" = "reset-volumes" ]; then
-  echo "[3/7] Destructive reset requested: removing containers, networks, and volumes..."
+  echo "[3/8] Destructive reset requested: removing containers, networks, and volumes..."
   "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" down --remove-orphans -v
 else
-  echo "[3/7] Keeping existing containers/volumes."
+  echo "[3/8] Keeping existing containers/volumes."
 fi
 
-echo "[4/7] Build app images..."
+echo "[4/8] Build app images..."
 build_ok=0
 for attempt in $(seq 1 "$BUILD_RETRIES"); do
   echo "Build attempt ${attempt}/${BUILD_RETRIES}..."
@@ -259,21 +259,37 @@ if [ "$build_ok" -ne 1 ]; then
   exit 1
 fi
 
-echo "[5/7] Start full stack..."
+echo "[5/8] Start full stack..."
 "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" up -d --remove-orphans
 
-echo "[6/7] Container status..."
+echo "[6/8] Container status..."
 "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" ps
 
-echo "[7/7] Readiness check..."
+echo "[7/8] Readiness check..."
+ready_ok=0
 for _ in $(seq 1 30); do
   if curl -kfsS https://localhost/ready >/dev/null 2>&1; then
     echo "readiness: ok"
-    exit 0
+    ready_ok=1
+    break
   fi
   sleep 2
 done
 
-echo "readiness: failed"
-"${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" logs backend | tail -n 120 || true
-exit 1
+if [ "$ready_ok" -ne 1 ]; then
+  echo "readiness: failed"
+  "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" logs backend | tail -n 120 || true
+  exit 1
+fi
+
+# Every build leaves the previous image generation dangling and adds to the
+# layer cache; with nothing ever clearing either, this host reached 85% disk
+# usage (~45 GB of unused images + build cache) after a few months of
+# deploys. Only safe to run once the new stack is confirmed up: `docker
+# image prune` only removes untagged/dangling images (not the tagged infra
+# images like postgres/redis/grafana that a rollback still needs), and
+# `docker builder prune` only drops cache older than 72h so the next build
+# still gets a warm cache. Best-effort: never fail the deploy over cleanup.
+echo "[8/8] Prune dangling images and stale build cache..."
+docker image prune -f || true
+docker builder prune -f --filter until=72h || true

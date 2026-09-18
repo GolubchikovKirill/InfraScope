@@ -77,6 +77,12 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
     restart: unless-stopped
+    # The default in-memory span storage has no size cap of its own - it
+    # grew to 2.45 GB RSS after 4 weeks of production tracing with nothing
+    # ever evicted. This bounds it to the most recent N traces (LRU-evicted
+    # past that), trading old traces for a flat memory ceiling.
+    command:
+      - "--memory.max-traces=${JAEGER_MEMORY_MAX_TRACES:-50000}"
     ports:
       - "${JAEGER_BIND:-127.0.0.1}:${JAEGER_PORT:-16686}:16686"
     healthcheck:
