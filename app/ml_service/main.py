@@ -15,6 +15,7 @@ from app.core.readiness import build_readiness_response, check_database, check_r
 from app.core.redis import get_redis
 from app.domains.ml.models import MLModelRegistry
 from app.ml.pipeline import run_scoring_cycle, run_training_cycle
+from app.ml.retention import run_retention_cycle
 from app.observability.metrics import ml_train_runs_total
 from app.observability.tracing import setup_tracing
 
@@ -50,6 +51,18 @@ async def _run_scoring() -> dict:
     return result
 
 
+async def _run_retention() -> dict:
+    with Session(engine) as session:
+        result = run_retention_cycle(
+            session,
+            snapshot_retention_days=settings.ML_FEATURE_SNAPSHOT_RETENTION_DAYS,
+            model_registry_keep_per_family=settings.ML_MODEL_REGISTRY_KEEP_PER_FAMILY,
+            batch_size=settings.ML_RETENTION_BATCH_SIZE,
+        )
+    logger.info("ML retention completed: %s", result)
+    return result
+
+
 async def _scheduler_loop() -> None:
     while True:
         now = datetime.now(UTC)
@@ -58,6 +71,10 @@ async def _scheduler_loop() -> None:
             if settings.ML_ENABLED and now.hour == settings.ML_RETRAIN_HOUR_UTC and state.last_training_day != today:
                 await _run_training()
                 await _run_scoring()
+                # Prune only after this run's training+scoring have both
+                # already read the full retained window - pruning first
+                # would shrink the data those two steps train/score against.
+                await _run_retention()
                 state.last_training_day = today
                 state.last_score_ts = now.timestamp()
             elif settings.ML_ENABLED and (

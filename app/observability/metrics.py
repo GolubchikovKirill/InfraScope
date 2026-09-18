@@ -166,6 +166,12 @@ ml_model_active_info = Gauge(
     ["model_family", "version"],
 )
 
+ml_retention_rows_deleted_total = Counter(
+    "infrascope_ml_retention_rows_deleted_total",
+    "Rows deleted by the daily ML data retention cycle, by table.",
+    ["table"],
+)
+
 network_bulk_operation_duration_seconds = Histogram(
     "infrascope_network_bulk_operation_duration_seconds",
     "Duration of bulk network operations.",

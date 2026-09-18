@@ -220,6 +220,25 @@ class Settings(BaseSettings):
     ML_MIN_TRAIN_ROWS: int = 50
     ML_RETRAIN_HOUR_UTC: int = 2
     ML_SCORE_INTERVAL_MINUTES: int = 30
+    # MLFeatureSnapshot rows older than this are deleted daily (right after
+    # the training+scoring run, so both still see the full retained window).
+    # One poll cycle writes up to 5 rows per printer (1 status + up to 4
+    # toner colors) and 1 per media player/switch, every ~15 min - with no
+    # retention this table grows forever (it reached 1.25M rows / ~95% of
+    # database size within 7 months of production use). 90 days is well past
+    # what the toner-rate and offline-flap training windows below actually
+    # use recent data for.
+    ML_FEATURE_SNAPSHOT_RETENTION_DAYS: int = 90
+    # MLModelRegistry keeps one row per training run (candidate or active).
+    # Trained daily, so this is ~7 months of history per model family - the
+    # currently active row for a family is always kept regardless of age, so
+    # a stale/idle family never loses its deployed model.
+    ML_MODEL_REGISTRY_KEEP_PER_FAMILY: int = 30
+    # Row count per DELETE batch when pruning MLFeatureSnapshot. Batched
+    # rather than one DELETE ... WHERE captured_at < cutoff so working off a
+    # multi-year backlog doesn't hold one long transaction/lock against a
+    # table every polling cycle also writes to.
+    ML_RETENTION_BATCH_SIZE: int = 5000
 
     SCAN_SUBNET: str = ""
     SCAN_PORTS: str = "9100,631,80,443"

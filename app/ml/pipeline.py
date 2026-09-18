@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session, delete, select
 
+from app.core.config import settings
 from app.domains.inventory.models import Printer
 from app.domains.ml.models import MLFeatureSnapshot, MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
 from app.observability.metrics import (
@@ -64,12 +65,21 @@ def _set_active_model(session: Session, model: MLModelRegistry) -> None:
 
 def train_toner_model(session: Session, min_train_rows: int = 50) -> MLModelRegistry:
     with ml_train_duration_seconds.labels(model_family=_TONER_FAMILY).time():
+        # Bounded to the same window app.ml.retention keeps raw snapshots
+        # for - training on the device's recent refill/replace history is
+        # both what the retention window leaves available and, for a rate
+        # that drifts with usage patterns, more representative than data
+        # from many months ago. Also keeps this query's result set (and the
+        # per-device/color grouping below) from growing forever regardless
+        # of whether the daily retention prune has run yet.
+        since = datetime.now(UTC) - timedelta(days=max(settings.ML_FEATURE_SNAPSHOT_RETENTION_DAYS, 1))
         samples = session.exec(
             select(MLFeatureSnapshot)
             .where(
                 MLFeatureSnapshot.device_kind == "printer",
                 MLFeatureSnapshot.toner_color.is_not(None),
                 MLFeatureSnapshot.toner_level.is_not(None),
+                MLFeatureSnapshot.captured_at >= since,
             )
             .order_by(
                 MLFeatureSnapshot.device_id,
@@ -149,9 +159,11 @@ def train_toner_model(session: Session, min_train_rows: int = 50) -> MLModelRegi
 
 def train_offline_risk_model(session: Session, min_train_rows: int = 50) -> MLModelRegistry:
     with ml_train_duration_seconds.labels(model_family=_OFFLINE_FAMILY).time():
+        # Same bounded window as train_toner_model above, same reasoning.
+        since = datetime.now(UTC) - timedelta(days=max(settings.ML_FEATURE_SNAPSHOT_RETENTION_DAYS, 1))
         rows = session.exec(
             select(MLFeatureSnapshot)
-            .where(MLFeatureSnapshot.is_online.is_not(None))
+            .where(MLFeatureSnapshot.is_online.is_not(None), MLFeatureSnapshot.captured_at >= since)
             .order_by(MLFeatureSnapshot.device_kind, MLFeatureSnapshot.device_id, MLFeatureSnapshot.captured_at)
         ).all()
 
