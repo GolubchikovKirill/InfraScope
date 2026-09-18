@@ -27,12 +27,20 @@ WORKDIR /app
 # for the unprivileged "app" user given the NET_RAW capability Docker grants
 # containers by default - no extra --cap-add needed at deploy time.
 #
-# This host's container egress is known-flaky (see the docker-hub-egress
-# incidents): short requests come back fine, but index/blob transfers stall
-# mid-copy and apt never times out on its own, so each attempt gets a hard
-# ceiling and a few tries instead of hanging the build indefinitely.
-RUN for i in 1 2 3 4 5 6; do \
-        timeout 90 sh -c 'apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15 && apt-get install -y --no-install-recommends iputils-ping' && break; \
+# Two facts about this host's egress shape everything below:
+#  1. The corporate web gateway (vnk-srv-gate01) intercepts plain HTTP/80 and
+#     answers 302 -> its login page, so apt over Debian's default http:// URLs
+#     can never work from here ("Temporary failure resolving 'vnk-srv-gate01'").
+#     HTTPS passes through, and the base image already has ca-certificates, so
+#     the sources are switched to https:// first.
+#  2. It is also slow and flaky: the ~9 MB package index took ~113 s (~84 kB/s)
+#     when measured, and transfers can stall mid-copy without apt ever timing
+#     out on its own. Each attempt therefore gets a hard ceiling - sized well
+#     above the measured 113 s, since the earlier 90 s ceiling made every
+#     attempt fail even on a working connection - and a few tries.
+RUN sed -i 's#http://#https://#g' /etc/apt/sources.list.d/debian.sources && \
+    for i in 1 2 3 4 5 6; do \
+        timeout 420 sh -c 'apt-get update -o Acquire::Retries=3 -o Acquire::https::Timeout=30 && apt-get install -y --no-install-recommends iputils-ping' && break; \
         echo "apt-get attempt $i/6 failed, retrying in 5s..." >&2; \
         sleep 5; \
     done; \
