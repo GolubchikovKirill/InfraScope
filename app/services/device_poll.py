@@ -458,15 +458,17 @@ async def poll_device(
     ports_task = _scan_ports(ip, semaphore=port_scan_semaphore)
     snmp_task = _get_snmp_info(ip, community)
     mac_task = _get_snmp_mac(ip, community)
+    ping_task = _icmp_ping(ip)
 
-    open_ports, snmp_info, mac = await asyncio.gather(
+    open_ports, snmp_info, mac, ping_ok = await asyncio.gather(
         ports_task,
         snmp_task,
         mac_task,
+        ping_task,
     )
 
     status.open_ports = open_ports
-    status.is_online = bool(open_ports) or bool(snmp_info)
+    status.is_online = bool(open_ports) or bool(snmp_info) or ping_ok
 
     if snmp_info:
         status.hostname = snmp_info.get("hostname")
@@ -521,17 +523,30 @@ def _check_arp_for_mac(target_mac: str) -> str | None:
     return None
 
 
-async def _async_ping(ip: str) -> None:
-    """Fire-and-forget async ping to populate ARP cache."""
+async def _icmp_ping(ip: str) -> bool:
+    """True if the host answers an ICMP echo request.
+
+    General-purpose boxes (nettop/twix media players) don't run SNMP and
+    routinely have every port in SCAN_PORTS closed by their own firewall,
+    while still answering ping - Windows keeps ICMP Echo Request allowed by
+    default even with file/RDP sharing locked down. Without this, such a
+    device is reported offline no matter how reachable it actually is.
+    """
     try:
         proc = await asyncio.create_subprocess_exec(
             *_ping_command(ip),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        await asyncio.wait_for(proc.wait(), timeout=2)
+        return_code = await asyncio.wait_for(proc.wait(), timeout=2)
+        return return_code == 0
     except (TimeoutError, OSError):
-        pass
+        return False
+
+
+async def _async_ping(ip: str) -> None:
+    """Fire-and-forget async ping to populate ARP cache."""
+    await _icmp_ping(ip)
 
 
 async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str | None:
