@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Monitor, Music, ExternalLink, Clock, Cpu,
@@ -26,6 +26,8 @@ interface Props {
   mediaAssignment?: MediaAssignment;
   mediaHeartbeat?: MediaClientHeartbeat;
   remote?: RemoteDevice;
+  /** extra control for the card footer (the page's link to this device's passwords) */
+  footerExtra?: ReactNode;
 }
 
 const DEVICE_STYLES: Record<string, { bg: string; iconBg: string; iconColor: string; icon: typeof Monitor }> = {
@@ -226,6 +228,7 @@ export default function MediaPlayerCard({
   mediaAssignment,
   mediaHeartbeat,
   remote,
+  footerExtra,
 }: Props) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
@@ -268,8 +271,8 @@ export default function MediaPlayerCard({
   };
 
   return (
-    <div className={`app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col ${isActionsOpen ? "z-30" : "z-0"}`}>
-      <div className="p-5 flex flex-col gap-3">
+    <div className={`app-panel app-card h-full rounded-xl border shadow-sm hover:shadow-md transition flex flex-col ${isActionsOpen ? "z-30" : "z-0"}`}>
+      <div className="p-5 flex flex-1 flex-col gap-3">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -399,11 +402,12 @@ export default function MediaPlayerCard({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div className="mt-auto flex items-center justify-between pt-2 border-t border-gray-100">
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
           <div ref={actionsRef} className="relative flex items-center gap-1">
+            {footerExtra}
             <button
               onClick={() => onPoll(player.id)}
               disabled={isPolling}

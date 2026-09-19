@@ -375,7 +375,7 @@ export default function MediaPlayersPage() {
           {visiblePlayers.map((player) => {
             const credCount = player.hostname ? (credIndex.get(normalizeHostKey(player.hostname)) ?? 0) : 0;
             return (
-            <div key={player.id} id={player.hostname ? rowDomId(player.hostname) : undefined} className="flex flex-col gap-1.5">
+            <div key={player.id} id={player.hostname ? rowDomId(player.hostname) : undefined} className="h-full">
               <MediaPlayerCard
                 player={player}
                 onPoll={(id) => pollOneMut.mutate(id)}
@@ -387,17 +387,19 @@ export default function MediaPlayersPage() {
                 mediaAssignment={assignmentByPlayer.get(player.id)}
                 mediaHeartbeat={heartbeatByPlayer.get(player.id)}
                 remote={player.hostname ? remoteMap.get(player.hostname) : undefined}
+                footerExtra={
+                  isSuperuser && player.hostname ? (
+                    <Link
+                      to={credentialsHref(player.hostname)}
+                      className="app-btn-secondary mr-1 inline-flex items-center gap-1.5 px-2.5 py-1 text-xs"
+                      title="Пароли и учётные данные этого устройства"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" />
+                      Пароли{credCount > 0 ? ` (${credCount})` : ""}
+                    </Link>
+                  ) : undefined
+                }
               />
-              {isSuperuser && player.hostname && (
-                <Link
-                  to={credentialsHref(player.hostname)}
-                  className="app-btn-secondary inline-flex w-fit items-center gap-1.5 self-end px-2.5 py-1 text-xs"
-                  title="Пароли и учётные данные этого устройства"
-                >
-                  <KeyRound className="h-3.5 w-3.5" />
-                  Пароли{credCount > 0 ? ` (${credCount})` : ""}
-                </Link>
-              )}
             </div>
             );
           })}

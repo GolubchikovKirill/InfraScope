@@ -26,6 +26,26 @@ const player: MediaPlayer = {
 };
 
 describe("MediaPlayerCard", () => {
+  it("keeps the page's extra footer control inside the card, next to the row actions", () => {
+    renderCard(
+      <MediaPlayerCard
+        player={player}
+        onPoll={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onManageMedia={vi.fn()}
+        isPolling={false}
+        isSuperuser={true}
+        footerExtra={<a href="/credentials?device=hall">Пароли (2)</a>}
+      />,
+    );
+
+    const card = screen.getByText("Hall Nettop").closest(".app-card") as HTMLElement;
+    expect(card).toContainElement(screen.getByRole("link", { name: "Пароли (2)" }));
+    // the card fills its grid cell, so cards of different content still line up in a row
+    expect(card.className).toContain("h-full");
+  });
+
   it("copies UUID and hostname to clipboard", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
