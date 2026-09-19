@@ -10,7 +10,6 @@ export * from "./computers";
 export * from "./ml";
 export * from "./cashRegisters";
 export * from "./printers";
-export * from "./scanner";
 export * from "./mediaPlayers";
 export * from "./mediaCenter";
 export * from "./switches";

@@ -11,23 +11,6 @@ auth_events_total = Counter(
     ["result", "reason"],
 )
 
-scanner_runs_total = Counter(
-    "infrascope_scanner_runs_total",
-    "Network scanner run outcomes.",
-    ["result"],
-)
-
-scanner_duration_seconds = Histogram(
-    "infrascope_scanner_duration_seconds",
-    "Duration of scanner runs.",
-    buckets=(0.5, 1, 2, 5, 10, 20, 30, 60, 120, 300),
-)
-
-scanner_devices_found_total = Counter(
-    "infrascope_scanner_devices_found_total",
-    "Number of discovered devices from scanner runs.",
-)
-
 printer_polls_total = Counter(
     "infrascope_printer_polls_total",
     "Printer polling outcomes.",
@@ -183,18 +166,6 @@ network_bulk_processed_total = Counter(
     "infrascope_network_bulk_processed_total",
     "Number of devices processed by bulk network operations.",
     ["operation", "result"],
-)
-
-network_discovery_runs_total = Counter(
-    "infrascope_network_discovery_runs_total",
-    "Discovery scan runs by kind and result.",
-    ["kind", "result"],
-)
-
-network_discovery_devices_total = Counter(
-    "infrascope_network_discovery_devices_total",
-    "Devices identified by discovery scans.",
-    ["kind"],
 )
 
 network_probe_attempts_total = Counter(

@@ -6,16 +6,12 @@ from app.core.config import settings
 from app.domains.operations.models import AppSetting
 
 GENERAL_SETTINGS_KEYS = {
-    "scan_subnet",
-    "scan_ports",
     "dns_search_suffixes",
 }
 
 
 def _default_general_settings() -> dict[str, str]:
     return {
-        "scan_subnet": settings.SCAN_SUBNET,
-        "scan_ports": settings.SCAN_PORTS,
         "dns_search_suffixes": settings.DNS_SEARCH_SUFFIXES or "",
     }
 

@@ -1,18 +1,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Save, Settings2 } from "lucide-react";
-import { getGeneralSettings, getScannerSettings, updateGeneralSettings } from "../client";
-import { EmptyState, ErrorState, FormActions, LoadingState, SectionCard } from "../components/ui/AsyncState";
+import { getGeneralSettings, updateGeneralSettings } from "../client";
+import { ErrorState, FormActions, LoadingState, SectionCard } from "../components/ui/AsyncState";
 
 type SettingsForm = {
-  scan_subnet: string;
-  scan_ports: string;
   dns_search_suffixes: string;
 };
 
 const emptyForm: SettingsForm = {
-  scan_subnet: "",
-  scan_ports: "",
   dns_search_suffixes: "",
 };
 
@@ -22,11 +18,6 @@ export default function SettingsPage() {
   const { data: general, isLoading } = useQuery({
     queryKey: ["general-settings"],
     queryFn: getGeneralSettings,
-  });
-
-  const { data: scannerSettings } = useQuery({
-    queryKey: ["scanner-settings"],
-    queryFn: getScannerSettings,
   });
 
   useEffect(() => {
@@ -58,16 +49,6 @@ export default function SettingsPage() {
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Input
-                label="Диапазон сети (CIDR, через запятую)"
-                value={form.scan_subnet}
-                onChange={(v) => setForm((s) => ({ ...s, scan_subnet: v }))}
-              />
-              <Input
-                label="Порты сканирования (через запятую)"
-                value={form.scan_ports}
-                onChange={(v) => setForm((s) => ({ ...s, scan_ports: v }))}
-              />
-              <Input
                 label="DNS search suffixes (через запятую)"
                 value={form.dns_search_suffixes}
                 onChange={(v) => setForm((s) => ({ ...s, dns_search_suffixes: v }))}
@@ -87,20 +68,6 @@ export default function SettingsPage() {
           </>
         )}
       </SectionCard>
-
-      {scannerSettings ? (
-        <SectionCard className="space-y-2">
-          <h3 className="text-sm font-semibold text-slate-900">Текущие системные лимиты сканера</h3>
-          <div className="grid gap-1 text-xs text-gray-500 sm:grid-cols-2 lg:grid-cols-4">
-            <div>max_hosts: {scannerSettings.max_hosts}</div>
-            <div>tcp_timeout: {scannerSettings.tcp_timeout}</div>
-            <div>tcp_retries: {scannerSettings.tcp_retries}</div>
-            <div>tcp_concurrency: {scannerSettings.tcp_concurrency}</div>
-          </div>
-        </SectionCard>
-      ) : (
-        <EmptyState text="Системные лимиты сканера пока не доступны." />
-      )}
     </div>
   );
 }

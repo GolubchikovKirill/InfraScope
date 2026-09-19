@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -7,7 +6,6 @@ from app.api.routes import media_players as media_routes
 from app.domains.inventory import media_polling
 from app.domains.inventory.models import MediaPlayer
 from app.domains.inventory.reachability import ReachabilityResult
-from app.services import discovery_jobs
 
 
 @dataclass
@@ -53,96 +51,6 @@ def test_create_media_player_and_poll(client: TestClient, admin_token: str, monk
     )
     assert polled.status_code == 200
     assert polled.json()["is_online"] is True
-
-
-def test_iconbit_discovery_scan_and_results(client: TestClient, admin_token: str, monkeypatch):
-    def _fake_delay(kind: str, subnet: str, ports: str, known_devices: list[dict]):
-        assert kind == "iconbit"
-        assert subnet == "10.10.98.0/24"
-        assert ports == "8081,80,443"
-        assert isinstance(known_devices, list)
-        return None
-
-    async def _fake_progress(_kind: str):
-        return {"status": "done", "scanned": 254, "total": 254, "found": 1, "message": None}
-
-    async def _fake_results(_kind: str):
-        return [
-            {
-                "ip": "10.10.98.120",
-                "mac": "aa:bb:cc:11:22:33",
-                "open_ports": [8081],
-                "hostname": "ICONBIT-01",
-                "model_info": "Iconbit",
-                "vendor": "generic",
-                "device_kind": "iconbit",
-                "is_known": False,
-                "known_device_id": None,
-                "ip_changed": False,
-                "old_ip": None,
-            }
-        ]
-
-    monkeypatch.setattr(discovery_jobs, "discovery_scan_task", SimpleNamespace(delay=_fake_delay))
-    monkeypatch.setattr(media_routes, "get_discovery_progress", _fake_progress)
-    monkeypatch.setattr(media_routes, "get_discovery_results", _fake_results)
-
-    scan_resp = client.post(
-        "/api/v1/media-players/discover/scan",
-        json={"subnet": "10.10.98.0/24", "ports": "8081,80,443"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert scan_resp.status_code == 200
-    assert scan_resp.json()["status"] == "running"
-
-    results_resp = client.get(
-        "/api/v1/media-players/discover/results",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert results_resp.status_code == 200
-    assert results_resp.json()["progress"]["status"] == "done"
-    assert results_resp.json()["devices"][0]["device_kind"] == "iconbit"
-
-
-def test_iconbit_discovery_add_and_update_ip(client: TestClient, admin_token: str, monkeypatch):
-    async def _auto_mac(ip_address: str, **kwargs):
-        return "aa:bb:cc:dd:ee:13" if ip_address == "10.10.98.123" else None
-
-    monkeypatch.setattr(media_routes, "resolve_mac_for_ip_address", _auto_mac)
-    create_resp = client.post(
-        "/api/v1/media-players/discover/add",
-        json={
-            "ip_address": "10.10.98.121",
-            "name": "Iconbit New",
-            "model": "Iconbit",
-            "mac_address": "aa:bb:cc:dd:ee:11",
-        },
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert create_resp.status_code == 200
-    player_id = create_resp.json()["id"]
-    assert create_resp.json()["device_type"] == "iconbit"
-
-    update_resp = client.post(
-        f"/api/v1/media-players/discover/update-ip/{player_id}",
-        params={"new_ip": "10.10.98.122", "new_mac": "aa:bb:cc:dd:ee:12"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert update_resp.status_code == 200
-    assert update_resp.json()["ip_address"] == "10.10.98.122"
-    assert update_resp.json()["mac_address"] == "aa:bb:cc:dd:ee:12"
-
-    create_auto = client.post(
-        "/api/v1/media-players/discover/add",
-        json={
-            "ip_address": "10.10.98.123",
-            "name": "Iconbit Auto MAC",
-            "model": "Iconbit",
-        },
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert create_auto.status_code == 200
-    assert create_auto.json()["mac_address"] == "aa:bb:cc:dd:ee:13"
 
 
 def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token: str, monkeypatch):
@@ -215,5 +123,3 @@ def test_iconbit_bulk_play_runs_in_process_against_every_iconbit(client: TestCli
     assert response.status_code == 200
     assert response.json() == {"success": 1, "failed": 1}
     assert sorted(played) == ["10.10.98.31", "10.10.98.32"]
-
-

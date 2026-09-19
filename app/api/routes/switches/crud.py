@@ -4,26 +4,21 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.domains.inventory.models import NetworkSwitch
 from app.domains.inventory.schemas import (
-    DiscoveryResults,
     NetworkSwitchCreate,
     NetworkSwitchesPublic,
     NetworkSwitchPublic,
     NetworkSwitchUpdate,
-    ScanProgress,
-    ScanRequest,
 )
 from app.domains.shared.schemas import Message
 from app.observability.metrics import set_device_counts
 from app.services.cache import get_cached_model, set_cached_model
-from app.services.discovery import get_discovery_progress, get_discovery_results
-from app.services.discovery_jobs import enqueue_scan
 from app.services.event_log import write_event_log
 from app.services.smart_search import build_ilike_filter
 
@@ -91,86 +86,6 @@ async def read_switches(
 async def create_switch(session: SessionDep, switch_in: NetworkSwitchCreate) -> NetworkSwitch:
     _ensure_unique_switch_ip(session, switch_in.ip_address, conflict_status_code=400)
     switch = NetworkSwitch(**switch_in.model_dump())
-    session.add(switch)
-    session.commit()
-    session.refresh(switch)
-    await _invalidate_cache()
-    return switch
-
-
-@router.post("/discover/scan", response_model=ScanProgress, dependencies=[Depends(get_current_active_superuser)])
-async def discover_switch_scan(body: ScanRequest, session: SessionDep) -> dict:
-    switches = session.exec(select(NetworkSwitch)).all()
-    known = [{"id": str(s.id), "ip_address": s.ip_address, "mac_address": None} for s in switches]
-    return await enqueue_scan("switch", body.subnet, body.ports, known)
-
-
-@router.get("/discover/status", response_model=ScanProgress)
-async def discover_switch_status(current_user: CurrentUser) -> dict:
-    del current_user
-    return await get_discovery_progress("switch")
-
-
-@router.get("/discover/results", response_model=DiscoveryResults)
-async def discover_switch_results(current_user: CurrentUser) -> dict:
-    del current_user
-    progress = await get_discovery_progress("switch")
-    devices = await get_discovery_results("switch")
-    return {"progress": progress, "devices": devices}
-
-
-@router.post("/discover/add", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])
-async def discover_add_switch(session: SessionDep, payload: dict) -> NetworkSwitch:
-    ip = str(payload.get("ip_address", "")).strip()
-    if not ip:
-        raise HTTPException(status_code=422, detail="ip_address is required")
-    _ensure_unique_switch_ip(session, ip)
-    vendor = str(payload.get("vendor") or "generic").strip().lower()
-    if vendor not in {"cisco", "dlink", "generic"}:
-        vendor = "generic"
-    name = str(payload.get("name") or payload.get("hostname") or f"Switch {ip}")[:255]
-    switch = NetworkSwitch(
-        name=name,
-        ip_address=ip,
-        vendor=vendor,
-        management_protocol="snmp+ssh",
-        snmp_version="2c",
-        snmp_community_ro="public",
-    )
-    session.add(switch)
-    session.commit()
-    session.refresh(switch)
-    await _invalidate_cache()
-    return switch
-
-
-@router.post(
-    "/discover/update-ip/{switch_id}",
-    response_model=NetworkSwitchPublic,
-    dependencies=[Depends(get_current_active_superuser)],
-)
-async def discover_update_switch_ip(
-    switch_id: uuid.UUID,
-    session: SessionDep,
-    new_ip: str = "",
-) -> NetworkSwitch:
-    switch = _get_switch_or_404(session, switch_id)
-    old_ip = switch.ip_address
-    if new_ip:
-        _ensure_unique_switch_ip(session, new_ip, excluded_switch_id=switch.id)
-        switch.ip_address = new_ip
-        if old_ip != new_ip:
-            write_event_log(
-                session,
-                category="network",
-                event_type="ip_changed",
-                severity="warning",
-                device_kind="switch",
-                device_name=switch.name,
-                ip_address=new_ip,
-                message=f"Switch '{switch.name}' moved IP: {old_ip} -> {new_ip}",
-            )
-    switch.updated_at = datetime.now(UTC)
     session.add(switch)
     session.commit()
     session.refresh(switch)

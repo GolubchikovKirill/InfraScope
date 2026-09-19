@@ -3,21 +3,6 @@ from types import SimpleNamespace
 from app.api.routes import tasks as task_routes
 
 
-def test_enqueue_scan_network_requires_superuser(client, admin_token: str, monkeypatch):
-    monkeypatch.setattr(
-        task_routes,
-        "scan_network_task",
-        SimpleNamespace(delay=lambda *_args, **_kwargs: SimpleNamespace(id="t-scan", state="PENDING")),
-    )
-    response = client.post(
-        "/api/v1/tasks/scan-network",
-        json={"subnet": "10.10.10.0/24", "ports": "9100,631"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert response.status_code == 200
-    assert response.json()["task_id"] == "t-scan"
-
-
 def test_enqueue_poll_printers(client, user_token: str, monkeypatch):
     monkeypatch.setattr(
         task_routes,

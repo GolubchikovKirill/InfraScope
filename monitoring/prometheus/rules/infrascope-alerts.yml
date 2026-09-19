@@ -45,15 +45,6 @@ groups:
           summary: "Скачок ошибок аутентификации"
           description: "Более 30 неудачных auth-событий за 10 минут."
 
-      - alert: InfraScopeScannerFailures
-        expr: increase(infrascope_scanner_runs_total{result="error"}[30m]) > 0
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Ошибка сканера сети"
-          description: "За последние 30 минут был минимум один неуспешный запуск scanner."
-
       - alert: InfraScopeSnmpErrorsBurst
         expr: sum(increase(infrascope_snmp_operations_total{result="error"}[15m])) > 20
         for: 5m

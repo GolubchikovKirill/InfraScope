@@ -68,7 +68,7 @@ def test_an_exception_is_counted_and_still_propagates() -> None:
 def test_retries_are_opt_in() -> None:
     # hardware-touching and person-started tasks pass no `retries` and must not retry
     assert not getattr(tasks.ap_auto_reboot_switch_task, "autoretry_for", ())
-    assert not getattr(tasks.discovery_scan_task, "autoretry_for", ())
+    assert not getattr(tasks.switch_port_snapshot_cycle_task, "autoretry_for", ())
     assert tasks.poll_switch_task.autoretry_for == (Exception,)
     assert tasks.poll_switch_task.retry_kwargs == {"max_retries": 2}
 

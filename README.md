@@ -20,9 +20,7 @@ InfraScope — платформа мониторинга инфраструкт�
 - Мониторинг свитчей:
   - универсально через SNMP (online, hostname, uptime, порты где доступно);
   - Cisco-дополнения через SSH (AP/PoE/reboot, управление портами).
-- Discovery по сети:
-  - отдельные режимы для принтеров, медиаплееров, свитчей;
-  - умная фильтрация типов устройств, чтобы уменьшить ложные совпадения.
+- Поиск устройств в сети (сканирование подсетей и добавление найденных) удалён; устройства заводятся вручную.
 - Отказоустойчивость:
   - lock от дублирующих `poll-all`;
   - state machine подтверждения офлайна;
@@ -49,7 +47,7 @@ InfraScope — платформа мониторинга инфраструкт�
 - Frontend:
   - сортировка online выше offline;
   - page-scoped автообновление только на активных страницах вместо глобального `poll-all` по всему приложению;
-  - отдельная вкладка `Поиск в сети` для smart/discovery scan и добавления найденных устройств в нужный раздел.
+  - «Честный знак» вынесен из группы «Оборудование» в отдельный пункт меню.
   - отдельная вкладка `QR-генерация` с под-вкладками: `Штрихкоды кассиров` и `Посадочные`.
   - обмен по штрихкоду поддерживает раздельные каналы `Duty Free` и `Duty Paid` (`/api/v1/1c-exchange/by-barcode`).
 
@@ -94,7 +92,7 @@ cp .env.example .env
 - `SECRET_KEY`
 - `POSTGRES_PASSWORD`
 - `FIRST_SUPERUSER_PASSWORD`
-- `SCAN_SUBNET` (подсети для discovery/scan)
+- `SCAN_SUBNET` (подсети, в которых ищется устройство, сменившее IP, по его MAC)
 
 ### 2) Старт
 
@@ -108,7 +106,6 @@ cp .env.example .env
 
 ```bash
 WORKER_CONCURRENCY=6
-SCAN_TCP_CONCURRENCY=128
 POLL_JITTER_MAX_MS=120
 PRINTER_POLL_MAX_WORKERS=16
 MEDIA_POLL_MAX_WORKERS=12
@@ -157,7 +154,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 - `frontend` — SPA + Nginx + HTTPS
 - `backend` — API gateway/orchestration, `/metrics`
-- `worker` — Celery worker: плановый опрос устройств, discovery-сканы, ML (обучение/скоринг), перезагрузка точек доступа
+- `worker` — Celery worker: плановый опрос устройств, ML (обучение/скоринг), перезагрузка точек доступа
 - `media-service` — отдельный runtime выдачи media manifest и файлов медиатеки для клиентских неттоп-агентов + `/metrics`
 - `jaeger` — distributed tracing, необязательный: профиль compose `tracing` (`docker compose --profile tracing up -d` или `COMPOSE_PROFILES=tracing` в `.env`, плюс `OTEL_ENABLED=true`)
 - `db` — PostgreSQL
@@ -253,9 +250,8 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `POSTGRES_*`
   - `REDIS_URL`
   - `FIRST_SUPERUSER_*`
-- Сканирование/сеть:
-  - `SCAN_SUBNET`, `SCAN_PORTS`
-  - `SCAN_MAX_HOSTS`, `SCAN_TCP_TIMEOUT`, `SCAN_TCP_RETRIES`, `SCAN_TCP_CONCURRENCY`
+- Переезд устройства:
+  - `SCAN_SUBNET` (подсети, которые перебираются в поиске по MAC)
 - Poll resilience:
   - `POLL_JITTER_MAX_MS`
   - `POLL_OFFLINE_CONFIRMATIONS`
@@ -286,8 +282,8 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
 Базовый префикс: `/api/v1`
 
 - Auth/User: `/auth/*`, `/users/*`
-- Printers: `/printers/*`, `/scanner/*` (printer discovery)
-- Media Players: `/media-players/*`, `/media-players/discover/*`
+- Printers: `/printers/*`
+- Media Players: `/media-players/*`
 - Media Center: `/media-center/*`, манифест клиента: `media-service /clients/{player_id}/manifest`
 - Switches: `/switches/*`, `/switches/discover/*`
 - Tasks/Worker: `/tasks/*`

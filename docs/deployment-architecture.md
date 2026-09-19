@@ -7,7 +7,7 @@ InfraScope already has a microservice-oriented Docker Compose setup:
 - `frontend` serves the SPA through Nginx and proxies API/WebSocket traffic to `backend`.
 - `backend` is the API gateway and owns authentication, UI-facing API, migrations, and orchestration.
 - `worker` runs Celery tasks through Redis.
-- Device polling and discovery scans run in `worker` (Celery); the API triggers manual polls in-process.
+- Device polling runs in `worker` (Celery); the API triggers manual polls in-process.
 - Direct switch and Iconbit control operations run in `backend`, behind a per-switch write lock and cooldown.
 - `media-service` serves media manifests and media files to Windows media clients.
 - Prediction training/scoring runs as Celery tasks in `worker` (there is no separate ml service).
@@ -81,7 +81,7 @@ Keep this boundary:
 
 - `backend`: UI API, auth, database migrations, and the direct device commands a person triggers (switch ports, PoE, Iconbit).
 - `media-service`: manifests and file delivery for Windows media clients.
-- `worker`: scheduled and long-running tasks (polling, discovery scans, ML, AP auto-reboot).
+- `worker`: scheduled and long-running tasks (polling, ML, AP auto-reboot).
 
 Long-running or scheduled work belongs in `worker`; keep request handlers to short, operator-triggered device commands.
 
@@ -115,5 +115,5 @@ For the current app, the best near-term setup is:
 
 1. Keep Docker Compose as the production deployment on the office/server machine.
 2. Keep Redis and worker enabled.
-3. Keep `media-service` as the only separate runtime; polling, discovery, device control and forecasting live in `backend`/`worker`.
+3. Keep `media-service` as the only separate runtime; polling, device control and forecasting live in `backend`/`worker`.
 4. Keep deployment model simple: one production path (`docker compose`) and documented rollback steps.

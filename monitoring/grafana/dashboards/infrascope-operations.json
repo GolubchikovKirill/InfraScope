@@ -46,34 +46,6 @@
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
-      "id": 2,
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum by (result) (increase(infrascope_scanner_runs_total[1h]))",
-          "legendFormat": "scanner {{result}}",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "increase(infrascope_scanner_devices_found_total[1h])",
-          "legendFormat": "devices found",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "title": "Scanner Reliability (1h)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
       "id": 3,
       "options": {
@@ -265,55 +237,6 @@
         }
       ],
       "title": "Bulk Devices Processed (15m)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
-      "id": 11,
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum by (kind, result) (increase(infrascope_network_discovery_runs_total[15m]))",
-          "legendFormat": "{{kind}} {{result}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Discovery Runs (15m)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
-      "id": 12,
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "sum by (kind) (increase(infrascope_network_discovery_devices_total[15m]))",
-          "legendFormat": "{{kind}} discovered",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "editorMode": "code",
-          "expr": "sum by (kind) (increase(infrascope_network_discovery_devices_total[1h]))",
-          "legendFormat": "{{kind}} discovered (1h)",
-          "range": true,
-          "refId": "B"
-        }
-      ],
-      "title": "Discovery Device Yield",
       "type": "timeseries"
     },
     {

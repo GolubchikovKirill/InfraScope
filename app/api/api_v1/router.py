@@ -18,7 +18,6 @@ from app.api.routes import (
     printers,
     qr_generator,
     remote_access,
-    scanner,
     switches,
     tasks,
     users,
@@ -29,7 +28,6 @@ api_router.include_router(websockets.router, prefix="/realtime")
 api_router.include_router(auth.router, prefix="/auth")
 api_router.include_router(users.router, prefix="/users")
 api_router.include_router(printers.router, prefix="/printers")
-api_router.include_router(scanner.router, prefix="/scanner")
 api_router.include_router(media_players.router, prefix="/media-players")
 api_router.include_router(media_center.router, prefix="/media-center")
 api_router.include_router(switches.router, prefix="/switches")

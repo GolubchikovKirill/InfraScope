@@ -15,7 +15,6 @@ from app.worker.tasks import (
     poll_all_printers_task,
     poll_all_switches_task,
     poll_switch_task,
-    scan_network_task,
 )
 
 router = APIRouter(tags=["tasks"])
@@ -36,11 +35,6 @@ class TaskStatusResponse(BaseModel):
     error: str | None = None
 
 
-class ScanTaskRequest(BaseModel):
-    subnet: str = Field(min_length=3, max_length=512)
-    ports: str = Field(default="9100,631,80,443", min_length=1, max_length=128)
-
-
 class PrinterPollTaskRequest(BaseModel):
     printer_type: str = Field(default="laser", pattern="^(laser|label)$")
 
@@ -55,17 +49,6 @@ class SwitchPollTaskRequest(BaseModel):
 
 class MLCycleTaskRequest(BaseModel):
     force: bool = False
-
-
-@router.post(
-    "/scan-network",
-    response_model=TaskEnqueueResponse,
-    dependencies=[Depends(get_current_active_superuser)],
-)
-def enqueue_scan_network(body: ScanTaskRequest) -> TaskEnqueueResponse:
-    task = scan_network_task.delay(body.subnet, body.ports)
-    worker_tasks_enqueued_total.labels(operation="scan_network").inc()
-    return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="scan_network")
 
 
 @router.post("/poll-printers", response_model=TaskEnqueueResponse)

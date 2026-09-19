@@ -12,7 +12,6 @@ const SwitchesPage = lazy(() => import("./pages/SwitchesPage"));
 const LogsPage = lazy(() => import("./pages/LogsPage"));
 const CashRegistersPage = lazy(() => import("./pages/CashRegistersPage"));
 const ComputersPage = lazy(() => import("./pages/ComputersPage"));
-const NetworkSearchPage = lazy(() => import("./pages/NetworkSearchPage"));
 const OneCPage = lazy(() => import("./pages/OneCPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const UsersPage = lazy(() => import("./pages/Users"));
@@ -75,7 +74,6 @@ function AnimatedRoutes() {
               </AdminRoute>
             }
           />
-          <Route path="/network-search" element={<NetworkSearchPage />} />
           <Route path="/onec" element={<OneCPage />} />
           <Route path="/qr-generator" element={<Navigate to="/onec" replace />} />
           <Route path="/settings" element={<SettingsPage />} />

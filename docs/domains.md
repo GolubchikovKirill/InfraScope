@@ -29,15 +29,16 @@ Owns user accounts, authentication, JWT issuance, password hashing, and session-
 
 ## Network Inventory
 
-Owns printers, switches, computers, media players, scanner search, and network discovery.
+Owns printers, switches, computers and media players. Network search (subnet scans and adding what was found)
+was removed; a MAC-based relocation of a device that changed its IP remains in the polling code.
 This is the largest domain today; prefer extracting helpers from route files into services
 before adding new route-level logic.
 
 - Domain package: `app/domains/inventory/`
 - Backend routes: `app/api/routes/printers.py`, `switches/` (package), `computers.py`,
-  `media_players.py`, `scanner.py`
-- Services: `app/services/snmp/` (package), `cisco_ssh.py`, `device_poll.py`, `discovery.py`,
-  `scanner.py`, `smart_search.py`, `switches/`
+  `media_players.py`
+- Services: `app/services/snmp/` (package), `cisco_ssh.py`, `device_poll.py`,
+  `smart_search.py` (text matching in lists), `switches/`
 - Application services: `app/domains/inventory/printer_polling.py`,
   `app/domains/inventory/media_polling.py`, `app/domains/inventory/switch_polling.py`,
   `app/domains/inventory/reachability.py`

@@ -219,12 +219,9 @@ class Settings(BaseSettings):
     # table every polling cycle also writes to.
     ML_RETENTION_BATCH_SIZE: int = 5000
 
+    # Subnets (comma-separated CIDR) the MAC-based relocation of a moved device sweeps to find it
+    # again (see services/device_poll.py, which reads it from the environment).
     SCAN_SUBNET: str = ""
-    SCAN_PORTS: str = "9100,631,80,443"
-    SCAN_MAX_HOSTS: int = 4096
-    SCAN_TCP_TIMEOUT: float = 1.0
-    SCAN_TCP_RETRIES: int = 1
-    SCAN_TCP_CONCURRENCY: int = 128
     POLL_JITTER_MAX_MS: int = 120
     POLL_OFFLINE_CONFIRMATIONS: int = 2
     POLL_CIRCUIT_FAILURE_THRESHOLD: int = 4

@@ -83,11 +83,10 @@ def test_the_guard_actually_finds_the_known_call_sites():
     found = _functions_creating_engines()
     files = {f for f, _fn, _line, _closed in found}
 
-    assert len(found) >= 10, f"expected at least 10 SnmpEngine call sites, found {len(found)}"
+    assert len(found) >= 8, f"expected at least 8 SnmpEngine call sites, found {len(found)}"
     for expected in (
+        "app/domains/inventory/printer_polling.py",
         "app/services/device_poll.py",
-        "app/services/discovery.py",
-        "app/services/scanner.py",
         "app/services/snmp/mac.py",
         "app/services/snmp/poller.py",
         "app/services/switches/snmp_provider.py",

@@ -13,15 +13,14 @@ def test_app_settings_returns_defaults_for_authenticated_user(client, user_token
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["scan_subnet"] == settings.SCAN_SUBNET
-    assert body["scan_ports"] == settings.SCAN_PORTS
+    assert "scan_subnet" not in body and "scan_ports" not in body
     assert body["dns_search_suffixes"] == settings.DNS_SEARCH_SUFFIXES
 
 
 def test_app_settings_patch_requires_superuser(client, user_token: str):
     response = client.patch(
         "/api/v1/app-settings/general",
-        json={"scan_subnet": "10.10.98.0/24"},
+        json={"dns_search_suffixes": "corp.local"},
         headers={"Authorization": f"Bearer {user_token}"},
     )
     assert response.status_code == 403
@@ -30,15 +29,11 @@ def test_app_settings_patch_requires_superuser(client, user_token: str):
 def test_app_settings_patch_persists_values(client, admin_token: str):
     patch = client.patch(
         "/api/v1/app-settings/general",
-        json={
-            "scan_subnet": "10.10.98.0/24,10.10.99.0/24",
-            "scan_ports": "80,443,445",
-            "dns_search_suffixes": "regstaer.local,corp.local",
-        },
+        json={"dns_search_suffixes": "regstaer.local,corp.local"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert patch.status_code == 200
-    assert patch.json()["scan_ports"] == "80,443,445"
+    assert patch.json()["dns_search_suffixes"] == "regstaer.local,corp.local"
 
     read = client.get(
         "/api/v1/app-settings/general",
@@ -51,7 +46,7 @@ def test_app_settings_patch_persists_values(client, admin_token: str):
 def test_app_settings_patch_rejects_empty_values(client, admin_token: str):
     response = client.patch(
         "/api/v1/app-settings/general",
-        json={"scan_ports": "   "},
+        json={"dns_search_suffixes": "   "},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 422

@@ -1,8 +1,6 @@
 import api from "./http";
 
 export interface GeneralSettings {
-  scan_subnet: string;
-  scan_ports: string;
   dns_search_suffixes: string;
 }
 

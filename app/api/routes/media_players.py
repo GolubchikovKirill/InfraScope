@@ -18,22 +18,16 @@ from app.domains.inventory.media_polling import (
 )
 from app.domains.inventory.models import MediaPlayer
 from app.domains.inventory.schemas import (
-    DiscoveryResults,
     MediaPlayerCreate,
     MediaPlayerPublic,
     MediaPlayersPublic,
     MediaPlayerUpdate,
-    ScanProgress,
-    ScanRequest,
 )
 from app.domains.shared.schemas import Message
 from app.observability.metrics import (
     media_player_ops_total,
 )
 from app.services.cache import get_cached_model, set_cached_model
-from app.services.discovery import get_discovery_progress, get_discovery_results
-from app.services.discovery_jobs import enqueue_scan
-from app.services.event_log import write_event_log
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
 )
@@ -159,98 +153,6 @@ async def create_media_player(session: SessionDep, player_in: MediaPlayerCreate)
     player = MediaPlayer(**player_in.model_dump())
     if not player.mac_address:
         player.mac_address = await resolve_mac_for_ip_address(player.ip_address, prefer_snmp=player.device_type != "iconbit")
-    session.add(player)
-    session.commit()
-    session.refresh(player)
-    await _invalidate_cache()
-    return player
-
-
-@router.post("/discover/scan", response_model=ScanProgress, dependencies=[Depends(get_current_active_superuser)])
-async def discover_iconbit_scan(
-    body: ScanRequest,
-    session: SessionDep,
-) -> dict:
-    players = session.exec(select(MediaPlayer).where(MediaPlayer.device_type == "iconbit")).all()
-    known = [{"id": str(p.id), "ip_address": p.ip_address, "mac_address": p.mac_address} for p in players]
-    return await enqueue_scan("iconbit", body.subnet, body.ports, known)
-
-
-@router.get("/discover/status", response_model=ScanProgress)
-async def discover_iconbit_status(current_user: CurrentUser) -> dict:
-    del current_user
-    return await get_discovery_progress("iconbit")
-
-
-@router.get("/discover/results", response_model=DiscoveryResults)
-async def discover_iconbit_results(current_user: CurrentUser) -> dict:
-    del current_user
-    progress = await get_discovery_progress("iconbit")
-    devices = await get_discovery_results("iconbit")
-    return {"progress": progress, "devices": devices}
-
-
-@router.post("/discover/add", response_model=MediaPlayerPublic, dependencies=[Depends(get_current_active_superuser)])
-async def discover_add_iconbit(
-    session: SessionDep,
-    payload: dict,
-) -> MediaPlayer:
-    ip = str(payload.get("ip_address", "")).strip()
-    if not ip:
-        raise HTTPException(status_code=422, detail="ip_address is required")
-    _ensure_unique_media_player_ip(session, ip)
-    name = str(payload.get("name") or f"Iconbit {ip}")
-    model = str(payload.get("model") or "Iconbit")
-    player = MediaPlayer(
-        device_type="iconbit",
-        name=name[:255],
-        model=model[:255],
-        ip_address=ip,
-        mac_address=str(payload.get("mac_address") or "")[:17] or None,
-    )
-    if not player.mac_address:
-        player.mac_address = await resolve_mac_for_ip_address(ip, prefer_snmp=False)
-    session.add(player)
-    session.commit()
-    session.refresh(player)
-    await _invalidate_cache()
-    return player
-
-
-@router.post(
-    "/discover/update-ip/{player_id}",
-    response_model=MediaPlayerPublic,
-    dependencies=[Depends(get_current_active_superuser)],
-)
-async def discover_update_iconbit_ip(
-    player_id: uuid.UUID,
-    session: SessionDep,
-    new_ip: str = "",
-    new_mac: str | None = None,
-) -> MediaPlayer:
-    player = _get_media_player_or_404(session, player_id)
-    old_ip = player.ip_address
-    if new_ip:
-        _ensure_unique_media_player_ip(session, new_ip, excluded_player_id=player.id)
-        player.ip_address = new_ip
-        if old_ip != new_ip:
-            write_event_log(
-                session,
-                category="network",
-                event_type="ip_changed",
-                severity="warning",
-                device_kind="media_player",
-                device_name=player.name,
-                ip_address=new_ip,
-                message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
-            )
-    if new_mac:
-        player.mac_address = new_mac
-    elif new_ip:
-        resolved_mac = await resolve_mac_for_ip_address(new_ip, prefer_snmp=player.device_type != "iconbit")
-        if resolved_mac:
-            player.mac_address = resolved_mac
-    player.updated_at = datetime.now(UTC)
     session.add(player)
     session.commit()
     session.refresh(player)

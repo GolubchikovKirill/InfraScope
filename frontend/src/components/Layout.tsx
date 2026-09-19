@@ -17,7 +17,6 @@ import {
   ScrollText,
   Settings2,
   Wallet,
-  Radar,
   Cable,
   ShieldCheck,
   Camera,
@@ -53,7 +52,6 @@ export default function Layout({ children }: { children: ReactNode }) {
     { match: (path) => path.startsWith("/computers"), title: "Компьютеры", subtitle: "Контроль доступности рабочих станций" },
     { match: (path) => path.startsWith("/remote-access"), title: "Удалённый доступ", subtitle: "RustDesk как сервис: деплой, пароли, книга адресов, подключения" },
     { match: (path) => path.startsWith("/credentials"), title: "Пароли и учётные данные", subtitle: "Хранилище секретов инфраструктуры и генератор паролей" },
-    { match: (path) => path.startsWith("/network-search"), title: "Поиск в сети", subtitle: "Сканирование и сопоставление устройств" },
     { match: (path) => path.startsWith("/onec"), title: "QR-генерация", subtitle: "Файлы обмена и посадочные талоны" },
     { match: (path) => path.startsWith("/settings"), title: "Настройки", subtitle: "Параметры сети и приложения" },
     { match: (path) => path.startsWith("/logs"), title: "Логи", subtitle: "События доступности и операций" },
@@ -79,11 +77,10 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/switches", label: "Сетевое оборудование", icon: Network, visible: true },
     { to: "/cameras", label: "Камеры", icon: Camera, visible: true },
     { to: "/cash-registers", label: "Кассы", icon: Wallet, visible: true },
-    { to: "/honest-sign", label: "Честный знак", icon: ShieldCheck, visible: true },
     { to: "/computers", label: "Компьютеры", icon: Laptop, visible: true },
-    { to: "/network-search", label: "Поиск в сети", icon: Radar, visible: true },
   ];
   const baseItems = [
+    { to: "/honest-sign", label: "Честный знак", icon: ShieldCheck, visible: true },
     { to: "/remote-access", label: "Удалённый доступ", icon: MonitorSmartphone, visible: true },
     { to: "/credentials", label: "Пароли", icon: KeyRound, visible: isSuperuser },
     { to: "/onec", label: "QR-генерация", icon: Cable, visible: true },

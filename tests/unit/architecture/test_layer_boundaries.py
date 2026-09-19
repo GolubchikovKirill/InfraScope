@@ -17,12 +17,6 @@ def test_background_processes_do_not_import_api_routes_directly() -> None:
     assert "from app.api.routes import" not in worker_tasks
 
 
-def test_discovery_does_not_import_private_scanner_helpers() -> None:
-    discovery_service = _read("app/services/discovery.py")
-
-    assert "_parse_arp_table" not in discovery_service
-
-
 def test_route_modules_do_not_manage_realtime_cache_invalidation_directly() -> None:
     route_dir = ROOT / "app/api/routes"
     route_sources = "\n".join(path.read_text(encoding="utf-8") for path in route_dir.rglob("*.py"))

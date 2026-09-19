@@ -226,17 +226,13 @@ class CashRegistersPublic(BaseModel):
 
 
 class GeneralSettingsPublic(BaseModel):
-    scan_subnet: str
-    scan_ports: str
     dns_search_suffixes: str
 
 
 class GeneralSettingsUpdate(BaseModel):
-    scan_subnet: str | None = None
-    scan_ports: str | None = None
     dns_search_suffixes: str | None = None
 
-    @field_validator("scan_subnet", "scan_ports", "dns_search_suffixes")
+    @field_validator("dns_search_suffixes")
     @classmethod
     def normalize_text(cls, v: str | None) -> str | None:
         if v is None:

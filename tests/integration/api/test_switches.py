@@ -1,17 +1,14 @@
 from dataclasses import dataclass
 from time import monotonic
-from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes.switches import _shared as switch_shared
 from app.api.routes.switches import access_points as switch_access_points
-from app.api.routes.switches import crud as switch_crud
 from app.api.routes.switches import ports as switch_ports
 from app.core.config import settings
 from app.domains.inventory import switch_polling
-from app.services import discovery_jobs
 from app.services.cisco_ssh import CameraPortInfo
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 
@@ -215,79 +212,6 @@ def test_switch_ports_read_and_write(
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert write_ok.status_code == 200
-
-
-def test_switch_discovery_scan_and_results(client: TestClient, admin_token: str, monkeypatch):
-    def _fake_delay(kind: str, subnet: str, ports: str, known_devices: list[dict]):
-        assert kind == "switch"
-        assert subnet == "10.10.99.0/24"
-        assert ports == "22,80,443"
-        assert isinstance(known_devices, list)
-        return None
-
-    async def _fake_progress(_kind: str):
-        return {"status": "done", "scanned": 254, "total": 254, "found": 1, "message": None}
-
-    async def _fake_results(_kind: str):
-        return [
-            {
-                "ip": "10.10.99.200",
-                "mac": None,
-                "open_ports": [22, 80],
-                "hostname": "SW-DISC-01",
-                "model_info": "Cisco IOS Software",
-                "vendor": "cisco",
-                "device_kind": "switch",
-                "is_known": False,
-                "known_device_id": None,
-                "ip_changed": False,
-                "old_ip": None,
-            }
-        ]
-
-    monkeypatch.setattr(discovery_jobs, "discovery_scan_task", SimpleNamespace(delay=_fake_delay))
-    monkeypatch.setattr(switch_crud, "get_discovery_progress", _fake_progress)
-    monkeypatch.setattr(switch_crud, "get_discovery_results", _fake_results)
-
-    scan_resp = client.post(
-        "/api/v1/switches/discover/scan",
-        json={"subnet": "10.10.99.0/24", "ports": "22,80,443"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert scan_resp.status_code == 200
-    assert scan_resp.json()["status"] == "running"
-
-    results_resp = client.get(
-        "/api/v1/switches/discover/results",
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert results_resp.status_code == 200
-    assert results_resp.json()["progress"]["status"] == "done"
-    assert results_resp.json()["devices"][0]["vendor"] == "cisco"
-
-
-def test_switch_discovery_add_and_update_ip(client: TestClient, admin_token: str):
-    create_resp = client.post(
-        "/api/v1/switches/discover/add",
-        json={
-            "ip_address": "10.10.99.210",
-            "name": "Switch New",
-            "hostname": "SW-NEW",
-            "vendor": "dlink",
-        },
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert create_resp.status_code == 200
-    switch_id = create_resp.json()["id"]
-    assert create_resp.json()["vendor"] == "dlink"
-
-    update_resp = client.post(
-        f"/api/v1/switches/discover/update-ip/{switch_id}",
-        params={"new_ip": "10.10.99.211"},
-        headers={"Authorization": f"Bearer {admin_token}"},
-    )
-    assert update_resp.status_code == 200
-    assert update_resp.json()["ip_address"] == "10.10.99.211"
 
 
 def test_switch_port_write_runs_the_provider_in_process(client: TestClient, admin_token: str, monkeypatch):

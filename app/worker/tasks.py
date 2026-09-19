@@ -39,7 +39,6 @@ from app.observability.metrics import (
     worker_tasks_enqueued_total,
     worker_tasks_in_progress,
 )
-from app.services.discovery import run_discovery_scan
 from app.services.polling_orchestrator import (
     poll_all_cash_registers_local,
     poll_all_computers_local,
@@ -48,7 +47,6 @@ from app.services.polling_orchestrator import (
     poll_all_switches_local,
     poll_switch_local,
 )
-from app.services.scanner import scan_subnet
 
 
 @dataclass
@@ -220,34 +218,8 @@ def _task(name: str, *, retries: int | None = None, **celery_options):
     return decorate
 
 
-def _known_printers() -> list[dict]:
-    with Session(engine) as session:
-        return [
-            {"id": str(p.id), "ip_address": p.ip_address, "mac_address": p.mac_address, "store_name": p.store_name}
-            for p in session.exec(select(Printer)).all()
-        ]
-
-
-@_task("scan_network", retries=3)
-def scan_network_task(self, subnet: str, ports: str) -> dict:
-    devices = _run_async(scan_subnet(subnet, ports, _known_printers()))
-    return {"subnet": subnet, "ports": ports, "found_devices": len(devices)}
-
-
 # No retries: a scan is started by a person, and a failed one already reports
 # its error through the progress key the UI polls.
-@_task("discovery_scan", soft_time_limit=1500, time_limit=1800)
-def discovery_scan_task(self, kind: str, subnet: str, ports: str, known: list[dict]) -> dict:
-    """Network discovery scan ("printers", "iconbit" or "switch").
-
-    Progress and results live in Redis (see app.services.scanner/discovery),
-    which is what the status/results endpoints read.
-    """
-    if kind == "printers":
-        devices = _run_async(scan_subnet(subnet, ports, known))
-    else:
-        devices = _run_async(run_discovery_scan(kind, subnet, ports, known))
-    return {"kind": kind, "found_devices": len(devices)}
 
 
 @_task("poll_all_printers", retries=2)

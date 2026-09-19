@@ -124,3 +124,29 @@ describe("Layout account block", () => {
     expect(screen.getAllByRole("link", { name: "Честный знак" }).length).toBeGreaterThan(0);
   });
 });
+
+describe("Layout navigation", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    authState.user = { email: "ops@infrascope.dev", full_name: "Ops", is_superuser: false };
+  });
+
+  it("keeps Honest Sign outside the collapsible Equipment group", () => {
+    renderLayout("/");
+
+    // collapse the group: its own items disappear, Honest Sign stays
+    fireEvent.click(screen.getAllByRole("button", { name: /Оборудование/ })[0]); // desktop and mobile toggles share one state
+
+    expect(screen.queryAllByRole("link", { name: "Принтеры" })).toHaveLength(0);
+    expect(screen.getAllByRole("link", { name: "Честный знак" }).length).toBeGreaterThan(0);
+    for (const link of screen.getAllByRole("link", { name: "Честный знак" })) {
+      expect(link).toHaveAttribute("href", "/honest-sign");
+    }
+  });
+
+  it("has no network search entry", () => {
+    renderLayout("/");
+
+    expect(screen.queryByRole("link", { name: "Поиск в сети" })).not.toBeInTheDocument();
+  });
+});
