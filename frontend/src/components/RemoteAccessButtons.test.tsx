@@ -6,6 +6,7 @@ import type { RemoteDevice } from "../client";
 const api = vi.hoisted(() => ({
   ensureRustDeskDevice: vi.fn(),
   getDevicePackage: vi.fn(),
+  pushDevices: vi.fn(),
   hostnameToRid: vi.fn((h: string) => h.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 32)),
   requestDeploy: vi.fn(),
   rustdeskLink: vi.fn((id: string) => `rustdesk://connection/new/${id}`),
@@ -86,6 +87,26 @@ describe("RemoteAccessButtons", () => {
     const link = screen.getByText("Подключиться").closest("a");
     expect(link).toHaveAttribute("href", "rustdesk://connection/new/VNK_MGR_D1");
     expect(screen.getByText("Готово к подключению")).toBeInTheDocument();
+  });
+
+  describe("push over the network", () => {
+    it("queues a push for the device from the card", async () => {
+      api.pushDevices.mockResolvedValue({ queued: [{ hostname: "VNK-MGR-D1" }], skipped: [] });
+      renderButtons();
+
+      fireEvent.click(screen.getByRole("button", { name: /По сети/ }));
+
+      await waitFor(() => expect(api.pushDevices).toHaveBeenCalledWith({ device_ids: ["dev-1"] }));
+    });
+
+    it("is not offered to someone who cannot manage, or for an entry out of management", () => {
+      const { unmount } = renderButtons({ canManage: false });
+      expect(screen.queryByRole("button", { name: /По сети/ })).not.toBeInTheDocument();
+      unmount();
+
+      renderButtons({ device: { ...device, managed: false } });
+      expect(screen.queryByRole("button", { name: /По сети/ })).not.toBeInTheDocument();
+    });
   });
 
   describe("an entry taken out of management", () => {

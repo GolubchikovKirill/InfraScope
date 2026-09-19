@@ -175,6 +175,9 @@ class Settings(BaseSettings):
     # Shared secret the endpoint script presents (X-InfraScope-Deploy-Token).
     # Empty disables every /remote-access/deploy/* route.
     RUSTDESK_DEPLOY_TOKEN: str = ""
+    # Secret the Windows push runner presents (X-InfraScope-Runner-Token). Falls back to the
+    # deploy token when unset, so an install that already rolls out keeps working.
+    RUSTDESK_RUNNER_TOKEN: str = ""
     # How an endpoint reaches this API, e.g. http://10.10.99.24:8000
     RUSTDESK_PUBLIC_URL: str = ""
     # SHA1 thumbprint (uppercase, no separators - .NET X509Certificate.GetCertHashString()

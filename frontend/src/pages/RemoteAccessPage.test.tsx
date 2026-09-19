@@ -10,6 +10,9 @@ const api = vi.hoisted(() => ({
   getAddressBookStatus: vi.fn(),
   getConsoleConnections: vi.fn(),
   getRemoteDevices: vi.fn(),
+  getPushJobs: vi.fn(),
+  cancelPushJob: vi.fn(),
+  pushDevices: vi.fn(),
   requestDeploy: vi.fn(),
   rotateRemotePassword: vi.fn(),
   rustdeskLink: vi.fn((id: string) => `rustdesk://connection/new/${id}`),
@@ -176,6 +179,49 @@ describe("RemoteAccessPage", () => {
 
     await screen.findByText("VNA-MGR-205");
     expect(screen.queryByText(/вынесены во вкладку/)).not.toBeInTheDocument();
+  });
+
+  it("queues a dry run for every managed device in the list after a confirmation", async () => {
+    api.getRemoteDevices.mockResolvedValue({
+      data: [
+        makeDevice({ id: "d1", hostname: "VNA-KKM-701", type_tag: "KKM" }),
+        makeDevice({ id: "d2", hostname: "VNA-KKM-702", type_tag: "KKM" }),
+      ],
+      count: 2,
+    });
+    api.getPushJobs.mockResolvedValue({ data: [], count: 0, runner: { name: null, seconds_ago: null, online: false } });
+    api.pushDevices.mockResolvedValue({ queued: [{ hostname: "VNA-KKM-701" }, { hostname: "VNA-KKM-702" }], skipped: [] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage();
+    await screen.findByText("VNA-KKM-701");
+
+    fireEvent.click(screen.getByRole("button", { name: /Пробный прогон/ }));
+
+    await waitFor(() => expect(api.pushDevices).toHaveBeenCalledWith({ device_ids: ["d1", "d2"], dry_run: true }));
+    expect(confirm.mock.calls[0][0]).toMatch(/Пробный прогон.*2 устройств/);
+    confirm.mockRestore();
+  });
+
+  it("queues nothing when the confirmation is declined", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [makeDevice({ id: "d1", hostname: "VNA-KKM-701", type_tag: "KKM" })], count: 1 });
+    api.getPushJobs.mockResolvedValue({ data: [], count: 0, runner: { name: null, seconds_ago: null, online: false } });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderPage();
+    await screen.findByText("VNA-KKM-701");
+
+    fireEvent.click(screen.getByRole("button", { name: /Развернуть по сети/ }));
+
+    expect(confirm).toHaveBeenCalled();
+    expect(api.pushDevices).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it("shows the network push queue for a superuser", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [makeDevice()], count: 1 });
+    api.getPushJobs.mockResolvedValue({ data: [], count: 0, runner: { name: null, seconds_ago: null, online: false } });
+    renderPage();
+
+    expect(await screen.findByRole("region", { name: "Раскатка по сети" })).toBeInTheDocument();
   });
 
   it("offers the console machines that are not in the list on the devices tab", async () => {

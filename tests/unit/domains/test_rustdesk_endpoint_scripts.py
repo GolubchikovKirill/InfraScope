@@ -90,3 +90,10 @@ def test_push_skips_xp_and_uses_dcom_not_winrm() -> None:
     assert "Windows XP: RustDesk is not supported" in PUSH
     assert "-Protocol Dcom" in PUSH
     assert "Enter-PSSession" not in PUSH and "Invoke-Command" not in PUSH
+
+
+def test_hidden_profile_also_writes_the_options_into_user_profiles() -> None:
+    # the connection-manager pop-up runs in the user's session and reads the user's config
+    assert "function Write-UserOpts" in ENDPOINT
+    assert r"\AppData\Roaming\RustDesk\config" in ENDPOINT
+    assert re.search(r"if \(\$hidden\) \{\s+Write-UserOpts", ENDPOINT)

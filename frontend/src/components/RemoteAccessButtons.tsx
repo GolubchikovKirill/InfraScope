@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MonitorSmartphone, Settings2, Copy, X, FileCog, Rocket, RotateCcw } from "lucide-react";
+import { MonitorSmartphone, Settings2, Copy, X, FileCog, Rocket, RotateCcw, Send } from "lucide-react";
 import {
   ensureRustDeskDevice,
   getDevicePackage,
   hostnameToRid,
+  pushDevices,
   requestDeploy,
   rustdeskLink,
   setDeviceProfile,
@@ -58,6 +59,17 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
       setDeployModalOpen(true);
     },
     onError: () => showToast("Не удалось запросить развёртывание", "error"),
+  });
+
+  // queue a network push: a runner on a Windows admin machine does the actual work
+  const pushMut = useMutation({
+    mutationFn: (id: string) => pushDevices({ device_ids: [id] }),
+    onSuccess: (r) => {
+      if (r.queued.length) showToast(`${hostname}: поставлено в очередь, раннер выполнит`, "success");
+      else showToast(`${hostname}: ${r.skipped[0]?.reason ?? "не поставлено"}`, "info");
+      qc.invalidateQueries({ queryKey: ["remote-push-jobs"] });
+    },
+    onError: () => showToast("Не удалось поставить в очередь", "error"),
   });
 
   const profileMut = useMutation({
@@ -168,6 +180,17 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
               >
                 <RotateCcw className="h-4 w-4" />
                 Вернуть в управление
+              </button>
+            )}
+            {device && !unmanaged && (
+              <button
+                onClick={() => pushMut.mutate(device.id)}
+                disabled={pushMut.isPending}
+                className={`${btn} app-btn-secondary disabled:opacity-50`}
+                title="Поставить в очередь раскатки по сети: её выполняет раннер на Windows-машине админа (Windows 7 и 10, без перезагрузки)"
+              >
+                <Send className="h-4 w-4" />
+                По сети
               </button>
             )}
             {device && !unmanaged && (

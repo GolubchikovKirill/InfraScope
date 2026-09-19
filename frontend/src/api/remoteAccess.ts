@@ -156,6 +156,60 @@ export async function dismissConsolePeer(hostname: string) {
   return data;
 }
 
+// --------------------------------------------------------------------------- //
+// network push: queued here, executed by a runner on a Windows admin machine   //
+// --------------------------------------------------------------------------- //
+export type PushJobState = "queued" | "running" | "succeeded" | "failed" | "skipped" | "cancelled";
+
+export interface PushJob {
+  id: string;
+  device_id: string | null;
+  hostname: string;
+  profile: DeployProfile;
+  dry_run: boolean;
+  state: PushJobState;
+  detail: string | null;
+  requested_by: string | null;
+  runner: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface PushEnqueueResult {
+  queued: PushJob[];
+  skipped: Array<{ hostname: string; reason: string }>;
+}
+
+export interface RunnerStatus {
+  name: string | null;
+  seconds_ago: number | null;
+  /** claimed within the last ~90 seconds */
+  online: boolean;
+}
+
+export interface PushJobsResponse {
+  data: PushJob[];
+  count: number;
+  runner: RunnerStatus;
+}
+
+/** Queue a network push. Nothing runs on the server: a runner on a Windows admin machine picks it up. */
+export async function pushDevices(payload: { device_ids: string[]; profile?: DeployProfile; dry_run?: boolean }) {
+  const { data } = await api.post<PushEnqueueResult>("/remote-access/push", payload);
+  return data;
+}
+
+export async function getPushJobs(limit = 40) {
+  const { data } = await api.get<PushJobsResponse>("/remote-access/push/jobs", { params: { limit } });
+  return data;
+}
+
+export async function cancelPushJob(id: string) {
+  const { data } = await api.post<{ message: string }>(`/remote-access/push/jobs/${id}/cancel`);
+  return data;
+}
+
 export async function rotateRemotePassword(id: string) {
   const { data } = await api.post<RemoteDevice>(`/remote-access/devices/${id}/rotate-password`);
   return data;

@@ -18,6 +18,7 @@ from app.api.routes import (
     printers,
     qr_generator,
     remote_access,
+    remote_access_push,
     switches,
     tasks,
     users,
@@ -35,6 +36,7 @@ api_router.include_router(cash_registers.router, prefix="/cash-registers")
 api_router.include_router(computers.router, prefix="/computers")
 api_router.include_router(credentials.router, prefix="/credentials")
 api_router.include_router(remote_access.router, prefix="/remote-access")
+api_router.include_router(remote_access_push.router, prefix="/remote-access")
 api_router.include_router(honest_sign.router, prefix="/honest-sign")
 api_router.include_router(ml.router, prefix="/ml")
 api_router.include_router(logs.router, prefix="/logs")

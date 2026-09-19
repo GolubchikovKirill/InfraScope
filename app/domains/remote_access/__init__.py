@@ -20,5 +20,6 @@ machine is actually reachable right now.
   configure itself. The endpoint pulls; the server never remote-executes on the
   fleet itself - from a Linux box that is indistinguishable from lateral movement
   and gets blocked. Pushing over the network is done from a Windows admin host with
-  the push kit. See docs/rustdesk-deployment.md.
+  the push kit; `push_jobs` is the queue the app fills and a runner script there works
+  off (`deploy-runner/Run-PushRunner.ps1`). See docs/rustdesk-deployment.md.
 """

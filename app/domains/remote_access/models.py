@@ -123,3 +123,31 @@ class RemoteAccessConsoleAccount(SQLModel, table=True):
     last_synced_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
     updated_at: datetime | None = Field(default=None)
+
+
+# states of a push job: queued -> running -> one of the finals
+PUSH_JOB_ACTIVE = ("queued", "running")
+PUSH_JOB_FINAL = ("succeeded", "failed", "skipped", "cancelled")
+
+
+class RemoteAccessPushJob(SQLModel, table=True):
+    """One request to push RustDesk to a machine over the network.
+
+    The server never executes anything on the fleet - it only keeps this queue. A runner
+    on a Windows admin host claims queued jobs, runs the push kit there and reports the
+    outcome, which is what moves the device's rollout state.
+    """
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # kept when the device is deleted (SET NULL) so the history still reads
+    device_id: uuid.UUID | None = Field(default=None, foreign_key="remoteaccessdevice.id", index=True)
+    hostname: str = Field(max_length=255)
+    profile: str = Field(default="client", max_length=16)  # client | admin
+    dry_run: bool = Field(default=False)  # probe only, nothing installed
+    state: str = Field(default="queued", max_length=16, index=True)
+    detail: str | None = Field(default=None, max_length=1024)
+    requested_by: str | None = Field(default=None, max_length=255)
+    runner: str | None = Field(default=None, max_length=64)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
+    started_at: datetime | None = Field(default=None)
+    finished_at: datetime | None = Field(default=None)

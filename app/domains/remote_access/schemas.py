@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -347,3 +347,80 @@ class AddressBookEntry(BaseModel):
     platform: str | None = None
     tags: list[Any] = []
     online: bool | None = None
+
+
+# --------------------------------------------------------------------------- #
+# push over the network (run by a Windows runner, never by this server)        #
+# --------------------------------------------------------------------------- #
+class PushRequest(BaseModel):
+    """Queue a network push for these devices."""
+
+    device_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+    # None = each device's own profile
+    profile: Literal["client", "admin"] | None = None
+    # probe only: reach the machine, report OS/installer/service, install nothing
+    dry_run: bool = False
+
+
+class PushJobPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    device_id: uuid.UUID | None = None
+    hostname: str
+    profile: str
+    dry_run: bool
+    state: str
+    detail: str | None = None
+    requested_by: str | None = None
+    runner: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class PushSkipped(BaseModel):
+    hostname: str
+    reason: str
+
+
+class PushEnqueueResult(BaseModel):
+    queued: list[PushJobPublic]
+    skipped: list[PushSkipped]
+
+
+class RunnerStatus(BaseModel):
+    name: str | None = None
+    seconds_ago: int | None = None
+    online: bool = False
+
+
+class PushJobsPublic(BaseModel):
+    data: list[PushJobPublic]
+    count: int
+    runner: RunnerStatus
+
+
+class RunnerClaimRequest(BaseModel):
+    runner: str = Field(min_length=1, max_length=64)
+    limit: int = Field(default=3, ge=1, le=10)
+
+
+class RunnerJob(BaseModel):
+    id: uuid.UUID
+    hostname: str
+    profile: str
+    dry_run: bool
+    # what the kit's -ConfigPath file should hold for this machine (id, password, servers, key)
+    config: dict[str, Any]
+
+
+class RunnerClaimResponse(BaseModel):
+    jobs: list[RunnerJob]
+
+
+class RunnerReport(BaseModel):
+    job_id: uuid.UUID
+    result: Literal["ok", "warn", "failed", "skipped", "dry_run"]
+    detail: str | None = Field(default=None, max_length=4000)
+    os_caption: str | None = Field(default=None, max_length=128)

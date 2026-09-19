@@ -97,12 +97,13 @@ export default function DeployCommandModal({ open, onClose }: Props) {
         )}
 
         <div className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-slate-700">
-          <p className="font-medium text-slate-800">Windows 7 и раскатка без перезагрузки — с рабочей станции админа</p>
+          <p className="font-medium text-slate-800">Windows 7 и раскатка без перезагрузки — с рабочей станции админа (или кнопкой «По сети»)</p>
           <p>
             Команда выше на Windows 7 с PowerShell 2.0 не сработает (нет TLS 1.2). Для «семёрок» и для любых
             машин, где перезагрузка недопустима, есть push-утилита: она сама определяет ОС, ставит MSI (Windows
             10/11) или 32-битную сборку (Windows 7), <b>ничего не перезагружает</b> и не ставит обновления.
-            Запускается на вашем ПК, не на сервере.
+            Запускается на вашем ПК, не на сервере. Кнопку «По сети» на карточке и над списком устройств
+            обслуживает раннер, он запускает эту же утилиту (см. панель «Раскатка по сети»).
           </p>
           <pre className="app-mono whitespace-pre-wrap break-all rounded-lg bg-white p-2 text-[11px] text-slate-700">
             {PUSH_COMMAND}

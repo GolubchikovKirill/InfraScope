@@ -13,6 +13,7 @@ import {
   Rocket,
   Terminal,
   Plus,
+  Send,
   Trash2,
   X,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import {
   getAddressBookStatus,
   getConsoleConnections,
   getRemoteDevices,
+  pushDevices,
   requestDeploy,
   rotateRemotePassword,
   rustdeskLink,
@@ -42,6 +44,7 @@ import { Button } from "../components/ui/Button";
 import { AppLockerMismatchBadge, READINESS_META, ReadinessChip, deviceReadinessDetail } from "../components/RemoteAccessStatus";
 import DeployCommandModal from "../components/DeployCommandModal";
 import ConsoleAccountsPanel from "../components/ConsoleAccountsPanel";
+import PushJobsPanel from "../components/PushJobsPanel";
 import UnlistedConsolePeersPanel from "../components/UnlistedConsolePeersPanel";
 import { isScreen } from "../lib/screens";
 
@@ -221,6 +224,43 @@ export default function RemoteAccessPage() {
     onError: () => showToast("Не удалось запросить развёртывание", "error"),
   });
 
+  // queue a network push for everything the list currently shows (managed devices only);
+  // dryRun = reach each machine and report what would happen, install nothing
+  const pushMut = useMutation({
+    mutationFn: async ({ ids, dryRun }: { ids: string[]; dryRun: boolean }) => {
+      const queued: string[] = [];
+      const skipped: string[] = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        const r = await pushDevices({ device_ids: ids.slice(i, i + 200), dry_run: dryRun });
+        queued.push(...r.queued.map((j) => j.hostname));
+        skipped.push(...r.skipped.map((s) => `${s.hostname}: ${s.reason}`));
+      }
+      return { queued, skipped, dryRun };
+    },
+    onSuccess: ({ queued, skipped, dryRun }) => {
+      const what = dryRun ? "пробных прогонов" : "раскаток";
+      showToast(
+        `В очередь поставлено ${what}: ${queued.length}${skipped.length ? `, пропущено: ${skipped.length} (${skipped.slice(0, 2).join("; ")}${skipped.length > 2 ? "…" : ""})` : ""}`,
+        queued.length ? "success" : "info",
+      );
+      qc.invalidateQueries({ queryKey: ["remote-push-jobs"] });
+    },
+    onError: () => showToast("Не удалось поставить в очередь", "error"),
+  });
+
+  const bulkPush = (dryRun: boolean) => {
+    const targets = visibleRows.filter((r) => r.managed);
+    if (!targets.length) {
+      showToast("В списке нет управляемых устройств", "info");
+      return;
+    }
+    const what = dryRun
+      ? `Пробный прогон (ничего не ставится) для ${targets.length} устройств?`
+      : `Развернуть RustDesk по сети на ${targets.length} устройств? Сервер только поставит задания в очередь, ставить будет раннер на машине админа, каждой машине по её профилю. Перезагрузок нет.`;
+    if (!window.confirm(what)) return;
+    pushMut.mutate({ ids: targets.map((r) => r.id), dryRun });
+  };
+
   const bulkAb = () => {
     const scope =
       [kind ? KIND[kind].label : null, location, typeTag].filter(Boolean).join(" / ") || "все управляемые";
@@ -307,6 +347,8 @@ export default function RemoteAccessPage() {
           )}
 
           <UnlistedConsolePeersPanel isSuperuser={isSuperuser} />
+
+          {isSuperuser && <PushJobsPanel />}
 
           {screenCount > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
@@ -413,6 +455,17 @@ export default function RemoteAccessPage() {
                   <Button variant="secondary" onClick={() => setDeployModalOpen(true)}>
                     <Terminal className="mr-1 h-4 w-4" />
                     Команда развёртывания
+                  </Button>
+                )}
+                {isSuperuser && (
+                  <Button variant="secondary" onClick={() => bulkPush(true)} disabled={pushMut.isPending} title="Дотянуться до каждой машины и сообщить, что было бы сделано; ничего не устанавливается">
+                    Пробный прогон
+                  </Button>
+                )}
+                {isSuperuser && (
+                  <Button variant="secondary" onClick={() => bulkPush(false)} disabled={pushMut.isPending} title="Поставить в очередь раскатку по сети на всё, что сейчас в списке">
+                    <Send className="mr-1 h-4 w-4" />
+                    Развернуть по сети
                   </Button>
                 )}
                 {isSuperuser && (
