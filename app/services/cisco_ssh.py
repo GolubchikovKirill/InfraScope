@@ -12,6 +12,7 @@ import hashlib
 import logging
 import re
 import socket
+import threading
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -75,6 +76,43 @@ def _install_legacy_ssh_compat() -> None:
 
 
 _install_legacy_ssh_compat()
+
+
+class _QuietIncompatiblePeer(logging.Filter):
+    """Drop paramiko's own log spam for a peer we cannot negotiate with.
+
+    When key exchange finds no common algorithm, paramiko's transport thread logs
+    "Exception (client): Incompatible ssh peer ..." and then the whole traceback
+    line by line at ERROR - about 35 log records per poll cycle on this fleet,
+    from the ~11 old Cisco switches (IOS 12.2(53-55)SE) that only offer
+    diffie-hellman-group1-sha1 and are deliberately not supported here. The same
+    failure is raised into our code, classified (_classify_ssh_error ->
+    "protocol_error"), counted in ssh_operations_total and logged by the caller,
+    so the transport thread's copy only buries real errors.
+
+    Only that one thread's ERROR records are muted, and only after the
+    "Incompatible ssh peer" line: the transport thread ends right after logging
+    it, so nothing else is lost, and every other paramiko error still shows up.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._local = threading.local()
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno < logging.ERROR:
+            return True
+        if getattr(self._local, "muted", False):
+            return False
+        if "Incompatible ssh peer" in record.getMessage():
+            self._local.muted = True
+            return False
+        return True
+
+
+_transport_logger = logging.getLogger("paramiko.transport")
+if not any(type(f).__name__ == "_QuietIncompatiblePeer" for f in _transport_logger.filters):
+    _transport_logger.addFilter(_QuietIncompatiblePeer())
 
 SSH_TIMEOUT = 15
 CMD_TIMEOUT = 30
