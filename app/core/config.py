@@ -48,9 +48,6 @@ class Settings(BaseSettings):
                 )
         if self.ENVIRONMENT == "production" and self._is_weak_bootstrap_password(self.FIRST_SUPERUSER_PASSWORD):
             raise ValueError("FIRST_SUPERUSER_PASSWORD must be explicitly set to a strong value in production.")
-        internal_services_enabled = self.NETWORK_CONTROL_SERVICE_ENABLED
-        if self.ENVIRONMENT == "production" and internal_services_enabled and not self.INTERNAL_SERVICE_TOKEN.strip():
-            raise ValueError("INTERNAL_SERVICE_TOKEN must be set in production when internal services are enabled.")
         return self
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
@@ -133,8 +130,6 @@ class Settings(BaseSettings):
     # simultaneously - a store's whole camera coverage must never drop to
     # zero at once, even for a few seconds.
     CAMERA_REBOOT_STAGGER_SECONDS: int = 10
-    NETWORK_CONTROL_SERVICE_ENABLED: bool = False
-    NETWORK_CONTROL_SERVICE_URL: str = "http://network-control-service:8013"
     MEDIA_SERVICE_ENABLED: bool = False
     MEDIA_SERVICE_URL: str = "http://media-service:8014"
     MEDIA_CLIENT_TOKEN: str = ""
@@ -192,7 +187,6 @@ class Settings(BaseSettings):
     #   openssl s_client -connect <host>:443 -servername <host> </dev/null | openssl x509 -noout -fingerprint -sha1
     RUSTDESK_TLS_FINGERPRINT: str = "278E05F8AF0AEECE0002C52CFD378C170FF5E513"
 
-    INTERNAL_SERVICE_TOKEN: str = ""
     INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0
     INTERNAL_HTTP_RETRIES: int = 1
     INTERNAL_HTTP_RETRY_BACKOFF_SECONDS: float = 0.5

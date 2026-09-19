@@ -27,11 +27,6 @@ scrape_configs:
     static_configs:
       - targets: ["worker:9108"]
 
-  - job_name: infrascope-network-control-service
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["network-control-service:8013"]
-
   - job_name: infrascope-media-service
     metrics_path: /metrics
     static_configs:

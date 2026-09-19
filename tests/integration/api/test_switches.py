@@ -172,7 +172,6 @@ def test_switch_ports_read_and_write(
             return None
 
     monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
-    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
 
     created = client.post(
         "/api/v1/switches/",
@@ -291,18 +290,19 @@ def test_switch_discovery_add_and_update_ip(client: TestClient, admin_token: str
     assert update_resp.json()["ip_address"] == "10.10.99.211"
 
 
-def test_switch_port_write_uses_network_control_service_when_enabled(client: TestClient, admin_token: str, monkeypatch):
-    async def _fake_proxy_request(**kwargs):
-        assert kwargs["path"].endswith("/vlan")
-        return {"message": "ok"}
+def test_switch_port_write_runs_the_provider_in_process(client: TestClient, admin_token: str, monkeypatch):
+    calls: list[tuple] = []
 
-    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", True)
-    monkeypatch.setattr(switch_ports, "_proxy_request", _fake_proxy_request)
+    class _Provider:
+        def set_vlan(self, _switch, port, vlan):
+            calls.append((port, vlan))
+
+    monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda _switch: _Provider())
 
     created = client.post(
         "/api/v1/switches/",
         json={
-            "name": "SW-Proxy",
+            "name": "SW-Local",
             "ip_address": "10.10.10.41",
             "ssh_username": "admin",
             "ssh_password": "admin",
@@ -326,6 +326,7 @@ def test_switch_port_write_uses_network_control_service_when_enabled(client: Tes
     )
     assert write_resp.status_code == 200
     assert write_resp.json()["message"] == "ok"
+    assert calls == [("Gi0/1", 100)]
 
 
 def test_switch_write_rejects_unsafe_port_identifier(client: TestClient, admin_token: str, monkeypatch):
@@ -345,7 +346,6 @@ def test_switch_write_rejects_unsafe_port_identifier(client: TestClient, admin_t
         return fake_redis
 
     monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
-    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
     monkeypatch.setattr(switch_shared, "get_redis", _fake_get_redis)
 
     created = client.post(
@@ -396,7 +396,6 @@ def test_switch_poe_cycle_is_rate_limited_by_cooldown(client: TestClient, admin_
         return fake_redis
 
     monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
-    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
     monkeypatch.setattr(settings, "SWITCH_SAFETY_COOLDOWN_SECONDS", 60)
     monkeypatch.setattr(switch_shared, "get_redis", _fake_get_redis)
 
@@ -645,7 +644,6 @@ def test_reboot_camera_port_requires_superuser(client: TestClient, admin_token: 
 def test_reboot_ap_verifies_and_reports_back_online_when_mac_address_given(
     client: TestClient, admin_token: str, monkeypatch
 ):
-    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
     monkeypatch.setattr(switch_access_points, "poe_cycle_ap", lambda *a, **kw: True)
 
     async def _fake_verify(_switch, mac_address):
@@ -684,7 +682,6 @@ def test_reboot_ap_verifies_and_reports_back_online_when_mac_address_given(
 
 
 def test_reboot_ap_skips_verification_without_mac_address(client: TestClient, admin_token: str, monkeypatch):
-    monkeypatch.setattr(settings, "NETWORK_CONTROL_SERVICE_ENABLED", False)
     monkeypatch.setattr(switch_access_points, "poe_cycle_ap", lambda *a, **kw: True)
 
     def _must_not_be_called(*_a, **_kw):
@@ -757,3 +754,110 @@ def test_reboot_ap_is_superuser_only(client: TestClient, admin_token: str, user_
     assert forbidden.status_code == 403, (
         "a non-superuser must not be able to power-cycle an access point"
     )
+
+
+def _create_dlink_switch(client: TestClient, admin_token: str, ip: str = "10.10.10.61") -> str:
+    created = client.post(
+        "/api/v1/switches/",
+        json={
+            "name": f"SW-{ip}",
+            "ip_address": ip,
+            "ssh_username": "admin",
+            "ssh_password": "admin",
+            "enable_password": "",
+            "ssh_port": 22,
+            "ap_vlan": 20,
+            "vendor": "dlink",
+            "management_protocol": "snmp",
+            "snmp_version": "2c",
+            "snmp_community_ro": "public",
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200
+    return created.json()["id"]
+
+
+def test_port_write_is_superuser_only_and_never_reaches_the_provider(
+    client: TestClient, admin_token: str, user_token: str, monkeypatch
+):
+    """These writes used to be reachable in two ways (in-process, or through the
+    network-control service); the in-process path is now the only one, so its
+    guards are what stands between an ordinary login and a live switch."""
+    calls: list[tuple] = []
+
+    class _Provider:
+        def set_vlan(self, _switch, port, vlan):
+            calls.append((port, vlan))
+
+    monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda _switch: _Provider())
+    switch_id = _create_dlink_switch(client, admin_token)
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/ports/Gi0%2F1/vlan",
+        json={"vlan": 100},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+
+    assert response.status_code in (401, 403)
+    assert calls == []
+
+
+def test_port_write_is_rejected_with_409_while_another_write_holds_the_switch_lock(
+    client: TestClient, admin_token: str, monkeypatch
+):
+    import asyncio
+
+    calls: list[tuple] = []
+
+    class _Provider:
+        def set_vlan(self, _switch, port, vlan):
+            calls.append((port, vlan))
+
+    monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda _switch: _Provider())
+    switch_id = _create_dlink_switch(client, admin_token, "10.10.10.62")
+
+    async def _hold():
+        # this module swaps switch_shared.get_redis for a private fake (see the
+        # autouse _switch_write_redis fixture), so take the lock through it
+        r = await switch_shared.get_redis()
+        await r.set(f"lock:switch-write:{switch_id}", "someone-else", ex=60)
+
+    asyncio.run(_hold())
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/ports/Gi0%2F1/vlan",
+        json={"vlan": 100},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 409
+    assert calls == []
+
+
+def test_port_write_fails_closed_when_the_safety_lock_cannot_be_taken(client: TestClient, admin_token: str, monkeypatch):
+    """No Redis means no distributed lock, and a process-local fallback would let
+    two API workers power-cycle the same switch at once - so it must refuse."""
+    from app.api.routes.switches import _shared
+
+    calls: list[tuple] = []
+
+    class _Provider:
+        def set_vlan(self, _switch, port, vlan):
+            calls.append((port, vlan))
+
+    async def _no_redis():
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda _switch: _Provider())
+    switch_id = _create_dlink_switch(client, admin_token, "10.10.10.63")
+    monkeypatch.setattr(_shared, "get_redis", _no_redis)
+
+    response = client.post(
+        f"/api/v1/switches/{switch_id}/ports/Gi0%2F1/vlan",
+        json={"vlan": 100},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 503
+    assert calls == []

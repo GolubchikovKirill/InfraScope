@@ -24,7 +24,6 @@ from app.domains.shared.schemas import Message
 from app.observability.metrics import switch_ops_total
 from app.services.cisco_ssh import get_access_points, get_camera_ports, poe_cycle_ap, poe_cycle_ports_bulk, reboot_ap
 from app.services.event_log import write_event_log
-from app.services.internal_services import _proxy_request
 
 from ._shared import (
     _acquire_switch_write_lock,
@@ -308,40 +307,32 @@ async def reboot_access_point(
     lock_key = await _acquire_switch_write_lock(switch_id)
     await _enforce_switch_cooldown(switch_id=switch_id, port=interface, operation=f"reboot_ap_{method}")
     try:
-        if settings.NETWORK_CONTROL_SERVICE_ENABLED:
-            result = await _proxy_request(
-                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-                method="POST",
-                path=f"/switches/{switch_id}/reboot-ap",
-                json_body={"interface": interface, "method": method},
+        if method == "poe":
+            ok = await asyncio.to_thread(
+                poe_cycle_ap,
+                switch.ip_address,
+                switch.ssh_username,
+                switch.ssh_password,
+                switch.enable_password,
+                switch.ssh_port,
+                interface,
             )
         else:
-            if method == "poe":
-                ok = await asyncio.to_thread(
-                    poe_cycle_ap,
-                    switch.ip_address,
-                    switch.ssh_username,
-                    switch.ssh_password,
-                    switch.enable_password,
-                    switch.ssh_port,
-                    interface,
-                )
-            else:
-                ok = await asyncio.to_thread(
-                    reboot_ap,
-                    switch.ip_address,
-                    switch.ssh_username,
-                    switch.ssh_password,
-                    switch.enable_password,
-                    switch.ssh_port,
-                    interface,
-                )
+            ok = await asyncio.to_thread(
+                reboot_ap,
+                switch.ip_address,
+                switch.ssh_username,
+                switch.ssh_password,
+                switch.enable_password,
+                switch.ssh_port,
+                interface,
+            )
 
-            if not ok:
-                switch_ops_total.labels(operation="reboot_ap", result="error").inc()
-                raise HTTPException(status_code=502, detail="Failed to reboot AP")
-            switch_ops_total.labels(operation="reboot_ap", result="success").inc()
-            result = {"status": "rebooting", "interface": interface, "method": method}
+        if not ok:
+            switch_ops_total.labels(operation="reboot_ap", result="error").inc()
+            raise HTTPException(status_code=502, detail="Failed to reboot AP")
+        switch_ops_total.labels(operation="reboot_ap", result="success").inc()
+        result = {"status": "rebooting", "interface": interface, "method": method}
 
         # The power-cycle command succeeding only means the switch accepted
         # it, not that the AP actually came back - same verify-by-polling the

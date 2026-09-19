@@ -21,16 +21,6 @@
   },
   {
     "targets": [
-      "network-control-service:8013"
-    ],
-    "labels": {
-      "job": "infrascope-network-control-service",
-      "service_name": "network-control-service",
-      "__metrics_path__": "/metrics"
-    }
-  },
-  {
-    "targets": [
       "worker:9108"
     ],
     "labels": {

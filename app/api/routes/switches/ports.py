@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.core.config import settings
 from app.domains.inventory.models import SwitchPortSnapshot
 from app.domains.inventory.schemas import (
     SwitchPortAdminStateUpdate,
@@ -23,7 +22,6 @@ from app.domains.inventory.schemas import (
 from app.domains.shared.schemas import Message
 from app.observability.metrics import switch_port_op_duration_seconds, switch_port_ops_total
 from app.services.cache import get_cached_model, set_cached_model
-from app.services.internal_services import _proxy_request
 from app.services.smart_search import text_matches_query
 from app.services.switches import resolve_switch_provider
 
@@ -177,21 +175,6 @@ async def set_port_admin_state(
     current_user: CurrentUser,
 ) -> Message:
     safe_port = _validate_switch_port(port)
-    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
-        _require_superuser(current_user)
-        lock_key = await _acquire_switch_write_lock(switch_id)
-        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="admin_state")
-        try:
-            payload = await _proxy_request(
-                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-                method="POST",
-                path=f"/switches/{switch_id}/ports/{safe_port}/admin-state",
-                json_body={"admin_state": body.admin_state},
-            )
-            await _invalidate_ports_cache(switch_id)
-            return Message.model_validate(payload)
-        finally:
-            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
@@ -211,20 +194,6 @@ async def set_port_description(
     current_user: CurrentUser,
 ) -> Message:
     safe_port = _validate_switch_port(port)
-    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
-        _require_superuser(current_user)
-        lock_key = await _acquire_switch_write_lock(switch_id)
-        try:
-            payload = await _proxy_request(
-                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-                method="POST",
-                path=f"/switches/{switch_id}/ports/{safe_port}/description",
-                json_body={"description": body.description},
-            )
-            await _invalidate_ports_cache(switch_id)
-            return Message.model_validate(payload)
-        finally:
-            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
@@ -244,21 +213,6 @@ async def set_port_vlan(
     current_user: CurrentUser,
 ) -> Message:
     safe_port = _validate_switch_port(port)
-    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
-        _require_superuser(current_user)
-        lock_key = await _acquire_switch_write_lock(switch_id)
-        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="vlan")
-        try:
-            payload = await _proxy_request(
-                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-                method="POST",
-                path=f"/switches/{switch_id}/ports/{safe_port}/vlan",
-                json_body={"vlan": body.vlan},
-            )
-            await _invalidate_ports_cache(switch_id)
-            return Message.model_validate(payload)
-        finally:
-            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
@@ -278,21 +232,6 @@ async def set_port_poe(
     current_user: CurrentUser,
 ) -> Message:
     safe_port = _validate_switch_port(port)
-    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
-        _require_superuser(current_user)
-        lock_key = await _acquire_switch_write_lock(switch_id)
-        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="poe")
-        try:
-            payload = await _proxy_request(
-                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-                method="POST",
-                path=f"/switches/{switch_id}/ports/{safe_port}/poe",
-                json_body={"action": body.action},
-            )
-            await _invalidate_ports_cache(switch_id)
-            return Message.model_validate(payload)
-        finally:
-            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,
@@ -312,26 +251,6 @@ async def set_port_mode(
     current_user: CurrentUser,
 ) -> Message:
     safe_port = _validate_switch_port(port)
-    if settings.NETWORK_CONTROL_SERVICE_ENABLED:
-        _require_superuser(current_user)
-        lock_key = await _acquire_switch_write_lock(switch_id)
-        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="mode")
-        try:
-            payload = await _proxy_request(
-                base_url=settings.NETWORK_CONTROL_SERVICE_URL,
-                method="POST",
-                path=f"/switches/{switch_id}/ports/{safe_port}/mode",
-                json_body={
-                    "mode": body.mode,
-                    "access_vlan": body.access_vlan,
-                    "native_vlan": body.native_vlan,
-                    "allowed_vlans": body.allowed_vlans,
-                },
-            )
-            await _invalidate_ports_cache(switch_id)
-            return Message.model_validate(payload)
-        finally:
-            await _release_switch_write_lock(lock_key)
     return await _run_port_write(
         session=session,
         switch_id=switch_id,

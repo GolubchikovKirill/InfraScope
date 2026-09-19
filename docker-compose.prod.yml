@@ -23,9 +23,6 @@ services:
   worker:
     restart: unless-stopped
 
-  network-control-service:
-    restart: unless-stopped
-
   media-service:
     restart: unless-stopped
 

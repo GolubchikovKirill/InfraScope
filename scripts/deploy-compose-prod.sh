@@ -54,7 +54,6 @@ APP_SERVICES=(
   worker
   beat
   frontend
-  network-control-service
   media-service
 )
 
@@ -98,8 +97,6 @@ validate_production_env() {
   local secret_key
   local postgres_password
   local first_password
-  local internal_token
-  local internal_services_enabled
   local errors
 
   environment="$(env_value ENVIRONMENT)"
@@ -108,14 +105,6 @@ validate_production_env() {
   secret_key="$(env_value SECRET_KEY)"
   postgres_password="$(env_value POSTGRES_PASSWORD)"
   first_password="$(env_value FIRST_SUPERUSER_PASSWORD)"
-  internal_token="$(env_value INTERNAL_SERVICE_TOKEN)"
-  internal_services_enabled=0
-  for flag in NETWORK_CONTROL_SERVICE_ENABLED MEDIA_SERVICE_ENABLED; do
-    case "$(printf '%s' "$(env_value "$flag")" | tr '[:upper:]' '[:lower:]')" in
-      true|1|yes|on) internal_services_enabled=1 ;;
-    esac
-  done
-
   errors=0
   if is_placeholder "$secret_key" || [ "${#secret_key}" -lt 32 ]; then
     echo ".env: SECRET_KEY must be a generated production secret (32+ chars)."
@@ -129,10 +118,6 @@ validate_production_env() {
     echo ".env: FIRST_SUPERUSER_PASSWORD must be set to a strong value (12+ chars)."
     errors=1
   fi
-  if [ "$internal_services_enabled" -eq 1 ] && { is_placeholder "$internal_token" || [ "${#internal_token}" -lt 24 ]; }; then
-    echo ".env: INTERNAL_SERVICE_TOKEN must be set when internal services are enabled."
-    errors=1
-  fi
 
   if [ "$errors" -ne 0 ]; then
     cat <<'EOF'
@@ -140,7 +125,7 @@ validate_production_env() {
 Generate safe values on the server, for example:
   python3 - <<'PY'
 import secrets
-for key in ("SECRET_KEY", "POSTGRES_PASSWORD", "FIRST_SUPERUSER_PASSWORD", "INTERNAL_SERVICE_TOKEN", "MEDIA_CLIENT_TOKEN"):
+for key in ("SECRET_KEY", "POSTGRES_PASSWORD", "FIRST_SUPERUSER_PASSWORD", "MEDIA_CLIENT_TOKEN"):
     print(f"{key}={secrets.token_urlsafe(32)}")
 PY
 

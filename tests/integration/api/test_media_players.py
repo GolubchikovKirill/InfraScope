@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes import media_players as media_routes
 from app.domains.inventory import media_polling
+from app.domains.inventory.models import MediaPlayer
 from app.domains.inventory.reachability import ReachabilityResult
 from app.services import discovery_jobs
 
@@ -193,17 +194,26 @@ def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token:
     assert polled.json()["data"][0]["is_online"] is True
 
 
-def test_iconbit_bulk_play_uses_network_control_service_when_enabled(client: TestClient, admin_token: str, monkeypatch):
-    async def _fake_proxy_request(**kwargs):
-        assert kwargs["path"] == "/iconbit/bulk-play"
-        return {"success": 2, "failed": 0}
+def test_iconbit_bulk_play_runs_in_process_against_every_iconbit(client: TestClient, admin_token: str, db_session, monkeypatch):
+    for n in (1, 2):
+        db_session.add(MediaPlayer(device_type="iconbit", name=f"Iconbit {n}", model="Iconbit", ip_address=f"10.10.98.{30 + n}"))
+    db_session.add(MediaPlayer(device_type="nettop", name="Not an iconbit", model="Nettop", ip_address="10.10.98.99"))
+    db_session.commit()
 
-    monkeypatch.setattr(media_routes.settings, "NETWORK_CONTROL_SERVICE_ENABLED", True)
-    monkeypatch.setattr(media_routes, "_proxy_request", _fake_proxy_request)
+    played: list[str] = []
+
+    def _fake_play(ip: str) -> bool:
+        played.append(ip)
+        return ip != "10.10.98.32"
+
+    monkeypatch.setattr(media_routes, "iconbit_play", _fake_play)
 
     response = client.post(
         "/api/v1/media-players/iconbit/bulk-play",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 200
-    assert response.json()["success"] == 2
+    assert response.json() == {"success": 1, "failed": 1}
+    assert sorted(played) == ["10.10.98.31", "10.10.98.32"]
+
+

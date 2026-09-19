@@ -8,7 +8,7 @@ InfraScope already has a microservice-oriented Docker Compose setup:
 - `backend` is the API gateway and owns authentication, UI-facing API, migrations, and orchestration.
 - `worker` runs Celery tasks through Redis.
 - Device polling and discovery scans run in `worker` (Celery); the API triggers manual polls in-process.
-- `network-control-service` performs direct switch/media-player control operations.
+- Direct switch and Iconbit control operations run in `backend`, behind a per-switch write lock and cooldown.
 - `media-service` serves media manifests and media files to Windows media clients.
 - Prediction training/scoring runs as Celery tasks in `worker` (there is no separate ml service).
 - `postgres`, `redis`, `jaeger`, `prometheus`, and `grafana` are infrastructure services.
@@ -45,17 +45,15 @@ SECRET_KEY=...
 FIRST_SUPERUSER_EMAIL=...
 FIRST_SUPERUSER_PASSWORD=...
 POSTGRES_PASSWORD=...
-INTERNAL_SERVICE_TOKEN=...
 MEDIA_CLIENT_TOKEN=...
-NETWORK_CONTROL_SERVICE_ENABLED=true
 MEDIA_SERVICE_ENABLED=true
 ```
 
 3. Start or update without touching database volumes:
 
 ```bash
-docker compose build backend worker frontend network-control-service media-service
-docker compose up -d --no-deps backend worker frontend network-control-service media-service
+docker compose build backend worker frontend media-service
+docker compose up -d --no-deps backend worker frontend media-service
 ```
 
 4. Apply production override:
@@ -70,19 +68,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose ps
 docker compose logs backend --tail=100
 docker compose logs worker --tail=100
-docker compose logs network-control-service --tail=100
+docker compose logs --tail=100
 ```
 
 ### Stage 2: Microservice Cleanup
 
 Keep this boundary:
 
-- `backend`: UI API, auth, orchestration, database migrations.
-- `network-control-service`: switch ports, PoE, Iconbit/direct device commands.
+- `backend`: UI API, auth, database migrations, and the direct device commands a person triggers (switch ports, PoE, Iconbit).
 - `media-service`: manifests and file delivery for Windows media clients.
-- `worker`: scheduled/long-running tasks.
+- `worker`: scheduled and long-running tasks (polling, discovery scans, ML, AP auto-reboot).
 
-Avoid adding new direct LAN operations back into `backend`. The backend should call internal services over HTTP with `INTERNAL_SERVICE_TOKEN`.
+Long-running or scheduled work belongs in `worker`; keep request handlers to short, operator-triggered device commands.
 
 ### Stage 3: Compose Hardening
 
@@ -95,8 +92,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 2. For updates, do rolling restart of app services without removing stateful volumes:
 
 ```bash
-docker compose build backend worker frontend network-control-service media-service
-docker compose up -d --no-deps backend worker frontend network-control-service media-service
+docker compose build backend worker frontend media-service
+docker compose up -d --no-deps backend worker frontend media-service
 ```
 
 3. Verify health and readiness:

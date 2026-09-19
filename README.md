@@ -45,7 +45,7 @@ InfraScope — платформа мониторинга инфраструкт�
   - CORS whitelist;
   - HTTPS через Nginx;
   - без insecure default credentials для 1C QR SQL (требуется явная настройка в `.env`);
-  - production guard для `FIRST_SUPERUSER_PASSWORD` и `INTERNAL_SERVICE_TOKEN`.
+  - production guard для `SECRET_KEY` и `FIRST_SUPERUSER_PASSWORD`.
 - Frontend:
   - сортировка online выше offline;
   - page-scoped автообновление только на активных страницах вместо глобального `poll-all` по всему приложению;
@@ -102,7 +102,7 @@ cp .env.example .env
 ./scripts/deploy-compose-prod.sh
 ```
 
-Скрипт перед запуском проверяет production `.env`. Если backend падает сразу после старта, сначала проверьте, что в `.env` нет `changethis`/`CHANGE_ME` и коротких значений в `SECRET_KEY`, `FIRST_SUPERUSER_PASSWORD`, `INTERNAL_SERVICE_TOKEN`. `POSTGRES_PASSWORD` для уже созданного volume меняйте только после смены пароля роли внутри PostgreSQL.
+Скрипт перед запуском проверяет production `.env`. Если backend падает сразу после старта, сначала проверьте, что в `.env` нет `changethis`/`CHANGE_ME` и коротких значений в `SECRET_KEY`, `FIRST_SUPERUSER_PASSWORD`. `POSTGRES_PASSWORD` для уже созданного volume меняйте только после смены пароля роли внутри PostgreSQL.
 
 Рекомендованный сетевой профиль для сервера `4 vCPU / 16 GB RAM / 1 Gbps`:
 
@@ -158,7 +158,6 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - `frontend` — SPA + Nginx + HTTPS
 - `backend` — API gateway/orchestration, `/metrics`
 - `worker` — Celery worker: плановый опрос устройств, discovery-сканы, ML (обучение/скоринг), перезагрузка точек доступа
-- `network-control-service` — отдельный runtime control операций (Iconbit, switch write ops) + `/metrics`
 - `media-service` — отдельный runtime выдачи media manifest и файлов медиатеки для клиентских неттоп-агентов + `/metrics`
 - `jaeger` — distributed tracing (цепочки вызовов между сервисами)
 - `db` — PostgreSQL
@@ -254,7 +253,6 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `POSTGRES_*`
   - `REDIS_URL`
   - `FIRST_SUPERUSER_*`
-  - `INTERNAL_SERVICE_TOKEN`
 - Сканирование/сеть:
   - `SCAN_SUBNET`, `SCAN_PORTS`
   - `SCAN_MAX_HOSTS`, `SCAN_TCP_TIMEOUT`, `SCAN_TCP_RETRIES`, `SCAN_TCP_CONCURRENCY`
@@ -272,8 +270,6 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `INTERNAL_HTTP_RETRY_BACKOFF_SECONDS`
 - Forecasting:
   - `ML_ENABLED`
-  - `NETWORK_CONTROL_SERVICE_ENABLED`, `NETWORK_CONTROL_SERVICE_URL`
-  - `INTERNAL_SERVICE_TOKEN`
   - `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAMESPACE`
   - `PROMETHEUS_API_URL`, `JAEGER_API_URL`, `JAEGER_UI_URL`
   - `ML_MIN_TRAIN_ROWS`, `ML_RETRAIN_HOUR_UTC`, `ML_SCORE_INTERVAL_MINUTES`
@@ -310,7 +306,6 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `SECRET_KEY`
   - `POSTGRES_PASSWORD`
   - `FIRST_SUPERUSER_PASSWORD` (`production` не стартует с пустым/слабым значением)
-  - `INTERNAL_SERVICE_TOKEN` (обязателен при включенных внутренних сервисах в `production`)
   - `GRAFANA_ADMIN_PASSWORD`
   - `QR_SQL_LOGIN`, `QR_SQL_PASSWORD` (если используется QR генерация через SQL)
   - `QR_SQL_DUTY_FREE_SERVER`, `QR_SQL_DUTY_FREE_DATABASE`
@@ -355,7 +350,7 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
 
 После деплоя откройте `http://127.0.0.1:16686`:
 
-1. Выберите сервис (`backend`, `network-control-service`).
+1. Выберите сервис (`backend`).
 2. Нажмите **Find Traces** и посмотрите end-to-end цепочку запроса.
 
 Операционные события (offline/online, смена IP, критические ошибки) пишутся в таблицу `event_log` и видны во вкладке «Логи». Отдельной шины событий нет: раньше они дублировались в Kafka, но читателей у топика не было, и её убрали.

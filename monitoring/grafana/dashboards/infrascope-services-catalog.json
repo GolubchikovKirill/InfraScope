@@ -68,37 +68,11 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Network Control Service up",
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 0
-      },
-      "targets": [
-        {
-          "expr": "avg(up{job=\"infrascope-network-control-service\"})",
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      }
-    },
-    {
-      "id": 4,
-      "type": "stat",
       "title": "Worker up",
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 18,
+        "x": 12,
         "y": 0
       },
       "targets": [

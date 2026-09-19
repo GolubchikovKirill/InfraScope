@@ -210,15 +210,6 @@ groups:
           summary: "Ошибки обучения ML моделей"
           description: "За последний час обнаружены неуспешные train run в ML контуре."
 
-      - alert: InfraScopeNetworkControlServiceDown
-        expr: max_over_time(up{job="infrascope-network-control-service"}[2m]) == 0
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "InfraScope network-control service недоступен"
-          description: "Prometheus не может собрать метрики network-control-service более 2 минут."
-
       - alert: InfraScopeApAutoRebootFailed
         expr: sum(increase(infrascope_ap_auto_reboot_total{result=~"failed|command_failed"}[12h])) > 0
         for: 1m

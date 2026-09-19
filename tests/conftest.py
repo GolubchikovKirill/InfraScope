@@ -15,7 +15,6 @@ from sqlmodel import Session, SQLModel, create_engine
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 os.environ.setdefault("FIRST_SUPERUSER_PASSWORD", "TestPassword123!")
-os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-internal-token")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-with-at-least-32-bytes")
 # TestClient talks to host "testserver", which the settings default allows but a
 # real .env sitting in the repo root does not - without this every request dies
@@ -27,11 +26,8 @@ os.environ.setdefault("BACKEND_TRUSTED_HOSTS", '["testserver","localhost","127.0
 # thread retrying against a collector that isn't there. Real env vars outrank
 # .env, so pin the external integrations off here.
 os.environ.setdefault("OTEL_ENABLED", "false")
-# Likewise the internal-service switches: with the developer's .env they send
-# network-control requests to http://network-control-service:8013, which does not
-# exist here (-> 504 after a connect timeout). Tests that cover the proxied
-# path opt in per test via monkeypatch.
-os.environ.setdefault("NETWORK_CONTROL_SERVICE_ENABLED", "false")
+# Likewise the media-service switch: with the developer's .env it points requests
+# at a media service that does not exist here.
 os.environ.setdefault("MEDIA_SERVICE_ENABLED", "false")
 
 from app.api import deps
