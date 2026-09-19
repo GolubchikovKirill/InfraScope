@@ -54,7 +54,7 @@ Code here should depend on services, not API route modules.
   `app/api/routes/logs.py`, `app/api/routes/cash_registers.py`
 - Application services: `app/domains/operations/cash_register_polling.py`
 - Services: `app/services/event_log.py`, `poll_resilience.py`, `service_flow.py`,
-  `internal_services.py`, `kafka_events.py`
+  `internal_services.py`
 - Infra: `services/`, `docker-compose*.yml`, `scripts/`, `tools/scaffold/`
 
 ## Integrations
@@ -82,7 +82,7 @@ Owns metrics, tracing, dashboards, service descriptors, deployment manifests, an
 
 - Backend: `app/observability/`, `app/api/routes/observability.py`
 - Monitoring: `monitoring/`
-- Delivery: `infra/`, `docs/runbooks/`, `docs/asyncapi.yml`
+- Delivery: `infra/`, `docs/runbooks/`
 
 ## Refactoring Rules
 

@@ -149,13 +149,6 @@ def _node_links(node_id: str) -> list[ServiceFlowLinkPublic]:
                 url=f"{settings.PROMETHEUS_API_URL.rstrip('/')}/graph",
             )
         )
-    if node_id == "kafka":
-        links.append(
-            ServiceFlowLinkPublic(
-                label="Kafka UI",
-                url=f"{settings.KAFKA_UI_URL.rstrip('/')}/ui/clusters/infrascope/all-topics/infrascope.events/messages",
-            )
-        )
     return links
 
 

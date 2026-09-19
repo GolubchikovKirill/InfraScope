@@ -52,9 +52,6 @@ InfraScope — платформа мониторинга инфраструкт�
   - отдельная вкладка `Поиск в сети` для smart/discovery scan и добавления найденных устройств в нужный раздел.
   - отдельная вкладка `QR-генерация` с под-вкладками: `Штрихкоды кассиров` и `Посадочные`.
   - обмен по штрихкоду поддерживает раздельные каналы `Duty Free` и `Duty Paid` (`/api/v1/1c-exchange/by-barcode`).
-- Kafka:
-  - event-stream operational логов в топик `infrascope.events`;
-  - UI для просмотра топиков и сообщений (`kafka-ui`).
 
 ---
 
@@ -127,7 +124,6 @@ CASH_REGISTER_POLL_CONCURRENCY=16
 - Prometheus: `http://127.0.0.1:9090` (по умолчанию bind на localhost)
 - Grafana: `http://127.0.0.1:3000` (по умолчанию bind на localhost)
   - логин и пароль задаются через `GRAFANA_ADMIN_USER` и `GRAFANA_ADMIN_PASSWORD`; значение `CHANGE_ME` перед запуском нужно заменить.
-- Kafka UI: `http://127.0.0.1:8080`
 - Jaeger (trace UI): `http://127.0.0.1:16686`
 
 > Для доступа по LAN настройте `HOST_IP`, hosts/DNS и при необходимости `PROMETHEUS_BIND` / `GRAFANA_BIND`.
@@ -167,15 +163,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - `discovery-service` — отдельный runtime discovery/scan + `/metrics`
 - `network-control-service` — отдельный runtime control операций (Iconbit, switch write ops) + `/metrics`
 - `media-service` — отдельный runtime выдачи media manifest и файлов медиатеки для клиентских неттоп-агентов + `/metrics`
-- `kafka` — event bus для operational событий
-- `kafka-ui` — web-интерфейс Kafka
 - `jaeger` — distributed tracing (цепочки вызовов между сервисами)
 - `db` — PostgreSQL
 - `redis` — cache/locks/broker/backend
 - `prometheus` — сбор метрик
 - `grafana` — визуализация
 
-Compose healthcheck у Python-сервисов проверяет `/health`: это только признак, что процесс поднялся и отвечает по HTTP. Готовность внешних зависимостей проверяется отдельно через `/ready`, чтобы временная проблема PostgreSQL/Redis/Kafka не блокировала старт всех контейнеров каскадом.
+Compose healthcheck у Python-сервисов проверяет `/health`: это только признак, что процесс поднялся и отвечает по HTTP. Готовность внешних зависимостей проверяется отдельно через `/ready`, чтобы временная проблема PostgreSQL/Redis не блокировала старт всех контейнеров каскадом.
 
 ### Plug-and-play service platform
 
@@ -285,15 +279,13 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `DISCOVERY_SERVICE_ENABLED`, `DISCOVERY_SERVICE_URL`
   - `NETWORK_CONTROL_SERVICE_ENABLED`, `NETWORK_CONTROL_SERVICE_URL`
   - `INTERNAL_SERVICE_TOKEN`
-  - `KAFKA_ENABLED`, `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_EVENT_TOPIC`
   - `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAMESPACE`
-  - `PROMETHEUS_API_URL`, `JAEGER_API_URL`, `JAEGER_UI_URL`, `KAFKA_UI_URL`
+  - `PROMETHEUS_API_URL`, `JAEGER_API_URL`, `JAEGER_UI_URL`
   - `ML_MIN_TRAIN_ROWS`, `ML_RETRAIN_HOUR_UTC`, `ML_SCORE_INTERVAL_MINUTES`
   - `ML_FEATURE_SNAPSHOT_RETENTION_DAYS`, `ML_MODEL_REGISTRY_KEEP_PER_FAMILY`, `ML_RETENTION_BATCH_SIZE`
 - Monitoring:
   - `PROMETHEUS_BIND`, `PROMETHEUS_PORT`, `PROMETHEUS_RETENTION`
   - `GRAFANA_BIND`, `GRAFANA_PORT`, `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`
-  - `KAFKA_UI_BIND`, `KAFKA_UI_PORT`
   - `JAEGER_BIND`, `JAEGER_PORT`, `JAEGER_MEMORY_MAX_TRACES`
 
 ---
@@ -332,7 +324,7 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `QR_SQL_TIMEOUT_SECONDS` (таймаут подключения и SQL-запроса)
   - `QR_EXPORT_TIMEOUT_SECONDS` (общий таймаут формирования Word/ZIP)
 - Проверить, что monitoring/UI-порты не открыты наружу без VPN/reverse proxy:
-  - `PROMETHEUS_BIND`, `GRAFANA_BIND`, `KAFKA_UI_BIND`, `JAEGER_BIND`
+  - `PROMETHEUS_BIND`, `GRAFANA_BIND`, `JAEGER_BIND`
 - Проверить whitelist CORS (`BACKEND_CORS_ORIGINS`) и удалить лишние origin.
 - Ротация и хранение секретов: не хранить реальные пароли в Git, использовать `.env`/secret-store.
 - Проверить, что frontend websocket `/api/v1/realtime/ws` проходит через Nginx и не дает `404` в production.
@@ -364,41 +356,14 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
 - Для macOS/Windows (Docker Desktop VM) больше опирайтесь на SNMP/HTTP fingerprint, чем на ARP.
 - Для предсказуемого апдейта на сервере используйте `./scripts/deploy-compose-prod.sh`.
 
-### Kafka: как смотреть и пользоваться
-
-После `./scripts/deploy-compose-prod.sh` Kafka уже поднята автоматически, отдельной ручной настройки не требуется.
-
-1. Откройте UI: `http://127.0.0.1:8080`.
-2. Выберите кластер `infrascope`.
-3. Откройте топик `infrascope.events` — там operational события (offline/online, IP changes, critical errors и т.д.).
-
-Важно: Kafka UI показывает топики/сообщения/consumer lag, но не полноценную карту связей сервисов.
-Для визуализации цепочек "кто кого вызвал" используйте Jaeger.
-
-CLI-проверка из контейнера Kafka:
-
-```bash
-docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
-docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic infrascope.events --from-beginning
-```
-
-Создать тестовое сообщение:
-
-```bash
-docker compose exec kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server kafka:9092 --topic infrascope.events
-```
-
 ### Tracing: карта связей между сервисами
 
 После деплоя откройте `http://127.0.0.1:16686`:
 
 1. Выберите сервис (`backend`, `polling-service`, `discovery-service`, `network-control-service`, `ml-service`).
 2. Нажмите **Find Traces** и посмотрите end-to-end цепочку запроса.
-3. Для переходов между API и Kafka используйте поле `trace_id` в сообщениях `infrascope.events`.
 
-`trace_id` теперь публикуется в Kafka payload и может быть использован для склейки событий и трейсов.
-
-Спецификация event-контракта: `docs/asyncapi.yml`.
+Операционные события (offline/online, смена IP, критические ошибки) пишутся в таблицу `event_log` и видны во вкладке «Логи». Отдельной шины событий нет: раньше они дублировались в Kafka, но читателей у топика не было, и её убрали.
 
 ### NetSupport Manager
 

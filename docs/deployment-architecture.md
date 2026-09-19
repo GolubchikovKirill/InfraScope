@@ -12,33 +12,13 @@ InfraScope already has a microservice-oriented Docker Compose setup:
 - `network-control-service` performs direct switch/media-player control operations.
 - `media-service` serves media manifests and media files to Windows media clients.
 - `ml-service` runs prediction/training workflows.
-- `postgres`, `redis`, `kafka`, `jaeger`, `prometheus`, and `grafana` are infrastructure services.
+- `postgres`, `redis`, `jaeger`, `prometheus`, and `grafana` are infrastructure services.
 
 Production path for this project is Docker Compose only.
 
-## Is Kafka Needed?
+## Kafka
 
-Kafka is useful, but it is not mandatory for the core application.
-
-Keep Kafka when you need:
-
-- durable operational event stream;
-- service/event audit trail outside the main database;
-- future integrations with external systems;
-- consumer lag and event-flow visibility through Kafka UI;
-- replayable events for analytics or incident investigation.
-
-Kafka is overkill when:
-
-- the app runs on one small server;
-- operational events are only shown in the app logs table;
-- no other services consume events;
-- low maintenance is more important than event-stream durability.
-
-Recommended production stance for the current project:
-
-- Single-machine Docker deployment: Kafka can be disabled with `KAFKA_ENABLED=false` if you want fewer moving parts.
-- Microservice/observability deployment: keep Kafka enabled.
+Removed. It only carried a copy of the rows already written to the `event_log` table, and nothing consumed the topic, while the backend refused to start without a healthy broker. Operational events live in `event_log`; if an external consumer ever appears, add a broker (or a webhook) back for that concrete need.
 
 ## Recommended Rollout Path
 
@@ -68,7 +48,6 @@ FIRST_SUPERUSER_PASSWORD=...
 POSTGRES_PASSWORD=...
 INTERNAL_SERVICE_TOKEN=...
 MEDIA_CLIENT_TOKEN=...
-KAFKA_ENABLED=true
 NETWORK_CONTROL_SERVICE_ENABLED=true
 POLLING_SERVICE_ENABLED=true
 DISCOVERY_SERVICE_ENABLED=true
@@ -142,5 +121,4 @@ For the current app, the best near-term setup is:
 1. Keep Docker Compose as the production deployment on the office/server machine.
 2. Keep Redis and worker enabled.
 3. Keep microservices enabled for polling, discovery, network control, media, and forecasting.
-4. Keep Kafka only if you actively use event stream/Kafka UI. Otherwise disable it to reduce maintenance.
-5. Keep deployment model simple: one production path (`docker compose`) and documented rollback steps.
+4. Keep deployment model simple: one production path (`docker compose`) and documented rollback steps.

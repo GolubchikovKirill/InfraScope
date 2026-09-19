@@ -34,46 +34,6 @@ services:
     networks:
       - internal
 
-  kafka:
-    image: apache/kafka:3.9.0
-    restart: unless-stopped
-    environment:
-      KAFKA_NODE_ID: "1"
-      KAFKA_PROCESS_ROLES: "broker,controller"
-      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
-      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
-      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
-      interval: 20s
-      retries: 6
-      start_period: 40s
-      timeout: 10s
-    networks:
-      - internal
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:v0.7.2@sha256:8f2ff02d64b0a7a2b71b6b3b3148b85f66d00ec20ad40c30bdcd415d46d31818
-    restart: unless-stopped
-    ports:
-      - "${KAFKA_UI_BIND:-127.0.0.1}:${KAFKA_UI_PORT:-8080}:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: infrascope
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-    depends_on:
-      kafka:
-        condition: service_healthy
-    networks:
-      - internal
-
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
     restart: unless-stopped
@@ -107,8 +67,6 @@ services:
       RUSTDESK_PACKAGE_DIR: /var/lib/infrascope/rustdesk
       NETWORK_CONTROL_SERVICE_ENABLED: ${NETWORK_CONTROL_SERVICE_ENABLED:-true}
       NETWORK_CONTROL_SERVICE_URL: http://network-control-service:8013
-      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
@@ -125,8 +83,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
       jaeger:
         condition: service_healthy
@@ -158,8 +114,6 @@ services:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-6}
       WORKER_POOL: ${WORKER_POOL:-threads}
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9108}
-      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
@@ -167,8 +121,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
       jaeger:
         condition: service_healthy
@@ -229,8 +181,6 @@ services:
     environment:
       POSTGRES_SERVER: db
       REDIS_URL: redis://redis:6379/0
-      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
@@ -242,8 +192,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
@@ -271,8 +219,6 @@ services:
       MEDIA_LIBRARY_DIR: /var/lib/infrascope/media-library
       POLLING_SERVICE_ENABLED: "false"
       DISCOVERY_SERVICE_ENABLED: "false"
-      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
@@ -288,8 +234,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/health')"]
@@ -320,8 +264,6 @@ services:
       REDIS_URL: redis://redis:6379/0
       POLLING_SERVICE_ENABLED: "false"
       DISCOVERY_SERVICE_ENABLED: "false"
-      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
@@ -335,8 +277,6 @@ services:
       - ${DNS_SEARCH_DOMAIN:-}
     depends_on:
       redis:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
       jaeger:
         condition: service_healthy
@@ -366,8 +306,6 @@ services:
       POLLING_SERVICE_ENABLED: "false"
       DISCOVERY_SERVICE_ENABLED: "false"
       NETWORK_CONTROL_SERVICE_ENABLED: "false"
-      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
@@ -379,8 +317,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
       jaeger:
         condition: service_healthy
@@ -413,8 +349,6 @@ services:
       DISCOVERY_SERVICE_ENABLED: "false"
       NETWORK_CONTROL_SERVICE_ENABLED: "false"
       MEDIA_SERVICE_ENABLED: "false"
-      KAFKA_ENABLED: ${KAFKA_ENABLED:-true}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
@@ -428,8 +362,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
       jaeger:
         condition: service_healthy
@@ -566,8 +498,6 @@ volumes:
     name: infrascope_postgres_data
   redis_data:
     name: infrascope_redis_data
-  kafka_data:
-    name: infrascope_kafka_data
   prometheus_data:
     name: infrascope_prometheus_data
   grafana_data:

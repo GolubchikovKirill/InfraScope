@@ -22,12 +22,10 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-with-at-least-32-bytes")
 # in TrustedHostMiddleware as "Invalid host header", surfacing as a confusing
 # HTTP 400 from the login fixture rather than anything about hosts.
 os.environ.setdefault("BACKEND_TRUSTED_HOSTS", '["testserver","localhost","127.0.0.1"]')
-# The repo-root .env is a developer's real config (Kafka, tracing, ...). Left
-# to pydantic-settings it leaks into the suite: KAFKA_ENABLED=true made every
-# poll test block on a real broker connection and OTEL_ENABLED=true kept an
-# exporter thread retrying against a collector that isn't there. Real env vars
-# outrank .env, so pin the external integrations off here.
-os.environ.setdefault("KAFKA_ENABLED", "false")
+# The repo-root .env is a developer's real config (tracing, ...). Left to
+# pydantic-settings it leaks into the suite: OTEL_ENABLED=true kept an exporter
+# thread retrying against a collector that isn't there. Real env vars outrank
+# .env, so pin the external integrations off here.
 os.environ.setdefault("OTEL_ENABLED", "false")
 # Likewise the internal-service switches: with the developer's .env they send
 # poll/discovery requests to http://polling-service:8011 & co., which do not

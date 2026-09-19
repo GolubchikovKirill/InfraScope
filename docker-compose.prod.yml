@@ -14,12 +14,6 @@ services:
   redis:
     restart: unless-stopped
 
-  kafka:
-    restart: unless-stopped
-
-  kafka-ui:
-    restart: unless-stopped
-
   jaeger:
     restart: unless-stopped
 

@@ -18,7 +18,7 @@ def main() -> int:
             names.append(compose_name)
 
     # Core infra services are always checked explicitly.
-    names.extend(["kafka", "kafka-ui", "jaeger"])
+    names.extend(["jaeger"])
     unique = []
     seen = set()
     for name in names:

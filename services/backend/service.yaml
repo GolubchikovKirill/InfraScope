@@ -19,9 +19,6 @@ dependencies:
   - target: redis
     transport: redis
     operation: cache-broker
-  - target: kafka
-    transport: kafka
-    operation: event-publish
 k8s:
   enabled: true
   replicas: 2

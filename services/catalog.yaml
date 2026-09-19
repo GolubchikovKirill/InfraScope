@@ -39,11 +39,6 @@ nodes:
     kind: service
     prometheus_job: ml-service
     service_map_enabled: true
-  - id: kafka
-    label: Kafka
-    kind: infra
-    prometheus_job: ""
-    service_map_enabled: true
   - id: jaeger
     label: Jaeger
     kind: infra
@@ -74,10 +69,6 @@ edges:
     target: ml-service
     transport: http
     operation: prediction calls
-  - source: backend
-    target: kafka
-    transport: kafka
-    operation: event publish
   - source: worker
     target: polling-service
     transport: http

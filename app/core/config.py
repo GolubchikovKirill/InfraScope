@@ -207,16 +207,12 @@ class Settings(BaseSettings):
     INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0
     INTERNAL_HTTP_RETRIES: int = 1
     INTERNAL_HTTP_RETRY_BACKOFF_SECONDS: float = 0.5
-    KAFKA_ENABLED: bool = False
-    KAFKA_BOOTSTRAP_SERVERS: str = "kafka:9092"
-    KAFKA_EVENT_TOPIC: str = "infrascope.events"
     OTEL_ENABLED: bool = False
     OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://jaeger:4318/v1/traces"
     OTEL_SERVICE_NAMESPACE: str = "infrascope"
     PROMETHEUS_API_URL: str = "http://prometheus:9090"
     JAEGER_API_URL: str = "http://jaeger:16686"
     JAEGER_UI_URL: str = "http://127.0.0.1:16686"
-    KAFKA_UI_URL: str = "http://127.0.0.1:8080"
     ML_MIN_TRAIN_ROWS: int = 50
     ML_RETRAIN_HOUR_UTC: int = 2
     ML_SCORE_INTERVAL_MINUTES: int = 30
