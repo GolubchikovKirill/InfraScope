@@ -38,6 +38,7 @@ import { useCredentialIndex } from "../hooks/useCredentialIndex";
 import { credentialsHref, normalizeHostKey, rowDomId } from "../lib/deviceLinks";
 import { useConfirm } from "../components/ConfirmDialog";
 import RemoteAccessButtons from "../components/RemoteAccessButtons";
+import { isAttention, isWindowsXp } from "../lib/cashRegisters";
 
 type StatusFilter = "all" | "online" | "offline" | "unknown" | "attention";
 type ZoneFilter = "all" | "DF" | "DP";
@@ -86,14 +87,6 @@ const emptyForm: CashForm = {
   terminal_status: "",
   comment: "",
 };
-
-function isAttention(item: CashRegister) {
-  const piot = (item.piot_status || "").trim().toLocaleUpperCase("ru-RU");
-  const drawer = (item.cash_drawer || "").trim().toLocaleLowerCase("ru-RU");
-  const piotProblem = Boolean(piot) && (piot.includes("НЕ ОБНОВЛЕН") || !piot.includes("ОБНОВЛЕН"));
-  const drawerProblem = Boolean(drawer) && drawer !== "да";
-  return Boolean(item.terminal_status || piotProblem || drawerProblem);
-}
 
 function compareText(a: string | null, b: string | null) {
   return (a || "").localeCompare(b || "", "ru", { numeric: true, sensitivity: "base" });
@@ -415,8 +408,6 @@ function StatusBadge({ item }: { item: CashRegister }) {
   return <Badge><CircleHelp className="h-3.5 w-3.5" />не опрошена</Badge>;
 }
 
-// windows_version holds both Latin "XP" and Cyrillic "ХР" (the inventory spreadsheet mixes them)
-const isWindowsXp = (value: string | null | undefined) => /^(xp|хр)$/i.test((value ?? "").trim());
 
 function piotTone(value: string | null): BadgeTone {
   const normalized = (value || "").toLocaleUpperCase("ru-RU");

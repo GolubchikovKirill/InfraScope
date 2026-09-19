@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -11,6 +11,13 @@ const api = vi.hoisted(() => ({
   getMediaPlayers: vi.fn(),
   getPrinters: vi.fn(),
   getSwitches: vi.fn(),
+  getRemoteDevices: vi.fn(),
+}));
+
+vi.mock("../auth", () => ({ useAuth: () => ({ user: { email: "a@b.c", is_superuser: true } }) }));
+
+vi.mock("../components/RemoteAccessButtons", () => ({
+  default: ({ hostname }: { hostname: string }) => <button type="button">Подключиться к {hostname}</button>,
 }));
 
 vi.mock("../client", () => api);
@@ -37,7 +44,14 @@ describe("OverviewPage", () => {
       count: 1,
     }));
     api.getSwitches.mockResolvedValue({ data: [{ id: "sw-1", is_online: false }], count: 1 });
-    api.getCashRegisters.mockResolvedValue({ data: [{ id: "cash-1", is_online: true, piot_status: "Обновлен", cash_drawer: "Да", terminal_status: null }], count: 1 });
+    api.getCashRegisters.mockResolvedValue({
+      data: [
+        { id: "cash-1", hostname: "VNA-KKM-201", store_number: "A2(200)", location_zone: "DF", kkm_number: "1", is_online: true, piot_status: "Обновлен", cash_drawer: "Да", terminal_status: null },
+        { id: "cash-2", hostname: "VNA-KKM-202", store_number: "A2(200)", location_zone: "DF", kkm_number: "2", is_online: false, reachability_reason: "no_response", piot_status: null, cash_drawer: null, terminal_status: null },
+      ],
+      count: 2,
+    });
+    api.getRemoteDevices.mockResolvedValue({ data: [], count: 0 });
     api.getComputers.mockResolvedValue({ data: [{ id: "pc-1", is_online: true }], count: 1 });
     api.getMediaPlayers.mockResolvedValue({ data: [{ id: "media-1", is_online: true }], count: 1 });
     api.getCartridgeStocks.mockResolvedValue({ data: [{ id: "stock-1", quantity_on_hand: 1, minimum_stock: 2 }], count: 1 });
@@ -53,5 +67,43 @@ describe("OverviewPage", () => {
     expect(screen.getByText("Нужно пополнить склад")).toBeInTheDocument();
     expect(screen.getByText("Свитч A1 недоступен")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /недоступно: 1 свитч/i })).toHaveAttribute("href", "/switches");
+  });
+
+  it("puts the stock summary next to the general statistics, above the cash map", async () => {
+    renderOverview();
+
+    const stats = await screen.findByRole("region", { name: "Общая статистика" });
+    expect(within(stats).getByText("Расходники")).toBeInTheDocument();
+    expect(within(stats).getByText("Склад картриджей")).toBeInTheDocument();
+    expect(within(stats).getByRole("link", { name: /Расходники/ })).toHaveAttribute("href", "/printers");
+
+    const map = screen.getByRole("region", { name: "Кассы" });
+    expect(stats.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the registers by store and opens a quick look with the connect button", async () => {
+    renderOverview();
+
+    const offline = await screen.findByRole("button", { name: /VNA-KKM-202, A2\(200\), недоступна/ });
+    expect(screen.getByRole("button", { name: /VNA-KKM-201, A2\(200\), на связи/ })).toBeInTheDocument();
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+
+    fireEvent.click(offline);
+
+    const dialog = await screen.findByRole("dialog", { name: "Касса VNA-KKM-202" });
+    expect(within(dialog).getByRole("button", { name: "Подключиться к VNA-KKM-202" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Нет ответа")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Закрыть" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not repeat the cash registers among the category cards", async () => {
+    renderOverview();
+
+    await screen.findByRole("region", { name: "Кассы" });
+    const categories = screen.getByText("По категориям").closest("section") as HTMLElement;
+    expect(within(categories).queryByText("Кассы")).not.toBeInTheDocument();
+    expect(within(categories).getByText("Сеть")).toBeInTheDocument();
   });
 });
