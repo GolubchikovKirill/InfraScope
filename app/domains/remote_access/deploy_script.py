@@ -194,8 +194,12 @@ function Report($state, $detail) {
         $body = @{ hostname = $Host_; rustdesk_id = $Rid; version = $Version;
                    state = $state; detail = "$detail"; os_edition = $OsEdition;
                    os_caption = $OsCaption } | ConvertTo-Json -Compress
+        # UTF-8 bytes, not the string: Windows PowerShell 5.1 encodes a string body as
+        # ISO-8859-1, so a localized error text ("Отказано в доступе") reached the server
+        # as "????????" and the failure could not be read.
         Invoke-RestMethod -Uri "$Base/report" -Method Post -Headers $Headers `
-            -ContentType 'application/json' -Body $body -TimeoutSec 30 | Out-Null
+            -ContentType 'application/json; charset=utf-8' `
+            -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 | Out-Null
     } catch { Log "report failed: $($_.Exception.Message)" }
 }
 

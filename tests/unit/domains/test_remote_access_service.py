@@ -468,6 +468,87 @@ def test_sync_from_console_clears_pending_once_the_client_is_online_under_our_id
     assert _dev(db_session, "VNA-MGR-1504").deploy_state == "configured"
 
 
+def test_sync_from_console_matches_the_canonical_id_case_insensitively(db_session, monkeypatch) -> None:
+    import asyncio
+
+    # the row's hostname was stored lower-case (created from a case-variant), the client
+    # reports the upper-case id - it is still the canonical peer, so "pending" must clear
+    db_session.add(
+        RemoteAccessDevice(
+            hostname="vnk-itd-sa05",
+            rustdesk_id="VNK_ITD_SA05",
+            source_kind="computer",
+            deploy_state="pending",
+        )
+    )
+    db_session.commit()
+
+    async def fake_peers():
+        return [
+            {"id": "VNK_ITD_SA05", "hostname": "VNK-ITD-SA05", "last_online_time": int(datetime.now(UTC).timestamp())}
+        ]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    asyncio.run(service.sync_from_console(db_session))
+
+    assert _dev(db_session, "vnk-itd-sa05").deploy_state == "configured"
+
+
+def _failed_device(db_session, *, reported_ago: timedelta, detail: str = "boom") -> None:
+    db_session.add(
+        RemoteAccessDevice(
+            hostname="VNA-SKD-14",
+            rustdesk_id="VNA_SKD_14",
+            source_kind="computer",
+            deploy_state="failed",
+            deploy_detail=detail,
+            deploy_reported_at=datetime.now(UTC) - reported_ago,
+        )
+    )
+    db_session.commit()
+
+
+def _online_peer(monkeypatch, peer_id: str = "VNA_SKD_14") -> None:
+    async def fake_peers():
+        return [
+            {"id": peer_id, "hostname": "VNA-SKD-14", "last_online_time": int(datetime.now(UTC).timestamp())}
+        ]
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+
+
+def test_sync_from_console_clears_an_old_failure_once_the_client_runs_under_our_id(db_session, monkeypatch) -> None:
+    import asyncio
+
+    _failed_device(db_session, reported_ago=timedelta(days=16), detail="Отказано в доступе")
+    _online_peer(monkeypatch)
+    asyncio.run(service.sync_from_console(db_session))
+
+    d = _dev(db_session, "VNA-SKD-14")
+    assert d.deploy_state == "configured"
+    assert "Ошибка снята автоматически" in d.deploy_detail and "Отказано в доступе" in d.deploy_detail
+
+
+def test_sync_from_console_keeps_a_fresh_failure_visible(db_session, monkeypatch) -> None:
+    import asyncio
+
+    _failed_device(db_session, reported_ago=timedelta(minutes=5))
+    _online_peer(monkeypatch)
+    asyncio.run(service.sync_from_console(db_session))
+
+    assert _dev(db_session, "VNA-SKD-14").deploy_state == "failed"
+
+
+def test_sync_from_console_keeps_an_old_failure_when_only_a_factory_id_peer_is_online(db_session, monkeypatch) -> None:
+    import asyncio
+
+    _failed_device(db_session, reported_ago=timedelta(days=16))
+    _online_peer(monkeypatch, peer_id="323409997")
+    asyncio.run(service.sync_from_console(db_session))
+
+    assert _dev(db_session, "VNA-SKD-14").deploy_state == "failed"
+
+
 def test_sync_from_console_keeps_stale_when_only_a_factory_id_peer_is_online(db_session, monkeypatch) -> None:
     import asyncio
 
@@ -1000,3 +1081,13 @@ def test_reapplying_the_same_profile_is_not_stale(db_session) -> None:
     # already "client" (the default) - setting it again changes nothing
     dev = service.apply_deploy_profile(db_session, dev, "client")
     assert dev.deploy_state == "configured"
+
+
+def test_bootstrap_script_reports_in_utf8_so_cyrillic_errors_survive(monkeypatch) -> None:
+    from app.domains.remote_access import deploy_script
+
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "https://infra.example")
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "tok")
+    script = deploy_script.render_bootstrap()
+    assert "charset=utf-8" in script
+    assert "[System.Text.Encoding]::UTF8.GetBytes($body)" in script

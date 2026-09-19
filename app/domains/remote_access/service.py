@@ -24,7 +24,7 @@ import secrets
 import socket
 import string
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func
@@ -379,6 +379,21 @@ def _peer_last_online(peer: dict[str, Any]) -> int:
         return 0
 
 
+# how long a "failed" report must have stood before a healthy canonical client cancels it
+FAILED_HEAL_AFTER = timedelta(hours=1)
+
+
+def _failure_outlived(dev: RemoteAccessDevice, now: datetime) -> bool:
+    if dev.deploy_state != "failed":
+        return False
+    reported = dev.deploy_reported_at
+    if reported is None:
+        return True
+    if reported.tzinfo is None:
+        reported = reported.replace(tzinfo=UTC)
+    return now - reported > FAILED_HEAL_AFTER
+
+
 async def sync_from_console(session: Session) -> dict[str, int]:
     """Fold live RustDesk-console status into RemoteAccessDevice rows.
 
@@ -432,14 +447,14 @@ async def sync_from_console(session: Session) -> dict[str, int]:
         canonical = _hostname_to_rid(dev.hostname)
         # the peer running our config wins; failing that, the freshest one
         preferred = next(
-            (p for p in group if str(p.get("id") or "").strip() == canonical),
+            (p for p in group if str(p.get("id") or "").strip().lower() == canonical.lower()),
             max(group, key=_peer_last_online),
         )
         rid = str(preferred.get("id") or "").strip()
         if rid:
             dev.rustdesk_id = rid
             status[rid] = _peer_online(preferred, now)
-            if rid == canonical and status[rid]:
+            if rid.lower() == canonical.lower() and status[rid]:
                 healthy_canonical.add(dev.hostname.lower())
         dev.installed_version = (preferred.get("version") or None) or dev.installed_version
         dev.logged_in_user = (preferred.get("username") or None) or dev.logged_in_user
@@ -471,6 +486,19 @@ async def sync_from_console(session: Session) -> dict[str, int]:
             or (dev.deploy_state == "stale" and dev.ab_password_pushed)
         ):
             dev.deploy_state = "configured"
+            dev.deploy_reported_at = now
+            dev.updated_at = now
+        elif dev.hostname.lower() in healthy_canonical and _failure_outlived(dev, now):
+            # A "failed" report is a snapshot from the moment of that run. A client that has
+            # been online under its own canonical id for longer than FAILED_HEAL_AFTER since
+            # then is demonstrably working (caught live: VNA-SKD-14 said "ошибка развертывания"
+            # for 16 days while an engineer connected to it daily). A *fresh* failure stays.
+            old = (dev.deploy_detail or "").strip()
+            dev.deploy_state = "configured"
+            dev.deploy_detail = (
+                f"Ошибка снята автоматически: клиент онлайн под ID {dev.rustdesk_id}."
+                + (f" Было: {old}" if old else "")
+            )[:512]
             dev.deploy_reported_at = now
             dev.updated_at = now
     session.commit()
