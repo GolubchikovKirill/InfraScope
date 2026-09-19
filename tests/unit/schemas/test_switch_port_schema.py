@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import (
+from app.domains.inventory.schemas import (
     SwitchPortAdminStateUpdate,
     SwitchPortPoeUpdate,
     SwitchPortVlanUpdate,

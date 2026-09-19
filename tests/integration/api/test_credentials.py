@@ -2,7 +2,8 @@
 
 from sqlmodel import select
 
-from app.models import Credential, EventLog
+from app.domains.credentials.models import Credential
+from app.domains.operations.models import EventLog
 
 BASE = "/api/v1/credentials"
 

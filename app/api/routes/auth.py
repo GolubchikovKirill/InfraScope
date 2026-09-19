@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import ValidationError
 
-from app import crud
 from app.api.deps import CurrentUser, SessionDep, TokenDep
 from app.core.config import settings
 from app.core.limiter import limiter
@@ -18,6 +17,7 @@ from app.core.security import (
     create_refresh_token,
     is_token_blacklisted,
 )
+from app.domains.identity import crud
 from app.domains.identity.models import User
 from app.domains.identity.schemas import Token, TokenPayload, UserPublic
 from app.observability.metrics import auth_events_total

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models import NetworkSwitch
+from app.domains.inventory.models import NetworkSwitch
 from app.services import cisco_ssh as cisco_ssh_module
 from app.services.cisco_ssh import CiscoSSH, get_access_points
 from app.services.switches.cisco_provider import CiscoSwitchProvider

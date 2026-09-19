@@ -1,4 +1,4 @@
-from app.models import NetworkSwitch
+from app.domains.inventory.models import NetworkSwitch
 from app.services.switches.cisco_provider import CiscoSwitchProvider
 from app.services.switches.dlink_provider import DLinkSwitchProvider
 from app.services.switches.resolver import resolve_switch_provider

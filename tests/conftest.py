@@ -30,11 +30,12 @@ os.environ.setdefault("OTEL_ENABLED", "false")
 # at a media service that does not exist here.
 os.environ.setdefault("MEDIA_SERVICE_ENABLED", "false")
 
+import app.domains.registry  # noqa: F401  (all tables in the test metadata)
 from app.api import deps
 from app.core.limiter import limiter as app_limiter
 from app.core.security import get_password_hash
+from app.domains.identity.models import User
 from app.main import app
-from app.models import User
 
 TEST_DB_DIR = Path(tempfile.gettempdir()) / f"infrascope-test-db-{uuid4().hex}"
 TEST_DB_DIR.mkdir(parents=True, exist_ok=True)

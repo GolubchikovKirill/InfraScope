@@ -1,8 +1,9 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from app.domains.inventory.models import Printer
+from app.domains.ml.models import MLFeatureSnapshot
 from app.ml.pipeline import _risk_level, score_toner_predictions, train_toner_model
-from app.models import MLFeatureSnapshot, Printer
 
 
 def test_risk_level_thresholds():

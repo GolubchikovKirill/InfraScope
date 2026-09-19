@@ -31,7 +31,7 @@ def test_route_modules_do_not_manage_realtime_cache_invalidation_directly() -> N
 
 
 def test_orm_table_models_live_in_domain_packages() -> None:
-    model_files = [ROOT / "app/models.py", *sorted((ROOT / "app/domains").glob("*/models.py"))]
+    model_files = sorted((ROOT / "app/domains").glob("*/models.py"))
     violations: list[str] = []
 
     for path in model_files:
@@ -43,18 +43,14 @@ def test_orm_table_models_live_in_domain_packages() -> None:
                 keyword.arg == "table" and isinstance(keyword.value, ast.Constant) and keyword.value.value is True
                 for keyword in node.keywords
             )
-            if has_table_true and path == ROOT / "app/models.py":
+            if has_table_true and path.parent.name == "app":
                 violations.append(node.name)
 
     assert violations == []
+    assert model_files, "domain model modules not found"
 
 
 def test_schema_definitions_live_in_domain_packages() -> None:
-    schemas_facade = _read("app/schemas.py")
-
-    assert "class " not in schemas_facade
-    assert "from app.domains." in schemas_facade
-
     operations_schemas = _read("app/domains/operations/schemas.py")
     inventory_schemas = "\n".join(
         path.read_text(encoding="utf-8") for path in (ROOT / "app/domains/inventory/schemas").glob("*.py")
@@ -63,26 +59,33 @@ def test_schema_definitions_live_in_domain_packages() -> None:
     assert "class Computer" in inventory_schemas
 
 
-def test_runtime_code_uses_domain_model_imports() -> None:
+_REMOVED_FACADES = ("app/models.py", "app/schemas.py", "app/crud.py")
+_FACADE_IMPORTS = (
+    "from app.models import",
+    "from app.schemas import",
+    "from app import crud",
+    "from app import models",
+    "from app import schemas",
+    "import app.models",
+    "import app.schemas",
+    "import app.crud",
+)
+
+
+def test_compatibility_facades_are_gone() -> None:
+    """Models, schemas and user CRUD live in `app/domains/*`; the old flat modules must not return."""
+    assert [p for p in _REMOVED_FACADES if (ROOT / p).exists()] == []
+
+
+def test_nothing_imports_the_removed_facades() -> None:
     offenders: list[str] = []
-    for path in (ROOT / "app").rglob("*.py"):
-        if path == ROOT / "app/models.py":
-            continue
-        source = path.read_text(encoding="utf-8")
-        if "from app.models import" in source:
-            offenders.append(str(path.relative_to(ROOT)))
-
-    assert offenders == []
-
-
-def test_runtime_code_uses_domain_schema_imports() -> None:
-    offenders: list[str] = []
-    for path in (ROOT / "app").rglob("*.py"):
-        if path == ROOT / "app/schemas.py":
-            continue
-        source = path.read_text(encoding="utf-8")
-        if "from app.schemas import" in source:
-            offenders.append(str(path.relative_to(ROOT)))
+    for base in ("app", "tests", "alembic"):
+        for path in (ROOT / base).rglob("*.py"):
+            if path == Path(__file__):
+                continue
+            source = path.read_text(encoding="utf-8")
+            if any(marker in source for marker in _FACADE_IMPORTS):
+                offenders.append(str(path.relative_to(ROOT)))
 
     assert offenders == []
 

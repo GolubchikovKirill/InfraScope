@@ -13,8 +13,9 @@ readiness checks, and shared API dependencies.
 - Frontend shell: `frontend/src/App.tsx`, `frontend/src/auth.tsx`, `frontend/src/components/Layout.tsx`
 - Tests: `tests/unit/core/`, `tests/integration/api/test_auth.py`, `frontend/src/auth.test.tsx`
 
-Shared compatibility facades remain at `app/models.py` and `app/schemas.py`. New backend code should import
-concrete models and schemas from `app/domains/*` instead of adding more definitions to those facades.
+Models and schemas are imported straight from `app/domains/*`; the old flat `app/models.py`, `app/schemas.py` and
+`app/crud.py` are gone (a layer-boundary test keeps them out). `app/domains/registry.py` only imports every domain's
+models so Alembic and the test database see all tables.
 
 ## Identity And Access
 
@@ -88,7 +89,7 @@ Owns metrics, tracing, dashboards, service descriptors, deployment manifests, an
 - Route handlers should validate HTTP concerns and delegate business logic to services.
 - Services may depend on models, schemas, core clients, and other services in the same or lower-level domain.
 - Workers and standalone services must not import API route modules.
-- ORM table models live in `app/domains/*/models.py`; `app/models.py` is only a compatibility export.
-- Pydantic schemas live in `app/domains/*/schemas.py`; `app/schemas.py` is only a compatibility export.
+- ORM table models live in `app/domains/*/models.py`; import them from the domain package.
+- Pydantic schemas live in `app/domains/*/schemas.py`; import them from the domain package.
 - Frontend pages should compose API modules, hooks, and components; keep request details out of JSX.
 - Shared helpers should move only when two domains genuinely need them.

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import UserCreate
+from app.domains.identity.schemas import UserCreate
 
 
 def test_user_create_requires_strong_password():

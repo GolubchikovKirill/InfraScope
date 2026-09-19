@@ -1,6 +1,6 @@
 import pytest
 
-from app.schemas import BoardingPassRequest
+from app.domains.integrations.schemas import BoardingPassRequest
 from app.services.boarding_pass import build_boarding_pass_payload, generate_boarding_pass_file
 
 

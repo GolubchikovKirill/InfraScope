@@ -5,28 +5,10 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlmodel import SQLModel
 
+# Ensure all models are imported so SQLModel picks up metadata
+import app.domains.registry  # noqa: F401
 from alembic import context
 from app.core.config import settings
-
-# Ensure all models are imported so SQLModel picks up metadata
-from app.models import (  # noqa: F401
-    CartridgeStock,
-    CartridgeStockMovement,
-    CashRegister,
-    Credential,
-    EventLog,
-    MediaAsset,
-    MediaAssignment,
-    MediaClientHeartbeat,
-    MediaPlayer,
-    MLFeatureSnapshot,
-    MLModelRegistry,
-    MLOfflineRiskPrediction,
-    MLTonerPrediction,
-    NetworkSwitch,
-    Printer,
-    User,
-)
 
 config = context.config
 

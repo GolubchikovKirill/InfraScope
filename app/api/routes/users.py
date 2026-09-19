@@ -3,8 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import func, select
 
-from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.domains.identity import crud
 from app.domains.identity.models import User
 from app.domains.identity.schemas import UpdatePassword, UserCreate, UserPublic, UsersPublic, UserUpdate, UserUpdateMe
 from app.domains.shared.schemas import Message

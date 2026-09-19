@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from app.models import MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
+from app.domains.ml.models import MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
 
 
 def test_get_ml_toner_predictions(client, user_token: str, db_session):

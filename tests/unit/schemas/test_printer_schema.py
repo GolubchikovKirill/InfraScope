@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import PrinterCreate
+from app.domains.inventory.schemas import PrinterCreate
 
 
 def test_printer_create_requires_ip_for_ip_connection():
