@@ -73,6 +73,14 @@ beforeEach(() => {
 });
 
 describe("RemoteAccessButtons", () => {
+  it("shows only the unsupported note and no remote controls for a Windows XP machine", () => {
+    renderButtons({ unsupportedNote: "XP касса, нельзя подключиться" });
+    expect(screen.getByText("XP касса, нельзя подключиться")).toBeInTheDocument();
+    expect(screen.queryByText("Подключиться")).not.toBeInTheDocument();
+    expect(screen.queryByText("Настроить")).not.toBeInTheDocument();
+    expect(screen.queryByText("Передеплоить")).not.toBeInTheDocument();
+  });
+
   it("shows the connect link and readiness chip", () => {
     renderButtons();
     const link = screen.getByText("Подключиться").closest("a");

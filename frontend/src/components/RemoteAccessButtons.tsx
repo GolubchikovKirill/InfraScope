@@ -20,6 +20,8 @@ type Props = {
   device?: RemoteDevice;
   canManage: boolean;
   compact?: boolean;
+  /** Set for machines RustDesk cannot run on (Windows XP): replaces every remote-access control with this note. */
+  unsupportedNote?: string;
 };
 
 /** Connect + config controls for one endpoint, shown on the computer /
@@ -27,7 +29,7 @@ type Props = {
  *  InfraScope rolls the client out itself now (pull model, see
  *  docs/rustdesk-v2-plan.md) - "Развернуть" only marks the machine as awaiting
  *  the bootstrap and shows the one-line command; nothing runs from here. */
-export default function RemoteAccessButtons({ hostname, device, canManage, compact }: Props) {
+export default function RemoteAccessButtons({ hostname, device, canManage, compact, unsupportedNote }: Props) {
   const qc = useQueryClient();
   const [dlgOpen, setDlgOpen] = useState(false);
   const [pkgOpen, setPkgOpen] = useState(false);
@@ -99,6 +101,18 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
       () => showToast(`${label} скопирован`, "success"),
       () => showToast("Не удалось скопировать", "error"),
     );
+
+  if (unsupportedNote) {
+    return (
+      <span
+        className={`inline-flex items-center rounded-lg bg-amber-100 font-medium text-amber-800 ${
+          compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
+        }`}
+      >
+        {unsupportedNote}
+      </span>
+    );
+  }
 
   return (
     <>
