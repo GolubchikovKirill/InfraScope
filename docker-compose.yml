@@ -524,8 +524,11 @@ services:
   # The textfile collector also carries the "last successful DB backup" gauge
   # that scripts/backup-postgres.sh writes, so a backup that silently stops
   # running is alertable (see PostgresBackupStale in infrascope-alerts.yml).
+  # Pulled from Quay, not Docker Hub: from this host Hub's CDN
+  # (production.cloudfront.docker.com) dropped the layer download on every one
+  # of 6 attempts, while quay.io serves the identical official image.
   node-exporter:
-    image: ${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.9.1}
+    image: ${NODE_EXPORTER_IMAGE:-quay.io/prometheus/node-exporter:v1.9.1}
     restart: unless-stopped
     pid: host
     command:
