@@ -79,6 +79,8 @@ export async function getRemoteDevices(params?: {
   location?: string;
   source_kind?: SourceKind;
   hostnames?: string;
+  /** also the entries taken out of management (managed = false) */
+  include_unmanaged?: boolean;
 }) {
   const { data } = await api.get<RemoteDevicesResponse>("/remote-access/devices", { params });
   return data;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MonitorSmartphone, Settings2, Copy, X, FileCog, Rocket } from "lucide-react";
+import { MonitorSmartphone, Settings2, Copy, X, FileCog, Rocket, RotateCcw } from "lucide-react";
 import {
   ensureRustDeskDevice,
   getDevicePackage,
@@ -82,6 +82,9 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
   });
 
   const rustId = device?.rustdesk_id ?? null;
+  // an entry that was removed from management: the ID still connects, but nothing is pushed to the
+  // address book and there is no rollout state to show until it is taken back
+  const unmanaged = device?.managed === false;
   // the button reapplies the entire desired config on every run, not just
   // what changed - "Передеплоить" reads better once it has ever succeeded
   const redeploy =
@@ -136,7 +139,15 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
             <Copy className="h-3.5 w-3.5" />
           </button>
         )}
-        {device && (
+        {device && unmanaged && (
+          <span
+            title="Запись снята с управления: подключение по ID работает, но пароль в общую книгу не подставляется. «Вернуть в управление» включит её обратно."
+            className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+          >
+            Не в управлении
+          </span>
+        )}
+        {device && !unmanaged && (
           <>
             <ReadinessChip readiness={device.readiness} title={deviceReadinessDetail(device)} compact />
             <AppLockerMismatchBadge device={device} compact />
@@ -148,7 +159,18 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
               <Settings2 className="h-4 w-4" />
               Настроить
             </button>
-            {device && (
+            {device && unmanaged && (
+              <button
+                onClick={() => ensureMut.mutate({ hostname })}
+                disabled={ensureMut.isPending}
+                className={`${btn} app-btn-secondary disabled:opacity-50`}
+                title="Снова вести эту машину в удалённом доступе (пароль вернётся в общую книгу в течение пары минут)"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Вернуть в управление
+              </button>
+            )}
+            {device && !unmanaged && (
               <button
                 onClick={() => deployMut.mutate(device.id)}
                 disabled={deployMut.isPending}
@@ -163,7 +185,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
                 {redeploy ? "Передеплоить" : "Развернуть"}
               </button>
             )}
-            {device && (
+            {device && !unmanaged && (
               <button
                 onClick={() => setPkgOpen(true)}
                 className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:bg-slate-100 hover:text-[var(--brand)]"

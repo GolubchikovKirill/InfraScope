@@ -88,6 +88,44 @@ describe("RemoteAccessButtons", () => {
     expect(screen.getByText("Готово к подключению")).toBeInTheDocument();
   });
 
+  describe("an entry taken out of management", () => {
+    const removed: RemoteDevice = { ...device, managed: false, in_address_book: false, ab_password_pushed: false };
+
+    it("still connects by ID, says it is not managed, and hides the rollout controls", () => {
+      renderButtons({ device: removed });
+
+      expect(screen.getByText("Подключиться").closest("a")).toHaveAttribute("href", "rustdesk://connection/new/VNK_MGR_D1");
+      expect(screen.getByText("Не в управлении")).toBeInTheDocument();
+      // no readiness claim for a machine nobody manages, and nothing to roll out
+      expect(screen.queryByText("Готово к подключению")).not.toBeInTheDocument();
+      expect(screen.queryByText("Передеплоить")).not.toBeInTheDocument();
+      expect(screen.queryByText("Развернуть")).not.toBeInTheDocument();
+    });
+
+    it("lets a manager take it back with one click", async () => {
+      api.ensureRustDeskDevice.mockResolvedValue({ ...removed, managed: true });
+      renderButtons({ device: removed });
+
+      fireEvent.click(screen.getByRole("button", { name: /Вернуть в управление/ }));
+
+      await waitFor(() => expect(api.ensureRustDeskDevice).toHaveBeenCalledWith({ hostname: "VNK-MGR-D1" }));
+    });
+
+    it("does not offer to take it back to someone who cannot manage", () => {
+      renderButtons({ device: removed, canManage: false });
+
+      expect(screen.getByText("Подключиться")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Вернуть в управление/ })).not.toBeInTheDocument();
+    });
+
+    it("does not show the take-back button for a managed device", () => {
+      renderButtons();
+
+      expect(screen.queryByText("Не в управлении")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Вернуть в управление/ })).not.toBeInTheDocument();
+    });
+  });
+
   it("requests a rollout and opens the command modal", async () => {
     api.requestDeploy.mockResolvedValue({ ...device, deploy_state: "pending" });
     api.getDeployCommand.mockResolvedValue({
