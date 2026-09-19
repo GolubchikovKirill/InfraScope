@@ -28,9 +28,12 @@ import {
 } from "../client";
 import { useAuth } from "../auth";
 import CashRegisterDrawer from "../components/overview/CashRegisterDrawer";
-import CashRegisterMap from "../components/overview/CashRegisterMap";
+import ComputerDrawer from "../components/overview/ComputerDrawer";
+import FleetMap from "../components/overview/FleetMap";
 import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
 import { isAttention } from "../lib/cashRegisters";
+import { buildStoreIndex, placeComputer } from "../lib/storeView";
+import { storeTitle } from "../lib/stores";
 
 // A cool palette on purpose: "down" is slate, not red. An overview that is open all day
 // should read as calm information; what needs action is amber and listed under "Приоритеты".
@@ -128,7 +131,7 @@ export default function OverviewPage() {
   const { user } = useAuth();
   const isSuperuser = Boolean(user?.is_superuser);
   const { map: remoteMap } = useRemoteDeviceMap();
-  const [selectedCashId, setSelectedCashId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ kind: "cash" | "computers"; id: string } | null>(null);
 
   const queryOptions = { staleTime: 30_000, refetchInterval: 60_000, placeholderData: keepPreviousData };
   const laserPrintersQuery = useQuery({ queryKey: ["printers", "laser", undefined], queryFn: () => getPrinters(undefined, "laser"), ...queryOptions });
@@ -206,7 +209,9 @@ export default function OverviewPage() {
   const dataUpdatedAt = Math.max(...allQueries.map((query) => query.dataUpdatedAt));
   const isLoading = [laserPrintersQuery, labelPrintersQuery, switchesQuery, cashRegistersQuery, computersQuery, mediaPlayersQuery].some((query) => query.isLoading);
   const hasLoadError = allQueries.some((query) => query.isError);
-  const selectedCash = selectedCashId ? cashRegisters.find((item) => item.id === selectedCashId) : undefined;
+  const remoteLocation = (hostname: string) => remoteMap.get(hostname)?.location;
+  const selectedCash = selected?.kind === "cash" ? cashRegisters.find((item) => item.id === selected.id) : undefined;
+  const selectedComputer = selected?.kind === "computers" ? computers.find((item) => item.id === selected.id) : undefined;
   const otherFleets = fleets.filter((fleet) => fleet.id !== "cash-registers");
 
   return (
@@ -248,7 +253,13 @@ export default function OverviewPage() {
         <Stat label="Склад картриджей" value={lowStockCount} detail={lowStockCount ? "позиций на минимальном остатке" : "запас в пределах нормы"} tone={lowStockCount ? "attention" : "ok"} icon={Boxes} to="/printers" />
       </section>
 
-      <CashRegisterMap rows={cashRegisters} isLoading={cashRegistersQuery.isLoading} onSelect={setSelectedCashId} />
+      <FleetMap
+        cashRegisters={cashRegisters}
+        computers={computers}
+        remoteLocation={remoteLocation}
+        isLoading={cashRegistersQuery.isLoading || computersQuery.isLoading}
+        onSelect={(kind, id) => setSelected({ kind, id })}
+      />
 
       <section>
         <div className="mb-3">
@@ -295,7 +306,17 @@ export default function OverviewPage() {
           register={selectedCash}
           remote={selectedCash.hostname ? remoteMap.get(selectedCash.hostname) : undefined}
           isSuperuser={isSuperuser}
-          onClose={() => setSelectedCashId(null)}
+          onClose={() => setSelected(null)}
+        />
+      )}
+
+      {selectedComputer && (
+        <ComputerDrawer
+          computer={selectedComputer}
+          storeTitle={storeTitle(placeComputer(selectedComputer, { storeIndex: buildStoreIndex(cashRegisters), remoteLocation }).label)}
+          remote={remoteMap.get(selectedComputer.hostname)}
+          isSuperuser={isSuperuser}
+          onClose={() => setSelected(null)}
         />
       )}
     </div>

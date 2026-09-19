@@ -52,7 +52,13 @@ describe("OverviewPage", () => {
       count: 2,
     });
     api.getRemoteDevices.mockResolvedValue({ data: [], count: 0 });
-    api.getComputers.mockResolvedValue({ data: [{ id: "pc-1", is_online: true }], count: 1 });
+    api.getComputers.mockResolvedValue({
+      data: [
+        { id: "pc-1", hostname: "VNA-MGR-205", location: null, comment: null, is_online: true },
+        { id: "pc-2", hostname: "VN3-MGR-001", location: null, comment: null, is_online: false, reachability_reason: "no_response" },
+      ],
+      count: 2,
+    });
     api.getMediaPlayers.mockResolvedValue({ data: [{ id: "media-1", is_online: true }], count: 1 });
     api.getCartridgeStocks.mockResolvedValue({ data: [{ id: "stock-1", quantity_on_hand: 1, minimum_stock: 2 }], count: 1 });
     api.getEventLogs.mockResolvedValue({ data: [{ id: "event-1", severity: "error", category: "polling", message: "Свитч A1 недоступен", device_name: "A1", created_at: "2026-08-14T10:00:00Z" }], count: 1 });
@@ -77,7 +83,7 @@ describe("OverviewPage", () => {
     expect(within(stats).getByText("Склад картриджей")).toBeInTheDocument();
     expect(within(stats).getByRole("link", { name: /Расходники/ })).toHaveAttribute("href", "/printers");
 
-    const map = screen.getByRole("region", { name: "Кассы" });
+    const map = screen.getByRole("region", { name: "По магазинам" });
     expect(stats.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -86,7 +92,7 @@ describe("OverviewPage", () => {
 
     const offline = await screen.findByRole("button", { name: /VNA-KKM-202, A2\(200\), недоступна/ });
     expect(screen.getByRole("button", { name: /VNA-KKM-201, A2\(200\), на связи/ })).toBeInTheDocument();
-    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(within(screen.getByTestId("store-DF:A2(200)")).getByText("1/2")).toBeInTheDocument();
 
     fireEvent.click(offline);
 
@@ -101,9 +107,25 @@ describe("OverviewPage", () => {
   it("does not repeat the cash registers among the category cards", async () => {
     renderOverview();
 
-    await screen.findByRole("region", { name: "Кассы" });
+    await screen.findByRole("region", { name: "По магазинам" });
     const categories = screen.getByText("По категориям").closest("section") as HTMLElement;
     expect(within(categories).queryByText("Кассы")).not.toBeInTheDocument();
     expect(within(categories).getByText("Сеть")).toBeInTheDocument();
+  });
+
+  it("switches the same map to computers, placed by store, and opens their quick look", async () => {
+    renderOverview();
+
+    fireEvent.click(await screen.findByRole("tab", { name: /Компьютеры/ }));
+
+    // VNA-MGR-205 is A2 by its name, and VN3 is Внуково 3
+    expect(within(await screen.findByTestId("store-DF:A2")).getByText("A2(200)")).toBeInTheDocument();
+    const vn3 = screen.getByRole("button", { name: /VN3-MGR-001, VN3 · Внуково 3, недоступен/ });
+
+    fireEvent.click(vn3);
+
+    const dialog = await screen.findByRole("dialog", { name: "Компьютер VN3-MGR-001" });
+    expect(within(dialog).getByText("VN3 · Внуково 3")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Подключиться к VN3-MGR-001" })).toBeInTheDocument();
   });
 });
