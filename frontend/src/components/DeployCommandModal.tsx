@@ -8,6 +8,10 @@ type Props = {
   onClose: () => void;
 };
 
+// Runs on the admin workstation (never on this server): pushes over C$ + WMI, no reboot.
+const PUSH_COMMAND = ".\rustdesk-ksc\Push-RustDesk.ps1 -ComputerName <имя-машины>";
+const PUSH_COMMAND_ADMIN = PUSH_COMMAND + " -Profile admin";
+
 /** The one line an operator pastes into KSC / GPO / schtasks. Fleet-wide and
  *  identical for every machine - the script asks InfraScope who it should be
  *  by its own hostname, so there is nothing per-device to fill in here. */
@@ -95,6 +99,33 @@ export default function DeployCommandModal({ open, onClose }: Props) {
             </div>
           </>
         )}
+
+        <div className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-slate-700">
+          <p className="font-medium text-slate-800">Windows 7 и раскатка без перезагрузки — с рабочей станции админа</p>
+          <p>
+            Команда выше на Windows 7 с PowerShell 2.0 не сработает (нет TLS 1.2). Для «семёрок» и для любых
+            машин, где перезагрузка недопустима, есть push-утилита: она сама определяет ОС, ставит MSI (Windows
+            10/11) или 32-битную сборку (Windows 7), <b>ничего не перезагружает</b> и не ставит обновления.
+            Запускается на вашем ПК, не на сервере.
+          </p>
+          <pre className="app-mono whitespace-pre-wrap break-all rounded-lg bg-white p-2 text-[11px] text-slate-700">
+            {PUSH_COMMAND}
+          </pre>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              Рабочим станциям инженеров (ITD-SA) добавьте <code className="app-mono">-Profile admin</code> — без
+              скрытия трея. Windows XP утилита пропускает.
+            </span>
+            <button
+              onClick={() => copy(PUSH_COMMAND)}
+              className="app-btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-sm"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Скопировать push-команду
+            </button>
+          </div>
+          <p>Подробности и профили — docs/rustdesk-ksc-deployment.md, раздел «Раскатка с рабочей станции админа».</p>
+        </div>
       </div>
     </div>
   );

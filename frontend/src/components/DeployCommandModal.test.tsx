@@ -56,4 +56,24 @@ describe("DeployCommandModal", () => {
       expect(writeText).toHaveBeenCalledWith('powershell.exe -NoProfile -Command "iex ..."');
     });
   });
+
+  it("always offers the reboot-free push command for Windows 7 and copies it", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    api.getDeployCommand.mockResolvedValue({
+      command: "",
+      bootstrap_url: "",
+      installer_filename: "rustdesk-1.4.9-x86_64.msi",
+      installer_version: "1.4.9",
+      configured: false,
+    });
+    renderModal(true);
+
+    expect(await screen.findByText(/Windows 7 и раскатка без перезагрузки/)).toBeInTheDocument();
+    expect(screen.getByText(/ничего не перезагружает/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Скопировать push-команду"));
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Push-RustDesk.ps1 -ComputerName"));
+    });
+  });
 });

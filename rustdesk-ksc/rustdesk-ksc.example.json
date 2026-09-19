@@ -1,5 +1,5 @@
 {
-  "_comment": "Offline KSC package only. When the machine can reach InfraScope over HTTP, use the pull rollout instead (docs/rustdesk-ksc-deployment.md) - it fetches these same values at run time and reports the result back. Per-machine values: GET /api/v1/remote-access/devices/{id}/package",
+  "_comment": "Offline KSC package only. When the machine can reach InfraScope over HTTP, use the pull rollout instead (docs/rustdesk-ksc-deployment.md) - it fetches these same values at run time and reports the result back. Per-machine values: GET /api/v1/remote-access/devices/{id}/package. Push-RustDesk.ps1 (Windows 7 + 10, no reboot) reads this file too and overrides hidden/unattended per -Profile; installer_msi is used on Windows 10/11 x64, installer_exe32 (32-bit sciter build) on Windows 7 / 32-bit.",
   "id_server": "10.10.99.24",
   "relay_server": "10.10.99.24",
   "api_server": "http://10.10.99.24:21114",
@@ -7,6 +7,8 @@
   "rustdesk_id": "",
   "permanent_password": "kentdful",
   "installer_version": "1.4.9",
+  "installer_msi": "rustdesk-1.4.9-x86_64.msi",
+  "installer_exe32": "rustdesk-1.4.9-x86-sciter.exe",
   "hidden": true,
   "block_outgoing": true,
   "unattended": true
