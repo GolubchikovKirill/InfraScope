@@ -22,36 +22,62 @@ logger = logging.getLogger(__name__)
 OID_IF_PHYS_ADDR = "1.3.6.1.2.1.2.2.1.6"
 
 
+async def _snmp_mac_on_engine(engine: SnmpEngine, ip_address: str, community: str) -> str | None:
+    """ifPhysAddress over an engine the caller owns (and closes)."""
+    try:
+        target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("SNMP target %s not usable: %s", ip_address, exc)
+        return None
+
+    comm = CommunityData(community)
+    try:
+        async for err, _, _, vb in walk_cmd(
+            engine,
+            comm,
+            target,
+            ContextData(),
+            ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
+            lexicographicMode=False,
+        ):
+            if err:
+                break
+            for _, val in vb:
+                if hasattr(val, "asOctets"):
+                    octets = val.asOctets()
+                    if len(octets) == 6 and any(b != 0 for b in octets):
+                        return ":".join(f"{b:02x}" for b in octets)
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("SNMP MAC walk on %s failed: %s", ip_address, exc)
+    return None
+
+
+async def get_snmp_mac_async(engine: SnmpEngine, ip_address: str, community: str = "public") -> str | None:
+    """MAC via SNMP on a shared engine, with the ARP-table fallback.
+
+    For callers that already run in an event loop and poll many hosts: one engine
+    per cycle instead of one per call. The ARP fallback shells out, so it runs in a thread.
+    """
+    mac = await _snmp_mac_on_engine(engine, ip_address, community)
+    if mac is None:
+        mac = await asyncio.to_thread(_get_mac_from_arp, ip_address)
+        if mac:
+            logger.debug("%s: MAC obtained from ARP table: %s", ip_address, mac)
+            snmp_operations_total.labels(operation="get_mac", result="success", reason="arp_fallback").inc()
+            return mac
+    snmp_operations_total.labels(
+        operation="get_mac",
+        result="success" if mac else "offline",
+        reason="snmp" if mac else "not_found",
+    ).inc()
+    return mac
+
+
 async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str | None:
-    """Query ifPhysAddress via SNMP to get MAC address."""
+    """Query ifPhysAddress via SNMP to get MAC address (own engine, for one-off callers)."""
     engine = SnmpEngine()
     try:
-        try:
-            target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-        except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
-            logger.debug("SNMP target %s not usable: %s", ip_address, exc)
-            return None
-
-        comm = CommunityData(community)
-        try:
-            async for err, _, _, vb in walk_cmd(
-                engine,
-                comm,
-                target,
-                ContextData(),
-                ObjectType(ObjectIdentity(OID_IF_PHYS_ADDR)),
-                lexicographicMode=False,
-            ):
-                if err:
-                    break
-                for _, val in vb:
-                    if hasattr(val, "asOctets"):
-                        octets = val.asOctets()
-                        if len(octets) == 6 and any(b != 0 for b in octets):
-                            return ":".join(f"{b:02x}" for b in octets)
-        except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
-            logger.debug("SNMP MAC walk on %s failed: %s", ip_address, exc)
-        return None
+        return await _snmp_mac_on_engine(engine, ip_address, community)
     finally:
         # SnmpEngine opens a UDP socket lazily on first request and never
         # closes it on its own - across enough polling cycles that leaked

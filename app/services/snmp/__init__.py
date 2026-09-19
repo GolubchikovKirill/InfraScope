@@ -19,16 +19,17 @@ Printers that will NOT work:
 """
 
 from .helpers import _detect_color, _detect_vendor, _is_toner_supply
-from .mac import get_snmp_mac
+from .mac import get_snmp_mac, get_snmp_mac_async
 from .oids import PrinterStatus, TonerLevel
-from .poller import poll_printer, poll_printer_light
+from .poller import poll_printer_async, poll_printer_light_async
 
 __all__ = [
     "PrinterStatus",
     "TonerLevel",
-    "poll_printer",
-    "poll_printer_light",
+    "poll_printer_async",
+    "poll_printer_light_async",
     "get_snmp_mac",
+    "get_snmp_mac_async",
     "_detect_color",
     "_detect_vendor",
     "_is_toner_supply",

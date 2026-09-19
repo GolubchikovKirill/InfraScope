@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from sqlmodel import Session, select
@@ -18,8 +19,9 @@ from app.services.cache import invalidate_entity_cache
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_printer_snapshots
-from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
-from app.services.snmp import get_snmp_mac, poll_printer, poll_printer_light
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
+from app.services.snmp import get_snmp_mac_async, poll_printer_async, poll_printer_light_async
+from app.services.snmp._pysnmp_compat import SnmpEngine
 
 logger = logging.getLogger(__name__)
 
@@ -110,26 +112,52 @@ def _subnets_with_total_failure(poll_results: dict[str, tuple[object | None, str
     return suspect
 
 
-def poll_one_printer(printer: Printer, *, full: bool = True) -> tuple[str, object | None, str | None]:
+@asynccontextmanager
+async def _snmp_engine() -> AsyncIterator[SnmpEngine]:
+    """An SnmpEngine for the current event loop, closed when the block ends.
+
+    The engine opens its UDP socket lazily and never closes it itself; leaking one
+    per poll ran the container out of file descriptors once (see snmp/poller.py).
+    It has to be closed from the loop that used it.
+    """
+    engine = SnmpEngine()
+    try:
+        yield engine
+    finally:
+        engine.close_dispatcher()
+
+
+async def poll_one_printer(
+    printer: Printer, engine: SnmpEngine, *, full: bool = True
+) -> tuple[str, object | None, str | None]:
     if printer.connection_type == "usb" or not printer.ip_address:
         return "", None, None
     ip = printer.ip_address
     try:
-        poll_jitter_sync()
+        await poll_jitter_async()
         if printer.printer_type == "label":
             # Label printers speak no SNMP - an open raw-print port is the
             # only signal there is.
-            return ip, probe_tcp_endpoint(ip, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers"), None
+            probe = await asyncio.to_thread(
+                probe_tcp_endpoint, ip, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers"
+            )
+            return ip, probe, None
         if full:
-            result = poll_printer(ip, printer.snmp_community)
-            current_mac = get_snmp_mac(ip, printer.snmp_community) if result.is_online else None
+            result = await poll_printer_async(engine, ip, printer.snmp_community)
+            current_mac = await get_snmp_mac_async(engine, ip, printer.snmp_community) if result.is_online else None
         else:
-            result = poll_printer_light(ip, printer.snmp_community)
+            result = await poll_printer_light_async(engine, ip, printer.snmp_community)
             current_mac = None
         return ip, result, current_mac
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - one printer failing must not sink the batch; reported as "no result"
         logger.warning("Poll failed for %s: %s", ip, exc)
         return ip, None, None
+
+
+async def poll_printer_alone(printer: Printer, *, full: bool = True) -> tuple[str, object | None, str | None]:
+    """One printer on its own engine (manual poll, relocation check)."""
+    async with _snmp_engine() as engine:
+        return await poll_one_printer(printer, engine, full=full)
 
 
 def _printer_offline_reason(result_status: str | None) -> str:
@@ -152,21 +180,35 @@ def verify_printer_mac(printer: Printer, current_mac: str | None) -> str | None:
     return "mismatch"
 
 
-def poll_printer_batch(
+async def poll_printer_batch(
     printers: list[Printer], *, full: bool = True
 ) -> dict[str, tuple[object | None, str | None]]:
+    """Poll every printer concurrently in this event loop.
+
+    One SnmpEngine serves the whole cycle and a semaphore bounds how many printers
+    are in flight (PRINTER_POLL_MAX_WORKERS) - the old shape was a thread pool where
+    every thread ran its own asyncio.run() with its own engine.
+    """
     results: dict[str, tuple[object | None, str | None]] = {}
-    max_workers = max(1, min(settings.PRINTER_POLL_MAX_WORKERS, len(printers)))
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(poll_one_printer, printer, full=full): printer.ip_address for printer in printers}
-        for future in as_completed(futures):
-            ip = futures[future]
-            try:
-                _, result, mac = future.result()
-            except Exception as exc:
-                logger.warning("Poll failed for %s: %s", ip, exc)
-                result, mac = None, None
-            results[ip] = (result, mac)
+    if not printers:
+        return results
+    gate = asyncio.Semaphore(max(1, min(settings.PRINTER_POLL_MAX_WORKERS, len(printers))))
+
+    async with _snmp_engine() as engine:
+
+        async def one(printer: Printer):
+            async with gate:
+                return await poll_one_printer(printer, engine, full=full)
+
+        outcomes = await asyncio.gather(*(one(p) for p in printers), return_exceptions=True)
+
+    for printer, outcome in zip(printers, outcomes, strict=True):
+        if isinstance(outcome, BaseException):
+            logger.warning("Poll failed for %s: %s", printer.ip_address, outcome)
+            results[printer.ip_address] = (None, None)
+        else:
+            _, result, mac = outcome
+            results[printer.ip_address] = (result, mac)
     return results
 
 
@@ -221,7 +263,7 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
             result="online" if online else "offline",
         ).inc()
     else:
-        _, result, current_mac = await asyncio.to_thread(poll_one_printer, printer)
+        _, result, current_mac = await poll_printer_alone(printer)
         if result is None or not result.is_online:
             if printer.mac_address:
                 new_ip = await find_printer_ip_by_mac(session, printer)
@@ -252,11 +294,11 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
                             ip_address=new_ip,
                             message=f"Printer '{printer.store_name}' moved IP: {old_ip} -> {new_ip}",
                         )
-                        _, result, current_mac = await asyncio.to_thread(poll_one_printer, printer)
+                        _, result, current_mac = await poll_printer_alone(printer)
 
             if result is None or not result.is_online:
                 await asyncio.sleep(settings.PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS)
-                _, result, current_mac = await asyncio.to_thread(poll_one_printer, printer)
+                _, result, current_mac = await poll_printer_alone(printer)
 
             if result is None:
                 printer.is_online = False
@@ -324,7 +366,7 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
     full = is_full_poll_cycle()
     printer_map = {printer.ip_address: printer for printer in poll_targets}
     try:
-        poll_results = await asyncio.to_thread(poll_printer_batch, poll_targets, full=full) if poll_targets else {}
+        poll_results = await poll_printer_batch(poll_targets, full=full) if poll_targets else {}
         offline_with_mac: list[Printer] = []
 
         suspect_subnets = _subnets_with_total_failure(poll_results)
@@ -512,7 +554,7 @@ async def _relocate_offline_printers(session: Session, offline_with_mac: list[Pr
 
         old_ip = printer.ip_address
         printer.ip_address = new_ip
-        _, new_result, new_mac = await asyncio.to_thread(poll_one_printer, printer)
+        _, new_result, new_mac = await poll_printer_alone(printer)
         if new_result and (
             (isinstance(new_result, dict) and new_result.get("is_online"))
             or (hasattr(new_result, "is_online") and new_result.is_online)

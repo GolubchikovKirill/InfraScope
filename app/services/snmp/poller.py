@@ -142,31 +142,23 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
     return result
 
 
-def poll_printer(ip_address: str, community: str = "public") -> PrinterStatus:
-    """Synchronous wrapper — runs the async poller in a new event loop."""
+async def _measured(operation: str, coro) -> PrinterStatus:
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    try:
-        if loop and loop.is_running():
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                result = pool.submit(asyncio.run, _poll_printer_async(ip_address, community)).result()
-        else:
-            result = asyncio.run(_poll_printer_async(ip_address, community))
+        result = await coro
     except Exception:
-        snmp_operations_total.labels(operation="poll_printer", result="error", reason="exception").inc()
+        snmp_operations_total.labels(operation=operation, result="error", reason="exception").inc()
         raise
-
     snmp_operations_total.labels(
-        operation="poll_printer",
+        operation=operation,
         result="success" if result.is_online else "offline",
         reason="none",
     ).inc()
     return result
+
+
+async def poll_printer_async(engine: SnmpEngine, ip_address: str, community: str = "public") -> PrinterStatus:
+    """Full poll (status, toners, HTTP fallbacks) on an engine the caller owns and closes."""
+    return await _measured("poll_printer", _poll_printer_async_inner(engine, ip_address, community))
 
 
 async def _poll_printer_light_async(ip_address: str, community: str = "public") -> PrinterStatus:
@@ -201,33 +193,6 @@ async def _poll_printer_light_async_inner(engine: SnmpEngine, ip_address: str, c
     return PrinterStatus(is_online=False, status="offline")
 
 
-def poll_printer_light(ip_address: str, community: str = "public") -> PrinterStatus:
-    """Cheap synchronous online/offline check for the frequent polling cadence.
-
-    Skips the toner walk and HTTP-scraping fallbacks that poll_printer() does,
-    so it's safe to run every cycle; the full toner poll runs on a slower
-    cadence via poll_printer() instead.
-    """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    try:
-        if loop and loop.is_running():
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                result = pool.submit(asyncio.run, _poll_printer_light_async(ip_address, community)).result()
-        else:
-            result = asyncio.run(_poll_printer_light_async(ip_address, community))
-    except Exception:
-        snmp_operations_total.labels(operation="poll_printer_light", result="error", reason="exception").inc()
-        raise
-
-    snmp_operations_total.labels(
-        operation="poll_printer_light",
-        result="success" if result.is_online else "offline",
-        reason="none",
-    ).inc()
-    return result
+async def poll_printer_light_async(engine: SnmpEngine, ip_address: str, community: str = "public") -> PrinterStatus:
+    """Cheap online/offline check for the frequent cadence, on an engine the caller owns."""
+    return await _measured("poll_printer_light", _poll_printer_light_async_inner(engine, ip_address, community))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 
 import pytest
@@ -85,36 +86,112 @@ def test_verify_printer_mac_detects_mismatch() -> None:
     assert printer.mac_address == "aa:bb:cc:dd:ee:ff"
 
 
-def test_poll_printer_batch_preserves_result_for_each_ip(monkeypatch) -> None:
-    printers = [
-        Printer(
-            printer_type="label",
-            connection_type="ip",
-            store_name="Label A",
-            model="Zebra",
-            ip_address="10.10.10.20",
-        ),
-        Printer(
-            printer_type="label",
-            connection_type="ip",
-            store_name="Label B",
-            model="Zebra",
-            ip_address="10.10.10.21",
-        ),
-    ]
+class _FakeEngine:
+    """Stands in for SnmpEngine: records how many exist and whether each was closed."""
 
-    def fake_poll_one(printer: Printer, *, full: bool = True):
-        del full
+    created: list[_FakeEngine] = []
+
+    def __init__(self) -> None:
+        self.closed = False
+        _FakeEngine.created.append(self)
+
+    def close_dispatcher(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def fake_engines(monkeypatch):
+    _FakeEngine.created = []
+    monkeypatch.setattr("app.domains.inventory.printer_polling.SnmpEngine", _FakeEngine)
+    return _FakeEngine.created
+
+
+def _label_printer(name: str, ip: str) -> Printer:
+    return Printer(printer_type="label", connection_type="ip", store_name=name, model="Zebra", ip_address=ip)
+
+
+@pytest.mark.asyncio
+async def test_poll_printer_batch_preserves_result_for_each_ip(monkeypatch, fake_engines) -> None:
+    printers = [_label_printer("Label A", "10.10.10.20"), _label_printer("Label B", "10.10.10.21")]
+
+    async def fake_poll_one(printer: Printer, engine, *, full: bool = True):
+        del engine, full
         return printer.ip_address, {"is_online": printer.ip_address.endswith(".20")}, None
 
     monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", fake_poll_one)
 
-    result = poll_printer_batch(printers)
+    result = await poll_printer_batch(printers)
 
     assert result == {
         "10.10.10.20": ({"is_online": True}, None),
         "10.10.10.21": ({"is_online": False}, None),
     }
+
+
+@pytest.mark.asyncio
+async def test_poll_printer_batch_shares_one_engine_and_closes_it(monkeypatch, fake_engines) -> None:
+    printers = [_label_printer(f"L{i}", f"10.10.10.{i}") for i in range(20, 26)]
+    seen: list[object] = []
+
+    async def fake_poll_one(printer: Printer, engine, *, full: bool = True):
+        del full
+        seen.append(engine)
+        return printer.ip_address, None, None
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", fake_poll_one)
+
+    await poll_printer_batch(printers)
+
+    assert len(fake_engines) == 1, "one engine per cycle, not one per printer"
+    assert all(engine is fake_engines[0] for engine in seen) and len(seen) == 6
+    assert fake_engines[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_poll_printer_batch_bounds_how_many_printers_are_in_flight(monkeypatch, fake_engines) -> None:
+    monkeypatch.setattr("app.domains.inventory.printer_polling.settings.PRINTER_POLL_MAX_WORKERS", 3)
+    printers = [_label_printer(f"L{i}", f"10.10.10.{i}") for i in range(30, 42)]
+    running = {"now": 0, "peak": 0}
+
+    async def slow_poll_one(printer: Printer, engine, *, full: bool = True):
+        del engine, full
+        running["now"] += 1
+        running["peak"] = max(running["peak"], running["now"])
+        await asyncio.sleep(0.01)
+        running["now"] -= 1
+        return printer.ip_address, None, None
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", slow_poll_one)
+
+    result = await poll_printer_batch(printers)
+
+    assert len(result) == 12
+    assert running["peak"] == 3
+
+
+@pytest.mark.asyncio
+async def test_poll_printer_batch_survives_one_printer_raising(monkeypatch, fake_engines) -> None:
+    printers = [_label_printer("Bad", "10.10.10.60"), _label_printer("Good", "10.10.10.61")]
+
+    async def fake_poll_one(printer: Printer, engine, *, full: bool = True):
+        del engine, full
+        if printer.ip_address.endswith(".60"):
+            raise RuntimeError("boom")
+        return printer.ip_address, {"is_online": True}, None
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", fake_poll_one)
+
+    result = await poll_printer_batch(printers)
+
+    assert result["10.10.10.60"] == (None, None)
+    assert result["10.10.10.61"] == ({"is_online": True}, None)
+    assert fake_engines[0].closed is True
+
+
+@pytest.mark.asyncio
+async def test_poll_printer_batch_of_nothing_opens_no_engine(fake_engines) -> None:
+    assert await poll_printer_batch([]) == {}
+    assert fake_engines == []
 
 
 def test_is_full_poll_cycle_true_at_top_of_hour(monkeypatch) -> None:
@@ -141,7 +218,8 @@ def test_is_full_poll_cycle_false_between_full_cycles(monkeypatch) -> None:
     assert is_full_poll_cycle() is False
 
 
-def test_poll_one_printer_light_skips_toner_and_mac_calls(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_poll_one_printer_light_skips_toner_and_mac_calls(monkeypatch) -> None:
     printer = Printer(
         printer_type="laser",
         connection_type="ip",
@@ -149,22 +227,56 @@ def test_poll_one_printer_light_skips_toner_and_mac_calls(monkeypatch) -> None:
         model="HP",
         ip_address="10.10.10.30",
     )
-    monkeypatch.setattr(
-        "app.domains.inventory.printer_polling.poll_printer_light",
-        lambda ip, community: PrinterStatus(is_online=True, status="online"),
-    )
 
-    def _must_not_be_called(*_a, **_kw):
+    async def _light(engine, ip, community):
+        return PrinterStatus(is_online=True, status="online")
+
+    async def _jitter():
+        return None
+
+    async def _must_not_be_called(*_a, **_kw):
         raise AssertionError("full poll and MAC lookup must not run on a light cycle")
 
-    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_printer", _must_not_be_called)
-    monkeypatch.setattr("app.domains.inventory.printer_polling.get_snmp_mac", _must_not_be_called)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_printer_light_async", _light)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_jitter_async", _jitter)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_printer_async", _must_not_be_called)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.get_snmp_mac_async", _must_not_be_called)
 
-    ip, result, mac = poll_one_printer(printer, full=False)
+    ip, result, mac = await poll_one_printer(printer, object(), full=False)
 
     assert ip == "10.10.10.30"
     assert result.is_online is True
     assert mac is None
+
+
+@pytest.mark.asyncio
+async def test_poll_one_printer_full_asks_for_the_mac_only_when_online(monkeypatch) -> None:
+    printer = Printer(
+        printer_type="laser", connection_type="ip", store_name="S", model="HP", ip_address="10.10.10.31"
+    )
+    online = {"value": True}
+    mac_calls: list[str] = []
+
+    async def _full(engine, ip, community):
+        return PrinterStatus(is_online=online["value"], status="online")
+
+    async def _mac(engine, ip, community):
+        mac_calls.append(ip)
+        return "aa:bb:cc:dd:ee:ff"
+
+    async def _jitter():
+        return None
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_printer_async", _full)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.get_snmp_mac_async", _mac)
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_jitter_async", _jitter)
+
+    _, _, mac = await poll_one_printer(printer, object())
+    assert mac == "aa:bb:cc:dd:ee:ff" and mac_calls == ["10.10.10.31"]
+
+    online["value"] = False
+    _, result, mac = await poll_one_printer(printer, object())
+    assert mac is None and result.is_online is False and mac_calls == ["10.10.10.31"]
 
 
 def test_apply_light_printer_result_preserves_toner_levels() -> None:
@@ -276,8 +388,8 @@ async def test_poll_single_printer_local_retries_before_marking_offline(db_sessi
 
     calls = {"count": 0}
 
-    def flaky_poll_one(target_printer: Printer, *, full: bool = True):
-        del full
+    async def flaky_poll_one(target_printer: Printer, engine, *, full: bool = True):
+        del engine, full
         calls["count"] += 1
         if calls["count"] == 1:
             return target_printer.ip_address, None, None
@@ -311,8 +423,8 @@ async def test_poll_single_printer_local_marks_offline_after_two_failed_attempts
 
     calls = {"count": 0}
 
-    def always_fails(target_printer: Printer, *, full: bool = True):
-        del full
+    async def always_fails(target_printer: Printer, engine, *, full: bool = True):
+        del engine, full
         calls["count"] += 1
         return target_printer.ip_address, None, None
 
@@ -400,9 +512,10 @@ async def test_bulk_poll_respects_the_offline_confirmation_grace_period(db_sessi
     )
 
     failing_result = {printer.ip_address: (PrinterStatus(is_online=False, status="offline"), None)}
-    monkeypatch.setattr(
-        "app.domains.inventory.printer_polling.poll_printer_batch", lambda *_a, **_kw: failing_result
-    )
+    async def _fake_batch(*_a, **_kw):
+        return failing_result
+
+    monkeypatch.setattr("app.domains.inventory.printer_polling.poll_printer_batch", _fake_batch)
 
     # Cycle 1: first failure after being online - resilience should hold it
     # online for the grace period, and this cycle should learn nothing new
