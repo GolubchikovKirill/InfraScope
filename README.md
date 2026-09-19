@@ -159,7 +159,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - `backend` — API gateway/orchestration, `/metrics`
 - `worker` — Celery worker: плановый опрос устройств, discovery-сканы, ML (обучение/скоринг), перезагрузка точек доступа
 - `media-service` — отдельный runtime выдачи media manifest и файлов медиатеки для клиентских неттоп-агентов + `/metrics`
-- `jaeger` — distributed tracing (цепочки вызовов между сервисами)
+- `jaeger` — distributed tracing, необязательный: профиль compose `tracing` (`docker compose --profile tracing up -d` или `COMPOSE_PROFILES=tracing` в `.env`, плюс `OTEL_ENABLED=true`)
 - `db` — PostgreSQL
 - `redis` — cache/locks/broker/backend
 - `prometheus` — сбор метрик

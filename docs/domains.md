@@ -53,8 +53,7 @@ Code here should depend on services, not API route modules.
 - Backend: `app/worker/`, `app/api/routes/tasks.py`,
   `app/api/routes/logs.py`, `app/api/routes/cash_registers.py`
 - Application services: `app/domains/operations/cash_register_polling.py`
-- Services: `app/services/event_log.py`, `poll_resilience.py`, `service_flow.py`,
-  `internal_services.py`
+- Services: `app/services/event_log.py`, `poll_resilience.py`, `service_flow.py`
 - Infra: `services/`, `docker-compose*.yml`, `scripts/`, `tools/scaffold/`
 
 ## Integrations

@@ -11,9 +11,13 @@ InfraScope already has a microservice-oriented Docker Compose setup:
 - Direct switch and Iconbit control operations run in `backend`, behind a per-switch write lock and cooldown.
 - `media-service` serves media manifests and media files to Windows media clients.
 - Prediction training/scoring runs as Celery tasks in `worker` (there is no separate ml service).
-- `postgres`, `redis`, `jaeger`, `prometheus`, and `grafana` are infrastructure services.
+- `postgres`, `redis`, `prometheus`, and `grafana` are infrastructure services. `jaeger` (tracing) is optional and lives in the `tracing` compose profile: start it with `docker compose --profile tracing up -d` (or `COMPOSE_PROFILES=tracing` in `.env`) and set `OTEL_ENABLED=true`. Nothing depends on it.
 
 Production path for this project is Docker Compose only.
+
+## Media asset downloads (decision, 2026-09)
+
+`media-service` is the only part reachable from store networks. Manifest and heartbeat require `X-Media-Client-Token`; `GET /assets/{uuid}/file` deliberately does not. The asset id is a random UUID that only appears in a manifest a token holder received, the content is store audio/video (nothing sensitive), and the Windows clients fetch files with a plain HTTP call that would need a rewrite to carry a header. Revisit if assets ever hold anything non-public: the fix is a per-manifest signed URL, not a shared token on the file route.
 
 ## Kafka
 
@@ -111,5 +115,5 @@ For the current app, the best near-term setup is:
 
 1. Keep Docker Compose as the production deployment on the office/server machine.
 2. Keep Redis and worker enabled.
-3. Keep microservices enabled for polling, discovery, network control, media, and forecasting.
+3. Keep `media-service` as the only separate runtime; polling, discovery, device control and forecasting live in `backend`/`worker`.
 4. Keep deployment model simple: one production path (`docker compose`) and documented rollback steps.

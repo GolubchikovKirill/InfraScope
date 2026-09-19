@@ -34,8 +34,12 @@ services:
     networks:
       - internal
 
+  # Optional: `docker compose --profile tracing up -d` (or COMPOSE_PROFILES=tracing in .env),
+  # together with OTEL_ENABLED=true. Nothing depends on it - the OTLP exporter just drops
+  # spans while it is down - so a default install runs without it.
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
+    profiles: ["tracing"]
     restart: unless-stopped
     # The default in-memory span storage has no size cap of its own - it
     # grew to 2.45 GB RSS after 4 weeks of production tracing with nothing
@@ -65,7 +69,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       MEDIA_LIBRARY_DIR: /var/lib/infrascope/media-library
       RUSTDESK_PACKAGE_DIR: /var/lib/infrascope/rustdesk
-      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     dns:
@@ -81,8 +85,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -115,15 +117,13 @@ services:
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-6}
       WORKER_POOL: ${WORKER_POOL:-threads}
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9108}
-      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      jaeger:
         condition: service_healthy
       backend:
         condition: service_healthy
@@ -185,7 +185,7 @@ services:
       POSTGRES_SERVER: db
       REDIS_URL: redis://redis:6379/0
       MEDIA_SERVICE_ENABLED: "false"
-      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
     command:
@@ -198,8 +198,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8014/health')"]
