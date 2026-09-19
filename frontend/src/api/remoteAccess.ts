@@ -15,10 +15,13 @@ export type DeployProfile = "client" | "admin";
 export type Readiness =
   | "ready" // config applied AND the console sees the client
   | "installed_offline" // rolled out, but the machine is not reachable
-  | "deploying" // waiting for the endpoint to run the bootstrap
+  | "deploying" // requested recently, host is up - waiting for the endpoint to run the bootstrap
+  | "waiting_host" // requested, but the host does not answer - runs when the machine is switched on
+  | "stalled" // requested more than a day ago and never reported back
   | "stale" // was configured, but the desired config changed since (redeploy needed)
   | "failed"
-  | "not_deployed";
+  | "unreachable" // no client ever registered and the host does not answer
+  | "not_deployed"; // no client, but the host is up - ready for a rollout
 
 export interface RemoteDevice {
   id: string;

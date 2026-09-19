@@ -30,6 +30,7 @@ import {
   syncRemoteAccess,
   updateRemoteDevice,
   type DeployProfile,
+  type Readiness,
   type RemoteDevice,
   type SourceKind,
 } from "../client";
@@ -37,7 +38,7 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { showToast } from "../lib/toastBus";
 import { relTime } from "../lib/relTime";
 import { Button } from "../components/ui/Button";
-import { AppLockerMismatchBadge, ReadinessChip, deviceReadinessDetail } from "../components/RemoteAccessStatus";
+import { AppLockerMismatchBadge, READINESS_META, ReadinessChip, deviceReadinessDetail } from "../components/RemoteAccessStatus";
 import DeployCommandModal from "../components/DeployCommandModal";
 import ConsoleAccountsPanel from "../components/ConsoleAccountsPanel";
 import UnlistedConsolePeersPanel from "../components/UnlistedConsolePeersPanel";
@@ -90,6 +91,7 @@ export default function RemoteAccessPage() {
   const [location, setLocation] = useState("");
   const [kind, setKind] = useState<"" | SourceKind>("");
   const [typeTag, setTypeTag] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | Readiness>("");
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addHostname, setAddHostname] = useState("");
@@ -138,9 +140,16 @@ export default function RemoteAccessPage() {
     [rows],
   );
   const visibleRows = useMemo(
-    () => (typeTag ? rows.filter((r) => r.type_tag === typeTag) : rows),
-    [rows, typeTag],
+    () =>
+      rows.filter((r) => (!typeTag || r.type_tag === typeTag) && (!statusFilter || r.readiness === statusFilter)),
+    [rows, typeTag, statusFilter],
   );
+  // only the statuses that occur, with how many - an empty option is noise
+  const statusCounts = useMemo(() => {
+    const counts = new Map<Readiness, number>();
+    for (const r of rows) counts.set(r.readiness, (counts.get(r.readiness) ?? 0) + 1);
+    return counts;
+  }, [rows]);
   const summary = useMemo(
     () => ({
       total: visibleRows.length,
@@ -214,7 +223,7 @@ export default function RemoteAccessPage() {
     // exactly the rows the table is showing instead (default page size already
     // covers the whole fleet, so this isn't a narrower set than the server would give)
     abMut.mutate(
-      typeTag
+      typeTag || statusFilter
         ? { device_ids: visibleRows.map((r) => r.id) }
         : {
             ...(location ? { location } : {}),
@@ -354,6 +363,21 @@ export default function RemoteAccessPage() {
                     {t}
                   </option>
                 ))}
+              </select>
+              <select
+                className="app-input px-3 py-2 text-sm text-slate-700"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as "" | Readiness)}
+                aria-label="Статус"
+              >
+                <option value="">Все статусы</option>
+                {(Object.keys(READINESS_META) as Readiness[])
+                  .filter((k) => statusCounts.has(k))
+                  .map((k) => (
+                    <option key={k} value={k}>
+                      {READINESS_META[k].label} ({statusCounts.get(k)})
+                    </option>
+                  ))}
               </select>
               <div className="ml-auto flex gap-2">
                 <Button variant="secondary" onClick={() => syncMut.mutate()} disabled={syncMut.isPending}>

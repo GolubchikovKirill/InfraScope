@@ -55,7 +55,19 @@ DEPLOY_STATES = ("unknown", "pending", "installed", "configured", "failed", "sta
 _DEPLOYED_STATES = ("configured",)
 
 # what the UI shows as one chip; see readiness()
-READINESS = ("ready", "installed_offline", "deploying", "stale", "failed", "not_deployed")
+READINESS = (
+    "ready",
+    "installed_offline",
+    "deploying",
+    "waiting_host",
+    "stalled",
+    "stale",
+    "failed",
+    "unreachable",
+    "not_deployed",
+)
+# a requested rollout that has not reported back after this long is not "in progress"
+DEPLOY_STALLED_AFTER = timedelta(hours=24)
 
 
 def generate_password(length: int = 20) -> str:
@@ -774,11 +786,27 @@ def readiness(dev: RemoteAccessDevice) -> str:
     if dev.deploy_state in _DEPLOYED_STATES:
         return "ready" if dev.online is True else "installed_offline"
     if dev.deploy_state == "pending":
+        # a rollout is only "in progress" while something can still happen: the
+        # script runs when the machine is on, and nothing runs on a machine that
+        # is off. Four rows once sat on a spinning "deploying" chip for 16 days.
+        if dev.host_online is False:
+            return "waiting_host"
+        requested = dev.deploy_requested_at
+        if requested is not None:
+            if requested.tzinfo is None:
+                requested = requested.replace(tzinfo=UTC)
+            if _now() - requested > DEPLOY_STALLED_AFTER:
+                return "stalled"
         return "deploying"
     # never reported, but the console knows the client - a machine deployed
     # before InfraScope owned the rollout (or by hand)
     if dev.online is not None:
         return "ready" if dev.online else "installed_offline"
+    # no client has ever registered: "not deployed" only says something about a
+    # machine that is up. When it does not answer, that is the finding - there is
+    # nothing to roll out to right now.
+    if dev.host_online is False:
+        return "unreachable"
     return "not_deployed"
 
 

@@ -653,6 +653,39 @@ def test_readiness_needs_both_the_endpoint_report_and_the_console(db_session) ->
     assert service.readiness(dev) == "ready"
 
 
+def test_readiness_tells_a_switched_off_machine_from_one_that_needs_a_rollout(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MUZ-501")
+
+    # no client ever registered: what matters is whether the host is up
+    dev.host_online = True
+    assert service.readiness(dev) == "not_deployed"
+    dev.host_online = False
+    assert service.readiness(dev) == "unreachable"
+    dev.host_online = None  # never probed - do not claim it is off
+    assert service.readiness(dev) == "not_deployed"
+
+
+def test_readiness_does_not_leave_a_rollout_spinning_for_days(db_session) -> None:
+    dev = service.ensure_device(db_session, hostname="VNA-MUZ-901")
+    dev.deploy_state = "pending"
+    dev.deploy_requested_at = datetime.now(UTC) - timedelta(minutes=10)
+    dev.host_online = True
+    assert service.readiness(dev) == "deploying"
+
+    # the script runs when the machine is on - nothing to do but wait for that
+    dev.host_online = False
+    assert service.readiness(dev) == "waiting_host"
+
+    # host is up yet the script never reported: that is not "in progress" any more
+    dev.host_online = True
+    dev.deploy_requested_at = datetime.now(UTC) - service.DEPLOY_STALLED_AFTER - timedelta(hours=1)
+    assert service.readiness(dev) == "stalled"
+
+    # a naive timestamp (as read back from the database) is handled the same way
+    dev.deploy_requested_at = dev.deploy_requested_at.replace(tzinfo=None)
+    assert service.readiness(dev) == "stalled"
+
+
 def test_readiness_trusts_the_console_for_machines_deployed_before_infrascope(db_session) -> None:
     # rolled out by hand / by the old KSC package: no report will ever arrive
     dev = service.ensure_device(db_session, hostname="VNA-MGR-901")

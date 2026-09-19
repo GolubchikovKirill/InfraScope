@@ -1,4 +1,15 @@
-import { CircleCheck, CircleDashed, Loader2, MonitorOff, AlertTriangle, RefreshCw, ShieldAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  CircleCheck,
+  CircleDashed,
+  Clock,
+  Loader2,
+  MonitorOff,
+  RefreshCw,
+  ShieldAlert,
+  TimerOff,
+  WifiOff,
+} from "lucide-react";
 import type { RemoteDevice, Readiness } from "../client";
 import { relTime } from "../lib/relTime";
 
@@ -23,6 +34,16 @@ export const READINESS_META: Record<
     toneClass: "bg-amber-100 text-amber-800",
     Icon: Loader2,
   },
+  waiting_host: {
+    label: "Ждёт включения машины",
+    toneClass: "bg-sky-100 text-sky-800",
+    Icon: Clock,
+  },
+  stalled: {
+    label: "Раскатка не отработала",
+    toneClass: "bg-orange-100 text-orange-800",
+    Icon: TimerOff,
+  },
   stale: {
     label: "Нужен передеплой",
     toneClass: "bg-amber-100 text-amber-800",
@@ -33,11 +54,25 @@ export const READINESS_META: Record<
     toneClass: "bg-rose-100 text-rose-700",
     Icon: AlertTriangle,
   },
+  unreachable: {
+    label: "Машина не в сети, клиента нет",
+    toneClass: "bg-slate-100 text-slate-600",
+    Icon: WifiOff,
+  },
   not_deployed: {
     label: "Не развёрнуто",
-    toneClass: "bg-slate-100 text-slate-400",
+    toneClass: "bg-violet-100 text-violet-700",
     Icon: CircleDashed,
   },
+};
+
+/** What an operator can do about a state that is not "ready". */
+const NEXT_STEP: Partial<Record<Readiness, string>> = {
+  installed_offline: "клиент стоит, но машина не на связи — дождаться включения",
+  waiting_host: "ничего: скрипт отработает сам, когда машину включат",
+  stalled: "машина в сети, но скрипт не отчитался — проверить запуск (KSC/GPO) или запустить раскатку вручную",
+  unreachable: "включить машину или проверить сеть, затем запустить раскатку",
+  not_deployed: "запустить раскатку (кнопка с ракетой)",
 };
 
 /** Tooltip text behind the chip: the individual facts `readiness` was
@@ -60,6 +95,10 @@ export function deviceReadinessDetail(device: RemoteDevice): string {
     failed: "скрипт сообщил об ошибке",
   };
   lines.push(`Раскатка: ${stateLabel[device.deploy_state]}`);
+  if (device.deploy_state === "pending" && device.deploy_requested_at)
+    lines.push(`Запрошена: ${relTime(device.deploy_requested_at)}`);
+  const next = NEXT_STEP[device.readiness];
+  if (next) lines.push(`Что делать: ${next}`);
   if (device.deploy_state === "failed" && device.deploy_detail) lines.push(device.deploy_detail);
   if (device.deploy_reported_at) lines.push(`Отчёт машины: ${relTime(device.deploy_reported_at)}`);
 
