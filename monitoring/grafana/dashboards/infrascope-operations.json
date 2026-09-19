@@ -167,14 +167,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "infrascope_devices_total",
+          "expr": "max by (kind) (infrascope_devices_total)",
           "legendFormat": "{{kind}} total",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "infrascope_devices_online",
+          "expr": "max by (kind) (infrascope_devices_online)",
           "legendFormat": "{{kind}} online",
           "range": true,
           "refId": "B"

@@ -81,12 +81,16 @@ groups:
           summary: "Ошибки операций с медиаплеерами"
           description: "Более 10 ошибок media operations за 15 минут."
 
+      # infrascope_devices_* are set by whichever process ran a poll: the worker on
+      # the schedule and the API on a manual "poll all" (before the polling service
+      # was folded in, only that service set them). `max by (kind)` collapses the
+      # per-process series instead of summing a fresh value with a stale one.
       - alert: InfraScopeHighOfflineDeviceRatio
         expr: |
           (
             1 - (
-              sum(infrascope_devices_online{kind=~"printer|media_player|switch"}) /
-              clamp_min(sum(infrascope_devices_total{kind=~"printer|media_player|switch"}), 1)
+              sum(max by (kind) (infrascope_devices_online{kind=~"printer|media_player|switch"})) /
+              clamp_min(sum(max by (kind) (infrascope_devices_total{kind=~"printer|media_player|switch"})), 1)
             )
           ) > 0.2
         for: 10m
@@ -165,8 +169,8 @@ groups:
       - alert: InfraScopeDeviceAvailabilitySLOBreach
         expr: |
           (
-            sum(infrascope_devices_online{kind=~"printer|media_player|switch"}) /
-            clamp_min(sum(infrascope_devices_total{kind=~"printer|media_player|switch"}), 1)
+            sum(max by (kind) (infrascope_devices_online{kind=~"printer|media_player|switch"})) /
+            clamp_min(sum(max by (kind) (infrascope_devices_total{kind=~"printer|media_player|switch"})), 1)
           ) < 0.95
         for: 15m
         labels:
