@@ -20,6 +20,7 @@ import {
   Cable,
   ShieldCheck,
   Camera,
+  Tv,
   MonitorSmartphone,
   KeyRound,
 } from "lucide-react";
@@ -50,6 +51,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { match: (path) => path.startsWith("/honest-sign"), title: "Честный знак", subtitle: "Статус и удалённая инициализация Local Module" },
     { match: (path) => path.startsWith("/cameras"), title: "Камеры", subtitle: "Просмотр и перезагрузка камер по магазинам" },
     { match: (path) => path.startsWith("/computers"), title: "Компьютеры", subtitle: "Контроль доступности рабочих станций" },
+    { match: (path) => path.startsWith("/screens"), title: "Экраны", subtitle: "Телевизоры в магазинах: кто включён и подключение" },
     { match: (path) => path.startsWith("/remote-access"), title: "Удалённый доступ", subtitle: "RustDesk как сервис: деплой, пароли, книга адресов, подключения" },
     { match: (path) => path.startsWith("/credentials"), title: "Пароли и учётные данные", subtitle: "Хранилище секретов инфраструктуры и генератор паролей" },
     { match: (path) => path.startsWith("/onec"), title: "QR-генерация", subtitle: "Файлы обмена и посадочные талоны" },
@@ -78,6 +80,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { to: "/cameras", label: "Камеры", icon: Camera, visible: true },
     { to: "/cash-registers", label: "Кассы", icon: Wallet, visible: true },
     { to: "/computers", label: "Компьютеры", icon: Laptop, visible: true },
+    { to: "/screens", label: "Экраны", icon: Tv, visible: true },
   ];
   const baseItems = [
     { to: "/honest-sign", label: "Честный знак", icon: ShieldCheck, visible: true },

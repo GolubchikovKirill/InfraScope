@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import type { RemoteDevice } from "../client";
 
@@ -86,9 +87,11 @@ function makeDevice(overrides: Partial<RemoteDevice> = {}): RemoteDevice {
 
 const renderPage = () =>
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      <RemoteAccessPage />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
+        <RemoteAccessPage />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 
 beforeEach(() => {
@@ -134,6 +137,45 @@ describe("RemoteAccessPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Подключения" }));
     expect(await screen.findByText("Последние подключения")).toBeInTheDocument();
+  });
+
+  it("keeps the store TVs out of the device list and points to the Screens tab", async () => {
+    api.getRemoteDevices.mockResolvedValue({
+      data: [
+        makeDevice({ id: "d1", hostname: "VNA-MGR-205", type_tag: "MGR" }),
+        makeDevice({ id: "d2", hostname: "VNA-TV-401", type_tag: "TV" }),
+        makeDevice({ id: "d3", hostname: "vna-tv-2002", type_tag: "TV" }),
+      ],
+      count: 3,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("VNA-MGR-205")).toBeInTheDocument();
+    expect(screen.queryByText("VNA-TV-401")).not.toBeInTheDocument();
+    expect(screen.getByText(/Телевизоры \(2\) вынесены во вкладку/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "«Экраны»" })).toHaveAttribute("href", "/screens");
+  });
+
+  it("brings the TVs back into the list on request", async () => {
+    api.getRemoteDevices.mockResolvedValue({
+      data: [makeDevice({ id: "d1", hostname: "VNA-MGR-205", type_tag: "MGR" }), makeDevice({ id: "d2", hostname: "VNA-TV-401", type_tag: "TV" })],
+      count: 2,
+    });
+    renderPage();
+    await screen.findByText("VNA-MGR-205");
+
+    fireEvent.click(screen.getByLabelText("Показывать и здесь"));
+
+    expect(await screen.findByText("VNA-TV-401")).toBeInTheDocument();
+  });
+
+  it("does not mention screens when there are none", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [makeDevice({ id: "d1", hostname: "VNA-MGR-205", type_tag: "MGR" })], count: 1 });
+    renderPage();
+
+    await screen.findByText("VNA-MGR-205");
+    expect(screen.queryByText(/вынесены во вкладку/)).not.toBeInTheDocument();
   });
 
   it("offers the console machines that are not in the list on the devices tab", async () => {

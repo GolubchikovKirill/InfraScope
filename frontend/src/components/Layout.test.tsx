@@ -144,6 +144,15 @@ describe("Layout navigation", () => {
     }
   });
 
+  it("lists the Screens tab inside the Equipment group", () => {
+    renderLayout("/");
+
+    for (const link of screen.getAllByRole("link", { name: "Экраны" })) expect(link).toHaveAttribute("href", "/screens");
+    // it belongs to the group: collapsing Equipment takes it away with the rest
+    fireEvent.click(screen.getAllByRole("button", { name: /Оборудование/ })[0]);
+    expect(screen.queryAllByRole("link", { name: "Экраны" })).toHaveLength(0);
+  });
+
   it("has no network search entry", () => {
     renderLayout("/");
 

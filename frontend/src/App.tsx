@@ -17,6 +17,7 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const UsersPage = lazy(() => import("./pages/Users"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 const HonestSignPage = lazy(() => import("./pages/HonestSignPage"));
+const ScreensPage = lazy(() => import("./pages/ScreensPage"));
 const CamerasPage = lazy(() => import("./pages/CamerasPage"));
 const RemoteAccessPage = lazy(() => import("./pages/RemoteAccessPage"));
 const CredentialsPage = lazy(() => import("./pages/CredentialsPage"));
@@ -63,6 +64,7 @@ function AnimatedRoutes() {
           <Route path="/switches" element={<SwitchesPage />} />
           <Route path="/cash-registers" element={<CashRegistersPage />} />
           <Route path="/honest-sign" element={<HonestSignPage />} />
+          <Route path="/screens" element={<ScreensPage />} />
           <Route path="/cameras" element={<CamerasPage />} />
           <Route path="/computers" element={<ComputersPage />} />
           <Route path="/remote-access" element={<RemoteAccessPage />} />

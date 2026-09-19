@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw,
@@ -42,6 +43,7 @@ import { AppLockerMismatchBadge, READINESS_META, ReadinessChip, deviceReadinessD
 import DeployCommandModal from "../components/DeployCommandModal";
 import ConsoleAccountsPanel from "../components/ConsoleAccountsPanel";
 import UnlistedConsolePeersPanel from "../components/UnlistedConsolePeersPanel";
+import { isScreen } from "../lib/screens";
 
 type BadgeTone = "default" | "green" | "red" | "amber" | "sky" | "violet";
 const badgeTone: Record<BadgeTone, string> = {
@@ -91,6 +93,7 @@ export default function RemoteAccessPage() {
   const [location, setLocation] = useState("");
   const [kind, setKind] = useState<"" | SourceKind>("");
   const [typeTag, setTypeTag] = useState("");
+  const [showScreens, setShowScreens] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"" | Readiness>("");
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -128,7 +131,10 @@ export default function RemoteAccessPage() {
   // fixes this on its own; a sustained nonzero reading is the one worth a look
   const abMissing = abStatus.data?.missing ?? 0;
 
-  const rows = useMemo(() => data?.data ?? [], [data]);
+  const allRows = useMemo(() => data?.data ?? [], [data]);
+  // the store TVs have their own tab ("Экраны"); they stay out of this list unless asked for
+  const screenCount = useMemo(() => allRows.filter(isScreen).length, [allRows]);
+  const rows = useMemo(() => (showScreens ? allRows : allRows.filter((r) => !isScreen(r))), [allRows, showScreens]);
   const locations = useMemo(
     () => Array.from(new Set(rows.map((r) => r.location).filter((x): x is string => !!x))).sort(),
     [rows],
@@ -301,6 +307,19 @@ export default function RemoteAccessPage() {
           )}
 
           <UnlistedConsolePeersPanel isSuperuser={isSuperuser} />
+
+          {screenCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
+              <span>
+                Телевизоры ({screenCount}) вынесены во вкладку{" "}
+                <Link to="/screens" className="font-medium text-[var(--brand)] hover:underline">«Экраны»</Link>.
+              </span>
+              <label className="inline-flex cursor-pointer items-center gap-2">
+                <input type="checkbox" checked={showScreens} onChange={(e) => setShowScreens(e.target.checked)} />
+                Показывать и здесь
+              </label>
+            </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-4">
             {[
