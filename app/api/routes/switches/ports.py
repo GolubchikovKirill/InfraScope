@@ -109,7 +109,7 @@ async def get_switch_ports(
 
 
 @router.get("/{switch_id}/port-config-history", response_model=SwitchPortSnapshotHistory)
-async def get_switch_port_config_history(
+def get_switch_port_config_history(
     switch_id: uuid.UUID,
     session: SessionDep,
     current_user: CurrentUser,

@@ -266,7 +266,7 @@ async def reboot_all_camera_ports(switch_id: uuid.UUID, session: SessionDep) -> 
 
 
 @router.patch("/{switch_id}/access-points/{mac_address}/exclude", dependencies=[Depends(get_current_active_superuser)])
-async def set_switch_ap_excluded(
+def set_switch_ap_excluded(
     switch_id: uuid.UUID,
     mac_address: str,
     payload: SetApExcludedRequest,

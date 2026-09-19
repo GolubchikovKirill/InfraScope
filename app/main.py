@@ -21,6 +21,7 @@ from app.core.http import request_context_headers_middleware, security_headers_m
 from app.core.limiter import limiter
 from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import close_redis, get_redis
+from app.observability.loop_lag import start_loop_lag_monitor, stop_loop_lag_monitor
 from app.observability.tracing import setup_tracing
 from app.services.event_log import write_event_log
 
@@ -39,7 +40,9 @@ async def lifespan(app: FastAPI):
 
     await run_in_threadpool(_init_db_sync)
     await realtime_relay.start()
+    loop_lag = start_loop_lag_monitor("backend")
     yield
+    await stop_loop_lag_monitor(loop_lag)
     await realtime_relay.stop()
     await close_redis()
 

@@ -51,7 +51,7 @@ async def run_switch_auto_reboot_now(switch_id: uuid.UUID, session: SessionDep) 
 
 
 @router.get("/{switch_id}/auto-reboot/history")
-async def get_switch_auto_reboot_history(
+def get_switch_auto_reboot_history(
     switch_id: uuid.UUID,
     session: SessionDep,
     current_user: CurrentUser,
@@ -79,7 +79,7 @@ async def get_switch_auto_reboot_history(
 
 
 @router.get("/auto-reboot/summary", response_model=AutoRebootSummary)
-async def get_auto_reboot_summary(
+def get_auto_reboot_summary(
     session: SessionDep,
     current_user: CurrentUser,
     hours: int = Query(default=24, ge=1, le=168),

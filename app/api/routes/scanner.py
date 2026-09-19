@@ -355,7 +355,7 @@ async def rediscover_by_mac(body: MacRediscoveryRequest, session: SessionDep) ->
 
 
 @router.get("/settings")
-async def get_scanner_settings(session: SessionDep, current_user: CurrentUser) -> dict:
+def get_scanner_settings(session: SessionDep, current_user: CurrentUser) -> dict:
     """Get default scanner settings."""
     general = get_general_settings(session)
     return {
