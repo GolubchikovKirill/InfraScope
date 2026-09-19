@@ -155,7 +155,8 @@ def _snmp_query_sync(ip: str) -> SnmpInfo:
 
     try:
         return asyncio.run(_query())
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("SNMP info query of %s failed: %s", ip, exc)
         return SnmpInfo()
 
 

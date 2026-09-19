@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import secrets
 import uuid
 from collections.abc import Iterator
@@ -162,6 +163,9 @@ def _task_finished(operation: str, started_at: float, result: str) -> None:
     worker_tasks_in_progress.labels(operation=operation).dec()
     worker_task_executions_total.labels(operation=operation, result=result).inc()
     worker_task_duration_seconds.labels(operation=operation).observe(max(perf_counter() - started_at, 0))
+
+
+logger = logging.getLogger(__name__)
 
 
 class _Skipped(dict):
@@ -506,7 +510,8 @@ def remote_access_sync_task(self) -> dict:
                 accounts_seen = _run_async(_remote_access_service.sync_accounts(session)).get("accounts_seen", 0)
                 # only rows the console is missing or whose password went stale
                 book_pushed = _run_async(_remote_access_service.sync_stale_address_book(session)).get("pushed", 0)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 - reported through console_error, not raised
+                logger.warning("RustDesk console sync failed: %s", exc)
                 console_error = str(exc)
         statuses = _remote_access_service.refresh_status_from_inventory(session)
     return {

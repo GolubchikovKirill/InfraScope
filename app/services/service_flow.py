@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -21,6 +22,11 @@ from app.domains.operations.schemas import (
     ServiceFlowTimeseriesPointPublic,
     ServiceFlowTimeseriesPublic,
 )
+
+logger = logging.getLogger(__name__)
+
+# Prometheus being down or answering with something unexpected: the panels show "no data".
+_PROMETHEUS_READ_ERRORS = (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SERVICE_CATALOG_PATH = _REPO_ROOT / "services" / "catalog.yaml"
@@ -67,7 +73,8 @@ def _query_scalar(query: str) -> float | None:
             if not result:
                 return None
             return float(result[0]["value"][1])
-        except Exception:
+        except _PROMETHEUS_READ_ERRORS as exc:
+            logger.debug("Prometheus scalar query failed: %s", exc)
             return None
 
     return _cached_query(("scalar", query), _load)
@@ -84,7 +91,8 @@ def _query_vector(query: str) -> list[dict[str, Any]]:
             res.raise_for_status()
             payload = res.json()
             return list(payload.get("data", {}).get("result") or [])
-        except Exception:
+        except _PROMETHEUS_READ_ERRORS as exc:
+            logger.debug("Prometheus query failed: %s", exc)
             return []
 
     return _cached_query(("vector", query), _load)
@@ -103,7 +111,8 @@ def _query_range(query: str, *, start_ts: int, end_ts: int, step_seconds: int) -
             res.raise_for_status()
             payload = res.json()
             return list(payload.get("data", {}).get("result") or [])
-        except Exception:
+        except _PROMETHEUS_READ_ERRORS as exc:
+            logger.debug("Prometheus query failed: %s", exc)
             return []
 
     return _cached_query(cache_key, _load)

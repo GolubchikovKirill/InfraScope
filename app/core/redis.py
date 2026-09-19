@@ -6,8 +6,15 @@ import asyncio
 import weakref
 
 import redis.asyncio as aioredis
+from redis.exceptions import RedisError
 
 from app.core.config import settings
+
+# What a Redis outage looks like from the caller: a RedisError (connection, timeout, ...),
+# a socket-level OSError, or the builtin TimeoutError from asyncio.wait_for. Code that
+# deliberately carries on without Redis catches this - not Exception, which would also
+# hide real bugs (an "Event loop is closed" RuntimeError once hid behind one).
+REDIS_ERRORS = (RedisError, OSError)
 
 # One pool per running event loop, not one per process.
 #

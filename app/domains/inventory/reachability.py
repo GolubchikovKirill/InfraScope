@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import errno as errno_mod
 import ipaddress
+import logging
 import socket
 import time
 from collections.abc import Callable
@@ -24,6 +25,8 @@ from time import perf_counter
 from app.core.config import settings
 from app.observability.metrics import network_probe_attempts_total, network_probe_duration_seconds
 from app.services.hostname_resolver import resolve_hostname as resolve_hostname_with_fallback
+
+logger = logging.getLogger(__name__)
 
 #: The name does not resolve through DNS, the search suffixes, or /etc/hosts.
 REASON_DNS_UNRESOLVED = "dns_unresolved"
@@ -141,7 +144,8 @@ def probe_host_ports(
             started = perf_counter()
             try:
                 failure = probe(resolved_address, port, attempt_timeout)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - a probe bug must not read as a host outage; it is tagged probe_error
+                logger.debug("Probe %s:%s raised %r", resolved_address, port, exc)
                 _observe(probe_scope, REASON_PROBE_ERROR, started)
                 last_reason = REASON_PROBE_ERROR
             else:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 
 from app.core.config import settings
@@ -24,8 +26,8 @@ def setup_tracing(app: FastAPI, *, service_name: str) -> None:
         from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_NAMESPACE, Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    except Exception:
-        # Tracing is optional; keep application startup resilient.
+    except Exception as exc:  # noqa: BLE001 - tracing is optional; keep application startup resilient
+        logging.getLogger(__name__).warning("Tracing disabled, OpenTelemetry could not be loaded: %s", exc)
         return
 
     resource = Resource.create(

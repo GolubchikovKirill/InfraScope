@@ -184,11 +184,13 @@ async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[s
         from pysnmp.hlapi.asyncio import (
             get_cmd as get_cmd,
         )
-    except Exception:
+    except ImportError as exc:  # pysnmp missing: discovery degrades to "nothing found"
+        logger.warning("SNMP discovery unavailable: %s", exc)
         return {}
     try:
         target = await UdpTransportTarget.create((ip, 161), timeout=2, retries=0)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("SNMP target %s not usable: %s", ip, exc)
         return {}
     engine = SnmpEngine()
     oid_sys_descr = "1.3.6.1.2.1.1.1.0"
@@ -225,7 +227,8 @@ async def _snmp_switch_fingerprint(ip: str, community: str = "public") -> dict[s
         if not any(h in identity_text for h in _SWITCH_HINTS):
             return {}
         return values
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("SNMP identity probe of %s failed: %s", ip, exc)
         return {}
     finally:
         # SnmpEngine never closes its own UDP socket - a discovery sweep
@@ -270,7 +273,8 @@ async def _iconbit_fingerprint(ip: str) -> dict[str, str | None]:
             model_match = re.search(r"<title>([^<]+)</title>", text, re.IGNORECASE)
             model = model_match.group(1).strip() if model_match else "Iconbit"
             return {"model_info": model, "device_kind": "iconbit"}
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("Iconbit probe of %s failed: %s", ip, exc)
         return {}
     return {}
 

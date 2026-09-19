@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.services.device_poll import find_devices_by_macs
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from sqlmodel import Session
@@ -69,7 +72,8 @@ async def resolve_devices_by_mac(
 
         try:
             switch_map = await build_switch_mac_map(session)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - the switch MAC table is an optional enrichment
+            logger.warning("Switch MAC map unavailable, continuing without it: %s", exc)
             switch_map = {}
         for mac in list(remaining):
             ip = switch_map.get(mac)

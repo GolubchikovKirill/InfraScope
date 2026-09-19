@@ -103,7 +103,8 @@ def _parse_status_xml(text: str) -> dict | None:
             "position": int(root.findtext("position") or 0),
             "duration": int(root.findtext("duration") or 0),
         }
-    except Exception:
+    except (ET.ParseError, ValueError) as exc:  # the player answered with something that is not its status XML
+        logger.debug("Unparseable Iconbit status: %s", exc)
         return None
 
 

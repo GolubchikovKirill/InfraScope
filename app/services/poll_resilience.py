@@ -1,11 +1,14 @@
 import asyncio
+import logging
 import random
 import time
 from dataclasses import dataclass
 
 from app.core.config import settings
-from app.core.redis import get_redis
+from app.core.redis import REDIS_ERRORS, get_redis
 from app.observability.metrics import poll_resilience_events_total
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -105,7 +108,9 @@ async def is_circuit_open(kind: str, entity_id: str) -> bool:
         if open_until > int(time.time()):
             poll_resilience_events_total.labels(kind=kind, event="circuit_skip").inc()
             return True
-    except Exception:
+    except REDIS_ERRORS as exc:
+        # No state, no circuit: poll the entity rather than skip it blind.
+        logger.warning("Circuit state for %s/%s unavailable, treating as closed: %s", kind, entity_id, exc)
         return False
     return False
 
@@ -129,7 +134,9 @@ async def apply_poll_outcome(
         state = await r.hgetall(key)
         failures = _to_int(state.get(b"failures") or state.get("failures"), 0)
         circuit_failures = _to_int(state.get(b"circuit_failures") or state.get("circuit_failures"), 0)
-    except Exception:
+    except REDIS_ERRORS as exc:
+        # Without stored counters this poll decides from the probe alone (no grace period).
+        logger.warning("Poll resilience state for %s/%s unavailable: %s", kind, entity_id, exc)
         r = None
 
     decision = decide_poll_state(
@@ -169,7 +176,7 @@ async def apply_poll_outcome(
         try:
             await r.hset(key, mapping=payload)
             await r.expire(key, ttl)
-        except Exception:
-            pass
+        except REDIS_ERRORS as exc:
+            logger.warning("Could not store poll resilience state for %s/%s: %s", kind, entity_id, exc)
 
     return decision.effective_online

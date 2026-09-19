@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.core.redis import get_redis
+from app.core.redis import REDIS_ERRORS, get_redis
 from app.domains.inventory.reachability import (
     REASON_PROBE_ERROR,
     ReachabilityResult,
@@ -19,6 +20,8 @@ from app.domains.operations.schemas import CashRegistersPublic
 from app.services.cache import invalidate_entity_cache
 from app.services.event_log import write_event_log
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
+
+logger = logging.getLogger(__name__)
 
 
 class CashRegisterNotFoundError(LookupError):
@@ -133,7 +136,9 @@ async def poll_all_cash_registers_local(*, session: Session) -> CashRegistersPub
     try:
         redis = await get_redis()
         lock_acquired = bool(await redis.set(lock_key, "1", ex=320, nx=True))
-    except Exception:
+    except REDIS_ERRORS as exc:
+        # Fail open: a Redis outage must not stop polling; the worst case is a duplicate poll.
+        logger.warning("Poll lock %s unavailable, polling without it: %s", lock_key, exc)
         lock_acquired = True
 
     rows = session.exec(select(CashRegister)).all()
@@ -173,5 +178,6 @@ async def poll_all_cash_registers_local(*, session: Session) -> CashRegistersPub
             try:
                 redis = await get_redis()
                 await redis.delete(lock_key)
-            except Exception:
-                pass
+            except REDIS_ERRORS as exc:
+                # The lock expires on its own (ex=320); nothing else to do.
+                logger.debug("Could not release poll lock %s: %s", lock_key, exc)

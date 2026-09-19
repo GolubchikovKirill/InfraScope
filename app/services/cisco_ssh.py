@@ -451,8 +451,8 @@ class CiscoSSH:
                         transport.close()
                 with suppress(Exception):
                     self.client.close()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - closing a dead connection: nothing left to undo
+            logger.debug("Error while closing SSH session: %s", exc)
         self.shell = None
         self.client = None
 

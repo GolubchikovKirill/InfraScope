@@ -148,7 +148,8 @@ async def _get_snmp_info(ip: str, community: str = "public") -> dict:
 async def _get_snmp_info_inner(engine: SnmpEngine, ip: str, community: str) -> dict:
     try:
         target = await UdpTransportTarget.create((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("SNMP target %s not usable: %s", ip, exc)
         return {}
 
     comm = CommunityData(community)
@@ -199,7 +200,8 @@ async def _get_snmp_mac(ip: str, community: str = "public") -> str | None:
 async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> str | None:
     try:
         target = await UdpTransportTarget.create((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("SNMP target %s not usable: %s", ip, exc)
         return None
 
     comm = CommunityData(community)
@@ -219,8 +221,8 @@ async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> st
                     octets = val.asOctets()
                     if len(octets) == 6 and any(b != 0 for b in octets):
                         return ":".join(f"{b:02x}" for b in octets)
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+        logger.debug("SNMP MAC walk on %s failed: %s", ip, exc)
     return None
 
 
@@ -326,8 +328,8 @@ def _netbios_parse_response(data: bytes) -> str | None:
         offset += 2
         if offset + 4 <= len(data):
             return socket.inet_ntoa(data[offset : offset + 4])
-    except Exception:
-        pass
+    except (struct.error, IndexError, ValueError, OSError) as exc:  # malformed mDNS reply
+        logger.debug("Unparseable mDNS answer: %s", exc)
     return None
 
 

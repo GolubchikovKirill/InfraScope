@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import uuid
 from contextlib import suppress
@@ -13,7 +14,7 @@ from sqlmodel import select
 from app.api.deps import CurrentUser, SessionDep
 from app.api.routes._service_errors import conflict, not_found
 from app.core.config import settings
-from app.core.redis import get_redis
+from app.core.redis import REDIS_ERRORS, get_redis
 from app.core.redis_lock import acquire_redis_lock, release_redis_lock, renew_redis_lock
 from app.domains.inventory.models import NetworkSwitch
 from app.services.cache import invalidate_entity_cache
@@ -33,6 +34,8 @@ _SAFE_PORT_PATTERN = re.compile(
     r")\d+(?:/\d+){0,3}$",
     re.IGNORECASE,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -60,9 +63,10 @@ async def _renew_switch_write_lease(lease: _SwitchWriteLease) -> None:
                 return
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except REDIS_ERRORS as exc:
             # New writes fail closed if Redis is unavailable. Keep retrying
             # while the current TTL protects this in-flight operation.
+            logger.warning("Could not renew switch write lease %s: %s", lease.key, exc)
             continue
 
 
@@ -110,9 +114,9 @@ async def _release_switch_write_lock(lease: _SwitchWriteLease | None) -> None:
     try:
         redis = await asyncio.wait_for(get_redis(), timeout=0.2)
         await asyncio.wait_for(release_redis_lock(redis, lease.key, lease.owner), timeout=0.3)
-    except Exception:
+    except REDIS_ERRORS as exc:
         # The lease expires safely if Redis cannot be reached during cleanup.
-        pass
+        logger.warning("Could not release switch write lease %s: %s", lease.key, exc)
 
 
 async def _enforce_switch_cooldown(*, switch_id: uuid.UUID, port: str, operation: str) -> None:

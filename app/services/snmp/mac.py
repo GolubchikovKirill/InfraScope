@@ -28,7 +28,8 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
     try:
         try:
             target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+            logger.debug("SNMP target %s not usable: %s", ip_address, exc)
             return None
 
         comm = CommunityData(community)
@@ -48,8 +49,8 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
                         octets = val.asOctets()
                         if len(octets) == 6 and any(b != 0 for b in octets):
                             return ":".join(f"{b:02x}" for b in octets)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+            logger.debug("SNMP MAC walk on %s failed: %s", ip_address, exc)
         return None
     finally:
         # SnmpEngine opens a UDP socket lazily on first request and never

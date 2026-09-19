@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.core.redis import get_redis
+from app.core.redis import REDIS_ERRORS, get_redis
 from app.domains.inventory.models import Printer
 from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint
 from app.domains.inventory.schemas import PrintersPublic
@@ -293,7 +293,9 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
     try:
         redis = await get_redis()
         lock_acquired = bool(await redis.set(lock_key, "1", ex=320, nx=True))
-    except Exception:
+    except REDIS_ERRORS as exc:
+        # Fail open: a Redis outage must not stop polling; the worst case is a duplicate poll.
+        logger.warning("Poll lock %s unavailable, polling without it: %s", lock_key, exc)
         lock_acquired = True
 
     all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
@@ -448,8 +450,9 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
             try:
                 redis = await get_redis()
                 await redis.delete(lock_key)
-            except Exception:
-                pass
+            except REDIS_ERRORS as exc:
+                # The lock expires on its own (ex=320); nothing else to do.
+                logger.debug("Could not release poll lock %s: %s", lock_key, exc)
 
 
 def _apply_full_printer_result(printer: Printer, result, current_mac: str | None) -> None:

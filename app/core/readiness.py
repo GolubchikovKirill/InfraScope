@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlmodel import Session
+
+logger = logging.getLogger(__name__)
 
 
 def check_database(engine) -> bool:
@@ -10,7 +14,8 @@ def check_database(engine) -> bool:
         with Session(engine) as session:
             session.exec(text("SELECT 1")).one()
         return True
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a health probe reports any failure as "not ready"
+        logger.warning("Readiness: database check failed: %s", exc)
         return False
 
 
@@ -19,7 +24,8 @@ async def check_redis(get_redis) -> bool:
         redis = await get_redis()
         await redis.ping()
         return True
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a health probe reports any failure as "not ready"
+        logger.warning("Readiness: redis check failed: %s", exc)
         return False
 
 

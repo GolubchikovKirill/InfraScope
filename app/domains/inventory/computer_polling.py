@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.core.redis import get_redis
+from app.core.redis import REDIS_ERRORS, get_redis
 from app.domains.inventory.models import Computer
 from app.domains.inventory.reachability import (
     REASON_PROBE_ERROR,
@@ -61,7 +61,9 @@ async def poll_all_computers_local(*, session: Session) -> ComputersPublic:
     try:
         redis = await get_redis()
         lock_acquired = bool(await redis.set(lock_key, "1", ex=320, nx=True))
-    except Exception:
+    except REDIS_ERRORS as exc:
+        # Fail open: a Redis outage must not stop polling; the worst case is a duplicate poll.
+        logger.warning("Poll lock %s unavailable, polling without it: %s", lock_key, exc)
         lock_acquired = True
 
     rows = session.exec(select(Computer)).all()
@@ -98,5 +100,6 @@ async def poll_all_computers_local(*, session: Session) -> ComputersPublic:
             try:
                 redis = await get_redis()
                 await redis.delete(lock_key)
-            except Exception:
-                pass
+            except REDIS_ERRORS as exc:
+                # The lock expires on its own (ex=320); nothing else to do.
+                logger.debug("Could not release poll lock %s: %s", lock_key, exc)
