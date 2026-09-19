@@ -123,9 +123,27 @@ prune_dir() {
 prune_dir "$DAILY_DIR" "$KEEP_DAILY"
 prune_dir "$WEEKLY_DIR" "$KEEP_WEEKLY"
 
-# Phase 1 (see docs/platform-audit-2026-09.md) wires an alert off this file
-# being older than expected - a backup that silently stopped running is as
-# dangerous as never having one.
 date -u +%FT%TZ > "${BACKUP_ROOT}/.last_success"
+
+# Exposed to Prometheus through node-exporter's textfile collector (the
+# node-exporter service in docker-compose.yml mounts this directory), so the
+# PostgresBackupStale alert fires when backups stop - a backup that silently
+# stopped running is as dangerous as never having one. Written to a temp name
+# and renamed: the collector must never read a half-written file. Kept
+# world-readable because node-exporter runs as an unprivileged user.
+METRICS_DIR="${BACKUP_METRICS_DIR:-backups/metrics}"
+mkdir -p "$METRICS_DIR"
+chmod 755 "$METRICS_DIR" 2>/dev/null || true
+metrics_tmp="${METRICS_DIR}/.infrascope_backup.prom.$$"
+{
+  echo "# HELP infrascope_backup_last_success_timestamp_seconds Unix time of the last successful PostgreSQL backup."
+  echo "# TYPE infrascope_backup_last_success_timestamp_seconds gauge"
+  echo "infrascope_backup_last_success_timestamp_seconds $(date -u +%s)"
+  echo "# HELP infrascope_backup_last_size_bytes Size of the last successful PostgreSQL backup."
+  echo "# TYPE infrascope_backup_last_size_bytes gauge"
+  echo "infrascope_backup_last_size_bytes ${size_bytes}"
+} > "$metrics_tmp"
+chmod 644 "$metrics_tmp"
+mv "$metrics_tmp" "${METRICS_DIR}/infrascope_backup.prom"
 
 echo "$(date -u +%FT%TZ) Backup cycle complete."

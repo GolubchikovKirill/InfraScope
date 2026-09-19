@@ -259,3 +259,62 @@ groups:
         annotations:
           summary: "RustDesk: порт {{ $labels.instance }} не отвечает"
           description: "hbbs/hbbr/api живут в отдельном docker-compose проекте (~/rustdesk) без healthcheck внутри контейнера - blackbox-exporter не может открыть TCP-соединение с {{ $labels.instance }} более 2 минут. Это останавливает раскатку и подключения по всему парку."
+
+  # Host-level and backup alerts. Added after the disk quietly reached 85% and
+  # the database had no backup at all - neither would have raised anything.
+  - name: infrascope-host-alerts
+    rules:
+      - alert: HostDiskUsageHigh
+        expr: |
+          (1 - node_filesystem_avail_bytes{mountpoint="/host",fstype!~"tmpfs|overlay"}
+               / node_filesystem_size_bytes{mountpoint="/host",fstype!~"tmpfs|overlay"}) > 0.80
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk on {{ $labels.host }} is {{ $value | humanizePercentage }} full"
+          description: "Usually unused Docker images/build cache or a growing table. `docker system df`, then prune."
+
+      - alert: HostDiskUsageCritical
+        expr: |
+          (1 - node_filesystem_avail_bytes{mountpoint="/host",fstype!~"tmpfs|overlay"}
+               / node_filesystem_size_bytes{mountpoint="/host",fstype!~"tmpfs|overlay"}) > 0.92
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk on {{ $labels.host }} is {{ $value | humanizePercentage }} full"
+          description: "PostgreSQL stops accepting writes when the volume fills up."
+
+      - alert: HostMemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Less than 10% memory available on {{ $labels.host }}"
+
+      - alert: HostExporterDown
+        expr: up{job="node"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "node-exporter is not reporting - host metrics and backup alerts are blind"
+
+      - alert: PostgresBackupStale
+        expr: time() - infrascope_backup_last_success_timestamp_seconds > 26 * 3600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Last successful PostgreSQL backup is {{ $value | humanizeDuration }} old"
+          description: "The nightly cron (01:00 UTC) has not produced a dump. See backups/postgres/cron.log on the server."
+
+      - alert: PostgresBackupMetricMissing
+        expr: absent(infrascope_backup_last_success_timestamp_seconds)
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No backup metric at all - backup script never ran or node-exporter cannot see backups/metrics"

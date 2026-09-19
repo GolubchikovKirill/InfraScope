@@ -61,7 +61,7 @@ services:
       - internal
 
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:v0.7.2@sha256:8f2ff02d64b0a7a2b71b6b3b3148b85f66d00ec20ad40c30bdcd415d46d31818
     restart: unless-stopped
     ports:
       - "${KAFKA_UI_BIND:-127.0.0.1}:${KAFKA_UI_PORT:-8080}:8080"
@@ -478,7 +478,7 @@ services:
       - internal
 
   prometheus:
-    image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.11.3@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3}
     restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -512,15 +512,34 @@ services:
   # but publishes these ports to the host, and `internal` is a plain bridge
   # (not `internal: true`), so this can reach 10.10.99.24 same as any other host.
   blackbox-exporter:
-    image: ${BLACKBOX_EXPORTER_IMAGE:-prom/blackbox-exporter:latest}
+    image: ${BLACKBOX_EXPORTER_IMAGE:-prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc}
     restart: unless-stopped
     volumes:
       - ./monitoring/prometheus/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
     networks:
       - internal
 
+  # Host-level metrics. Nothing watched this host at all: the disk climbed to
+  # 85% (unused images + build cache) with no signal until someone ran df.
+  # The textfile collector also carries the "last successful DB backup" gauge
+  # that scripts/backup-postgres.sh writes, so a backup that silently stops
+  # running is alertable (see PostgresBackupStale in infrascope-alerts.yml).
+  node-exporter:
+    image: ${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.9.1}
+    restart: unless-stopped
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+      - "--collector.textfile.directory=/textfile"
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|var/lib/containerd/.+)($$|/)"
+    volumes:
+      - /:/host:ro,rslave
+      - ./backups/metrics:/textfile:ro
+    networks:
+      - internal
+
   grafana:
-    image: ${GRAFANA_IMAGE:-grafana/grafana-oss:latest}
+    image: ${GRAFANA_IMAGE:-grafana/grafana-oss:13.0.1@sha256:2d1f9ae67c1778d33e291d4c3c759cd8b650e67491f02533499eb950e075eeb5}
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
