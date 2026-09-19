@@ -107,6 +107,25 @@ describe("CredentialsPage", () => {
     );
   });
 
+  it("keeps the form open when a text selection is dragged out onto the backdrop", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Добавить" }));
+    const dialog = await screen.findByRole("dialog", { name: "Новая запись" });
+    const backdrop = dialog.parentElement as HTMLElement;
+
+    // press inside the dialog, release over the backdrop: the browser still
+    // dispatches a click on the backdrop, and it must not close the form
+    fireEvent.mouseDown(within(dialog).getByLabelText("Название *"));
+    fireEvent.mouseUp(backdrop);
+    fireEvent.click(backdrop);
+    expect(screen.getByRole("dialog", { name: "Новая запись" })).toBeInTheDocument();
+
+    // a deliberate click on the backdrop still closes it
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole("dialog", { name: "Новая запись" })).not.toBeInTheDocument();
+  });
+
   it("links a credential row to its device's fleet page", async () => {
     api.getCredentials.mockResolvedValue({
       data: [makeCredential({ category: "computer", host: "VNA-MGR-101" })],

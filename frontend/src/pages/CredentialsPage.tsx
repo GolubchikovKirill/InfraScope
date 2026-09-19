@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -724,6 +724,7 @@ function Modal({
   wide?: boolean;
   children: React.ReactNode;
 }) {
+  const pressedOnBackdrop = useRef(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -731,12 +732,23 @@ function Modal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    // Close on a click of the backdrop only when the press started there too. Dragging
+    // a text selection out of an input and releasing over the backdrop also fires a
+    // "click" on it, which used to throw away a half-filled form.
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        pressedOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && pressedOnBackdrop.current) onClose();
+        pressedOnBackdrop.current = false;
+      }}
+    >
       <div
         role="dialog"
         aria-label={title}
         className={`app-panel w-full ${wide ? "max-w-2xl" : "max-w-md"} max-h-[90vh] overflow-y-auto p-5`}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
