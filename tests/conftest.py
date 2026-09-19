@@ -106,9 +106,11 @@ def _fake_redis(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(redis.asyncio, "from_url", _async_from_url)
     monkeypatch.setattr(redis.Redis, "from_url", classmethod(_sync_from_url))
-    monkeypatch.setattr("app.core.redis._pool", None, raising=False)
+    from app.core import redis as core_redis
+
+    core_redis._pools.clear()
     yield
-    monkeypatch.setattr("app.core.redis._pool", None, raising=False)
+    core_redis._pools.clear()
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -18,6 +18,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.db import engine
+from app.core.redis import close_redis
 from app.domains.inventory.ap_auto_reboot import (
     get_eligible_switches_for_auto_reboot,
     parse_allowed_stores,
@@ -135,6 +136,23 @@ def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoR
     return None, "already_attempted" if claimed == 0 else "already_running"
 
 
+def _run_async(coro):
+    """asyncio.run() for Celery tasks that also closes this loop's Redis pool.
+
+    Each task gets its own event loop, and an asyncio Redis pool is bound to
+    the loop that created it (see app.core.redis). Closing it here, before the
+    loop is torn down, keeps connections from outliving their loop.
+    """
+
+    async def _runner():
+        try:
+            return await coro
+        finally:
+            await close_redis()
+
+    return asyncio.run(_runner())
+
+
 def _task_started(operation: str) -> float:
     worker_tasks_in_progress.labels(operation=operation).inc()
     return perf_counter()
@@ -217,7 +235,7 @@ def scan_network_task(self, subnet: str, ports: str) -> dict:
             )
             devices = payload_data.get("devices", [])
         else:
-            devices = asyncio.run(scan_subnet(subnet, ports, known))
+            devices = _run_async(scan_subnet(subnet, ports, known))
         payload = {
             "task_id": self.request.id,
             "operation": operation,
@@ -255,7 +273,7 @@ def poll_all_printers_task(self, printer_type: str = "laser") -> dict:
             total_count = len(all_printers)
         else:
             with Session(engine) as session:
-                asyncio.run(poll_all_printers_local(session=session, printer_type=printer_type))
+                _run_async(poll_all_printers_local(session=session, printer_type=printer_type))
                 all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
             online_count = sum(1 for p in all_printers if p.is_online)
             total_count = len(all_printers)
@@ -297,7 +315,7 @@ def poll_all_media_players_task(self, device_type: str | None = None) -> dict:
             online_count = sum(1 for p in players if p.get("is_online"))
         else:
             with Session(engine) as session:
-                asyncio.run(
+                _run_async(
                     poll_all_media_players_local(
                         session=session,
                         device_type=device_type,
@@ -346,7 +364,7 @@ def poll_switch_task(self, switch_id: str) -> dict:
             hostname = sw.get("hostname")
         else:
             with Session(engine) as session:
-                sw = asyncio.run(poll_switch_local(switch_id=switch_uuid, session=session))
+                sw = _run_async(poll_switch_local(switch_id=switch_uuid, session=session))
             is_online = bool(sw.is_online)
             hostname = sw.hostname
         payload = {
@@ -393,7 +411,7 @@ def poll_all_switches_task(self) -> dict:
             with Session(engine) as session:
                 switches = session.exec(select(NetworkSwitch)).all()
                 for sw in switches:
-                    updated = asyncio.run(poll_switch_local(switch_id=sw.id, session=session))
+                    updated = _run_async(poll_switch_local(switch_id=sw.id, session=session))
                     results.append(
                         {
                             "switch_id": str(updated.id),
@@ -430,7 +448,7 @@ def poll_all_computers_task(self) -> dict:
     started_at = _task_started(operation)
     try:
         with Session(engine) as session:
-            asyncio.run(poll_all_computers_local(session=session))
+            _run_async(poll_all_computers_local(session=session))
             all_computers = session.exec(select(Computer)).all()
         payload = {
             "task_id": self.request.id,
@@ -468,7 +486,7 @@ def poll_all_cash_registers_task(self) -> dict:
             online_count = sum(1 for r in registers if r.get("is_online"))
         else:
             with Session(engine) as session:
-                asyncio.run(poll_all_cash_registers_local(session=session))
+                _run_async(poll_all_cash_registers_local(session=session))
                 registers = session.exec(select(CashRegister)).all()
             total_count = len(registers)
             online_count = sum(1 for r in registers if r.is_online)
@@ -577,7 +595,7 @@ def ap_auto_reboot_switch_task(self, switch_id: str, cycle_id: str | None = None
                 _task_finished(operation, started_at, "skipped")
                 return {"status": "no_longer_eligible", "switch": switch.name, "reason": reason}
 
-            result = asyncio.run(run_ap_reboot_for_switch(session, switch))
+            result = _run_async(run_ap_reboot_for_switch(session, switch))
 
         _task_finished(operation, started_at, "success")
         return {"task_id": self.request.id, "operation": operation, "cycle_id": cycle_id, **result}
@@ -824,14 +842,14 @@ def remote_access_sync_task(self) -> dict:
             console_error = None
             if _rustdesk_client.enabled():
                 try:
-                    peers_seen = asyncio.run(
+                    peers_seen = _run_async(
                         _remote_access_service.sync_from_console(session)
                     ).get("peers_seen", 0)
-                    accounts_seen = asyncio.run(
+                    accounts_seen = _run_async(
                         _remote_access_service.sync_accounts(session)
                     ).get("accounts_seen", 0)
                     # only rows the console is missing or whose password went stale
-                    book_pushed = asyncio.run(
+                    book_pushed = _run_async(
                         _remote_access_service.sync_stale_address_book(session)
                     ).get("pushed", 0)
                 except Exception as exc:  # noqa: BLE001
