@@ -8,7 +8,6 @@ on:
   workflow_dispatch:
 
 env:
-  PYTHON_VERSION: "3.13"
   NODE_VERSION: "22"
 
 concurrency:
@@ -38,12 +37,39 @@ jobs:
       - name: Ensure generated assets are up to date
         run: git diff --exit-code -- monitoring/prometheus/rules/service-targets.json monitoring/prometheus/rules/generated-service-alerts.yml monitoring/grafana/dashboards/infrascope-services-catalog.json
 
-  build-service-matrix:
-    name: Build Service Matrix
+  # One required check for the backend instead of a per-service matrix plus a
+  # hand-picked smoke subset: every service runs the same code from the same
+  # image, so per-service jobs re-ran overlapping slices of the suite while the
+  # full `pytest tests` was never run (it could not even be collected - two
+  # modules shared a name).
+  #
+  # Python 3.14 to match the production image (Dockerfile). Local dev may stay
+  # on 3.13 (.python-version); pyproject supports both.
+  #
+  # Tests run against PostgreSQL 17, the production engine, not SQLite:
+  # case-insensitive matching, ON CONFLICT and locking behave differently and
+  # recent bugs (hostname case sensitivity) lived exactly in that gap.
+  backend:
+    name: Backend (ruff + full test suite)
     runs-on: ubuntu-latest
     needs: validate-descriptors
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: infrascope_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d infrascope_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      UV_PYTHON: "3.14"
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/infrascope_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -51,46 +77,15 @@ jobs:
           version: "latest"
       - name: Install dependencies
         run: uv sync --frozen
-      - id: matrix
-        name: Build matrix json
-        run: echo "matrix=$(uv run python tools/scaffold/build_service_matrix.py)" >> "$GITHUB_OUTPUT"
-
-  service-ci:
-    name: Service CI
-    needs: build-service-matrix
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.build-service-matrix.outputs.matrix) }}
-    uses: ./.github/workflows/service-ci-reusable.yml
-    with:
-      service_name: ${{ matrix.name }}
-      runtime: ${{ matrix.runtime }}
-      working_directory: ${{ matrix.working_directory }}
-      lint_command: ${{ matrix.lint }}
-      test_command: ${{ matrix.test }}
-
-  backend-quality-baseline:
-    name: Backend Quality Baseline
-    runs-on: ubuntu-latest
-    needs: validate-descriptors
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
-      - name: Install dependencies
-        run: uv sync --frozen
-      - name: Ruff check
+      - name: Ruff
         run: uv run ruff check app tests scripts
-      - name: Core unit smoke
-        run: uv run pytest tests/unit/services/test_boarding_pass_service.py tests/unit/services/test_qr_generator_service.py tests/unit/services/test_smart_search.py tests/unit/architecture/test_layer_boundaries.py
-      - name: Route-service contract smoke
-        run: uv run pytest tests/integration/api/test_qr_generator.py tests/integration/api/test_onec_exchange.py tests/integration/api/test_boarding_pass.py
+      - name: Tests
+        run: uv run pytest tests -q
 
   frontend-test:
     name: Frontend Test
     runs-on: ubuntu-latest
-    needs: [service-ci, backend-quality-baseline]
+    needs: backend
     defaults:
       run:
         working-directory: frontend
@@ -162,7 +157,7 @@ jobs:
   platform-docker-build:
     name: Platform Docker Build
     runs-on: ubuntu-latest
-    needs: [service-ci, frontend-build, frontend-e2e]
+    needs: [backend, frontend-build, frontend-e2e]
     if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     steps:
       - uses: actions/checkout@v4
