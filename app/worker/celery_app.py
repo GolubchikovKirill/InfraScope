@@ -100,6 +100,22 @@ if settings.SWITCH_PORT_SNAPSHOT_ENABLED:
         }
     )
 
+if settings.ML_ENABLED:
+    # Formerly the prediction service's own asyncio scheduler loop. Training
+    # (plus retention) once a day; scoring on a short interval.
+    _beat_schedule.update(
+        {
+            "ml-daily-cycle": {
+                "task": "tasks.ml_daily_cycle",
+                "schedule": crontab(hour=settings.ML_RETRAIN_HOUR_UTC, minute=0),
+            },
+            "ml-score-cycle": {
+                "task": "tasks.ml_score_cycle",
+                "schedule": timedelta(minutes=max(settings.ML_SCORE_INTERVAL_MINUTES, 1)),
+            },
+        }
+    )
+
 if settings.REMOTE_ACCESS_ENABLED:
     # Fold live RustDesk-console status into the managed-device rows every 2 min
     # (the console peer list is cheap; no device is contacted here).

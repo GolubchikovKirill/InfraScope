@@ -74,3 +74,47 @@ def test_get_ml_models_status(client, user_token: str, db_session):
     body = response.json()
     assert body["count"] == 1
     assert body["data"][0]["model_family"] == "toner_forecast"
+
+
+def test_run_cycle_enqueues_a_worker_task_instead_of_calling_a_service(client, admin_token: str, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.api.routes import ml as ml_routes
+    from app.core.config import settings
+
+    enqueued: list[bool] = []
+    monkeypatch.setattr(settings, "ML_ENABLED", True)
+    monkeypatch.setattr(
+        ml_routes,
+        "ml_run_cycle_task",
+        SimpleNamespace(delay=lambda *_a, **_kw: enqueued.append(True) or SimpleNamespace(id="t-1")),
+    )
+
+    response = client.post("/api/v1/ml/run-cycle", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Prediction cycle started"
+    assert enqueued == [True]
+
+
+def test_run_cycle_requires_a_superuser(client, user_token: str):
+    response = client.post("/api/v1/ml/run-cycle", headers={"Authorization": f"Bearer {user_token}"})
+
+    assert response.status_code in (401, 403)
+
+
+def test_run_cycle_reports_503_when_the_queue_is_down(client, admin_token: str, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.api.routes import ml as ml_routes
+    from app.core.config import settings
+
+    def _down(*_a, **_kw):
+        raise ConnectionError("broker unreachable")
+
+    monkeypatch.setattr(settings, "ML_ENABLED", True)
+    monkeypatch.setattr(ml_routes, "ml_run_cycle_task", SimpleNamespace(delay=_down))
+
+    response = client.post("/api/v1/ml/run-cycle", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert response.status_code == 503

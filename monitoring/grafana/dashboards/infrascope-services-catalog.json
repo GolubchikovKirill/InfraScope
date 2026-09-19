@@ -94,38 +94,12 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Prediction Service up",
+      "title": "Network Control Service up",
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 18,
         "y": 0
-      },
-      "targets": [
-        {
-          "expr": "avg(up{job=\"infrascope-ml-service\"})",
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      }
-    },
-    {
-      "id": 5,
-      "type": "stat",
-      "title": "Network Control Service up",
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 4
       },
       "targets": [
         {
@@ -144,13 +118,13 @@
       }
     },
     {
-      "id": 6,
+      "id": 5,
       "type": "stat",
       "title": "Polling Service up",
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 6,
+        "x": 0,
         "y": 4
       },
       "targets": [
@@ -170,13 +144,13 @@
       }
     },
     {
-      "id": 7,
+      "id": 6,
       "type": "stat",
       "title": "Worker up",
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 12,
+        "x": 6,
         "y": 4
       },
       "targets": [

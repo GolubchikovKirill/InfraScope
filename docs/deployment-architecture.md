@@ -11,7 +11,7 @@ InfraScope already has a microservice-oriented Docker Compose setup:
 - `discovery-service` performs network discovery scans.
 - `network-control-service` performs direct switch/media-player control operations.
 - `media-service` serves media manifests and media files to Windows media clients.
-- `ml-service` runs prediction/training workflows.
+- Prediction training/scoring runs as Celery tasks in `worker` (there is no separate ml service).
 - `postgres`, `redis`, `jaeger`, `prometheus`, and `grafana` are infrastructure services.
 
 Production path for this project is Docker Compose only.
@@ -57,8 +57,8 @@ MEDIA_SERVICE_ENABLED=true
 3. Start or update without touching database volumes:
 
 ```bash
-docker compose build backend worker frontend polling-service discovery-service network-control-service ml-service media-service
-docker compose up -d --no-deps backend worker frontend polling-service discovery-service network-control-service ml-service media-service
+docker compose build backend worker frontend polling-service discovery-service network-control-service media-service
+docker compose up -d --no-deps backend worker frontend polling-service discovery-service network-control-service media-service
 ```
 
 4. Apply production override:
@@ -85,7 +85,6 @@ Keep this boundary:
 - `discovery-service`: subnet scanning and discovery state.
 - `network-control-service`: switch ports, PoE, Iconbit/direct device commands.
 - `media-service`: manifests and file delivery for Windows media clients.
-- `ml-service`: model training/predictions.
 - `worker`: scheduled/long-running tasks.
 
 Avoid adding new direct LAN operations back into `backend`. The backend should call internal services over HTTP with `INTERNAL_SERVICE_TOKEN`.
@@ -101,8 +100,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 2. For updates, do rolling restart of app services without removing stateful volumes:
 
 ```bash
-docker compose build backend worker frontend polling-service discovery-service network-control-service ml-service media-service
-docker compose up -d --no-deps backend worker frontend polling-service discovery-service network-control-service ml-service media-service
+docker compose build backend worker frontend polling-service discovery-service network-control-service media-service
+docker compose up -d --no-deps backend worker frontend polling-service discovery-service network-control-service media-service
 ```
 
 3. Verify health and readiness:

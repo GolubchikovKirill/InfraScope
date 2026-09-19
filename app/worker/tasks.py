@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import secrets
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
@@ -27,7 +29,10 @@ from app.domains.inventory.port_snapshot import capture_switch_port_snapshot, ge
 from app.domains.operations.models import CashRegister
 from app.domains.remote_access import rustdesk_client as _rustdesk_client
 from app.domains.remote_access import service as _remote_access_service
+from app.ml.pipeline import run_scoring_cycle, run_training_cycle
+from app.ml.retention import run_retention_cycle
 from app.observability.metrics import (
+    ml_train_runs_total,
     observe_service_edge,
     worker_task_duration_seconds,
     worker_task_executions_total,
@@ -665,32 +670,87 @@ def switch_port_snapshot_task(self, switch_id: str) -> dict:
         raise
 
 
-@shared_task(
-    bind=True,
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_kwargs={"max_retries": 2},
-    name="tasks.ml_run_cycle",
-)
-def ml_run_cycle_task(self) -> dict:
-    operation = "ml_run_cycle"
+_ML_LOCK_KEY = "lock:ml-cycle"
+# Longer than the task time limit below, so a killed task cannot leave the
+# lock held past the point where the next scheduled run would want it.
+_ML_LOCK_SECONDS = 1900
+
+
+@contextmanager
+def _ml_cycle_lock() -> Iterator[bool]:
+    """One ML cycle at a time (daily train, 30-min score, manual run).
+
+    Scoring deletes and rewrites the whole prediction tables, training rewrites
+    the model registry; two of them interleaving would leave half-replaced
+    predictions. Fails *open* when Redis is unreachable, unlike the AP-reboot
+    lease: ML touches no hardware, so the worst outcome of a duplicate run is
+    a wasted cycle, and a Redis blip must not stop forecasting.
+    """
+    token = secrets.token_urlsafe(16)
+    client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=1, socket_timeout=1)
+    acquired = False
+    try:
+        try:
+            acquired = bool(client.set(_ML_LOCK_KEY, token, nx=True, ex=_ML_LOCK_SECONDS))
+        except RedisError:
+            acquired = True
+            token = ""
+        yield acquired
+    finally:
+        if acquired and token:
+            with suppress(RedisError):
+                if client.get(_ML_LOCK_KEY) == token:
+                    client.delete(_ML_LOCK_KEY)
+        with suppress(RedisError):
+            client.close()
+
+
+def _run_ml_cycle(task, operation: str, *, train: bool, prune: bool) -> dict:
+    """Shared body of the three ML tasks.
+
+    This used to be the prediction-service container: it ran its own asyncio
+    scheduler loop and the worker/API called it over HTTP. Now beat schedules
+    these tasks (see celery_app.py) and they run in-process here, against the
+    same database, with the same metrics.
+    """
     started_at = _task_started(operation)
     if not settings.ML_ENABLED:
         _task_finished(operation, started_at, "skipped")
-        return {
-            "task_id": self.request.id,
-            "operation": operation,
-            "status": "skipped",
-            "reason": "ml_disabled",
-        }
+        return {"task_id": task.request.id, "operation": operation, "status": "skipped", "reason": "ml_disabled"}
     try:
-        with httpx.Client(timeout=180) as client:
-            response = client.post(f"{settings.ML_SERVICE_URL.rstrip('/')}/run-cycle")
-        response.raise_for_status()
+        with _ml_cycle_lock() as acquired:
+            if not acquired:
+                _task_finished(operation, started_at, "skipped")
+                return {
+                    "task_id": task.request.id,
+                    "operation": operation,
+                    "status": "skipped",
+                    "reason": "another_ml_cycle_running",
+                }
+            result: dict = {}
+            with Session(engine) as session:
+                if train:
+                    try:
+                        result["train"] = run_training_cycle(session, min_train_rows=settings.ML_MIN_TRAIN_ROWS)
+                    except Exception:
+                        ml_train_runs_total.labels(model_family="toner_forecast", result="error").inc()
+                        ml_train_runs_total.labels(model_family="offline_risk", result="error").inc()
+                        raise
+                result["score"] = run_scoring_cycle(session)
+            if prune:
+                # After training+scoring have read the full retained window
+                # (see app/ml/retention.py).
+                with Session(engine) as session:
+                    result["retention"] = run_retention_cycle(
+                        session,
+                        snapshot_retention_days=settings.ML_FEATURE_SNAPSHOT_RETENTION_DAYS,
+                        model_registry_keep_per_family=settings.ML_MODEL_REGISTRY_KEEP_PER_FAMILY,
+                        batch_size=settings.ML_RETENTION_BATCH_SIZE,
+                    )
         payload = {
-            "task_id": self.request.id,
+            "task_id": task.request.id,
             "operation": operation,
-            "result": response.json(),
+            "result": result,
             "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")
@@ -698,6 +758,45 @@ def ml_run_cycle_task(self) -> dict:
     except Exception:
         _task_finished(operation, started_at, "error")
         raise
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 1},
+    soft_time_limit=1500,
+    time_limit=1800,
+    name="tasks.ml_run_cycle",
+)
+def ml_run_cycle_task(self) -> dict:
+    """Manual train + score (POST /ml/run-cycle, POST /tasks/ml-run-cycle)."""
+    return _run_ml_cycle(self, "ml_run_cycle", train=True, prune=False)
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 1},
+    soft_time_limit=1500,
+    time_limit=1800,
+    name="tasks.ml_daily_cycle",
+)
+def ml_daily_cycle_task(self) -> dict:
+    """Scheduled once a day at ML_RETRAIN_HOUR_UTC: train, score, then prune."""
+    return _run_ml_cycle(self, "ml_daily_cycle", train=True, prune=True)
+
+
+@shared_task(
+    bind=True,
+    soft_time_limit=300,
+    time_limit=600,
+    name="tasks.ml_score_cycle",
+)
+def ml_score_cycle_task(self) -> dict:
+    """Scheduled every ML_SCORE_INTERVAL_MINUTES: refresh predictions only."""
+    return _run_ml_cycle(self, "ml_score_cycle", train=False, prune=False)
 
 
 @shared_task(

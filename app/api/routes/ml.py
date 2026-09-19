@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import select
 
@@ -11,7 +10,9 @@ from app.core.config import settings
 from app.domains.ml.models import MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
 from app.domains.ml.schemas import MLModelsStatusPublic, MLOfflineRiskPredictionsPublic, MLTonerPredictionsPublic
 from app.domains.shared.schemas import Message
+from app.observability.metrics import worker_tasks_enqueued_total
 from app.services.cache import get_cached_model, set_cached_model
+from app.worker.tasks import ml_run_cycle_task
 
 router = APIRouter(tags=["ml"])
 CACHE_TTL = 30
@@ -95,10 +96,8 @@ async def run_ml_cycle(current_user: CurrentUser) -> Message:
     if not settings.ML_ENABLED:
         raise HTTPException(status_code=503, detail="Prediction service is disabled")
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(f"{settings.ML_SERVICE_URL.rstrip('/')}/run-cycle")
-        if resp.status_code >= 400:
-            raise HTTPException(status_code=502, detail=f"Prediction service error: {resp.text[:300]}")
-        return Message(message="Prediction cycle started")
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Prediction service unavailable: {exc}") from exc
+        ml_run_cycle_task.delay()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Task queue unavailable: {exc}") from exc
+    worker_tasks_enqueued_total.labels(operation="ml_run_cycle").inc()
+    return Message(message="Prediction cycle started")

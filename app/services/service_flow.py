@@ -140,7 +140,6 @@ def _node_links(node_id: str) -> list[ServiceFlowLinkPublic]:
         "discovery-service",
         "network-control-service",
         "media-service",
-        "ml-service",
         "worker",
     }:
         links.append(

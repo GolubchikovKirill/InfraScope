@@ -31,16 +31,6 @@
   },
   {
     "targets": [
-      "ml-service:8010"
-    ],
-    "labels": {
-      "job": "infrascope-ml-service",
-      "service_name": "ml-service",
-      "__metrics_path__": "/metrics"
-    }
-  },
-  {
-    "targets": [
       "network-control-service:8013"
     ],
     "labels": {

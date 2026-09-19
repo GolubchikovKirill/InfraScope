@@ -57,7 +57,6 @@ APP_SERVICES=(
   polling-service
   discovery-service
   network-control-service
-  ml-service
   media-service
 )
 

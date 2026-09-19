@@ -34,11 +34,6 @@ nodes:
     kind: service
     prometheus_job: media-service
     service_map_enabled: true
-  - id: ml-service
-    label: Prediction Service
-    kind: service
-    prometheus_job: ml-service
-    service_map_enabled: true
   - id: jaeger
     label: Jaeger
     kind: infra
@@ -65,10 +60,6 @@ edges:
     target: media-service
     transport: http
     operation: media manifests
-  - source: backend
-    target: ml-service
-    transport: http
-    operation: prediction calls
   - source: worker
     target: polling-service
     transport: http
@@ -77,7 +68,3 @@ edges:
     target: discovery-service
     transport: http
     operation: task dispatch
-  - source: worker
-    target: ml-service
-    transport: http
-    operation: prediction tasks

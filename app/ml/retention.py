@@ -4,7 +4,7 @@ MLModelRegistry (one row per training run, forever). Both grow without limit
 because nothing else in the write path ever deletes from them - training and
 scoring only ever read/insert (see app.ml.pipeline).
 
-Run once a day from app.ml_service.main's scheduler loop, right after that
+Run once a day by the tasks.ml_daily_cycle Celery task, right after that
 day's training+scoring so both still see the full retained window before
 older rows are trimmed.
 """

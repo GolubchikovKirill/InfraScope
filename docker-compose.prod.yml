@@ -23,9 +23,6 @@ services:
   worker:
     restart: unless-stopped
 
-  ml-service:
-    restart: unless-stopped
-
   polling-service:
     restart: unless-stopped
 

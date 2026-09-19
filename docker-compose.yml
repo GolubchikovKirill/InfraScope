@@ -172,41 +172,6 @@ services:
     networks:
       - internal
 
-  ml-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      POSTGRES_SERVER: db
-      REDIS_URL: redis://redis:6379/0
-      OTEL_ENABLED: ${OTEL_ENABLED:-true}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
-      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
-    command:
-      - sh
-      - -c
-      - uvicorn app.ml_service.main:app --host 0.0.0.0 --port 8010
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
-      interval: 20s
-      retries: 3
-      start_period: 30s
-      timeout: 5s
-    # See polling-service for why.
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-    networks:
-      - internal
-
   polling-service:
     build:
       context: .
@@ -396,8 +361,6 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
-      ml-service:
-        condition: service_healthy
       polling-service:
         condition: service_healthy
       discovery-service:
@@ -431,8 +394,6 @@ services:
         condition: service_healthy
       network-control-service:
         condition: service_healthy
-      ml-service:
-        condition: service_healthy
       media-service:
         condition: service_healthy
     networks:
@@ -456,11 +417,12 @@ services:
   # The textfile collector also carries the "last successful DB backup" gauge
   # that scripts/backup-postgres.sh writes, so a backup that silently stops
   # running is alertable (see PostgresBackupStale in infrascope-alerts.yml).
-  # Pulled from Quay, not Docker Hub: from this host Hub's CDN
-  # (production.cloudfront.docker.com) dropped the layer download on every one
-  # of 6 attempts, while quay.io serves the identical official image.
+  # The image is built locally by scripts/build-node-exporter-image.sh (official
+  # release binary, SHA-256 verified, FROM scratch): from this host neither
+  # Docker Hub nor Quay will finish a layer download. Run that script once on
+  # the host before the first `up`.
   node-exporter:
-    image: ${NODE_EXPORTER_IMAGE:-quay.io/prometheus/node-exporter:v1.9.1}
+    image: ${NODE_EXPORTER_IMAGE:-infrascope/node-exporter:v1.9.1}
     restart: unless-stopped
     pid: host
     command:

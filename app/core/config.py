@@ -78,7 +78,6 @@ class Settings(BaseSettings):
     REDIS_MAX_CONNECTIONS: int = 10
     UVICORN_WORKERS: int = 2
     ML_ENABLED: bool = True
-    ML_SERVICE_URL: str = "http://ml-service:8010"
     POLLING_SERVICE_ENABLED: bool = False
     POLLING_SERVICE_URL: str = "http://polling-service:8011"
     # Backend-driven scheduled polling (Celery Beat), staggered per entity type

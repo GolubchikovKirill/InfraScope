@@ -34,7 +34,7 @@ InfraScope — платформа мониторинга инфраструкт�
   - дашборды Grafana (`overview`, `operations`, `worker`, `ml`);
   - SLO/error-budget и эксплуатационные алерты Prometheus.
 - Прогнозирование:
-  - retrain и scoring в отдельном `ml-service`;
+  - retrain и scoring как Celery-задачи в `worker` (раз в сутки обучение и очистка старых данных, скоринг каждые 30 минут);
   - прогноз `days_to_replacement` по картриджам;
   - риск offline (low/medium/high).
 - Безопасность:
@@ -158,7 +158,6 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 - `frontend` — SPA + Nginx + HTTPS
 - `backend` — API gateway/orchestration, `/metrics`
 - `worker` — Celery worker для тяжёлых фоновых задач
-- `ml-service` — отдельный сервис прогнозирования + `/metrics`
 - `polling-service` — отдельный runtime polling устройств + `/metrics`
 - `discovery-service` — отдельный runtime discovery/scan + `/metrics`
 - `network-control-service` — отдельный runtime control операций (Iconbit, switch write ops) + `/metrics`
@@ -274,7 +273,7 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `INTERNAL_HTTP_RETRIES`
   - `INTERNAL_HTTP_RETRY_BACKOFF_SECONDS`
 - Forecasting:
-  - `ML_ENABLED`, `ML_SERVICE_URL`
+  - `ML_ENABLED`
   - `POLLING_SERVICE_ENABLED`, `POLLING_SERVICE_URL`
   - `DISCOVERY_SERVICE_ENABLED`, `DISCOVERY_SERVICE_URL`
   - `NETWORK_CONTROL_SERVICE_ENABLED`, `NETWORK_CONTROL_SERVICE_URL`
@@ -360,7 +359,7 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
 
 После деплоя откройте `http://127.0.0.1:16686`:
 
-1. Выберите сервис (`backend`, `polling-service`, `discovery-service`, `network-control-service`, `ml-service`).
+1. Выберите сервис (`backend`, `polling-service`, `discovery-service`, `network-control-service`).
 2. Нажмите **Find Traces** и посмотрите end-to-end цепочку запроса.
 
 Операционные события (offline/online, смена IP, критические ошибки) пишутся в таблицу `event_log` и видны во вкладке «Логи». Отдельной шины событий нет: раньше они дублировались в Kafka, но читателей у топика не было, и её убрали.

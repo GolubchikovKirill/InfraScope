@@ -72,7 +72,7 @@ Owns external business systems and generated operational artifacts such as QR co
 Owns feature extraction, toner forecasting, model snapshots, and scheduled scoring.
 
 - Domain package: `app/domains/ml/`
-- Backend: `app/ml/`, `app/ml_service/`, `app/api/routes/ml.py`
+- Backend: `app/ml/`, `app/api/routes/ml.py`
 - Services: `app/services/ml_snapshots.py`
 - Frontend: dashboard prediction widgets in `frontend/src/pages/Dashboard.tsx`
 

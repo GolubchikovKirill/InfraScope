@@ -197,15 +197,6 @@ groups:
           summary: "Цикл опроса {{ $labels.operation }} приближается к лимиту времени"
           description: "p95 длительности цикла опроса за последние 30 минут превышает 250 секунд, это близко к мягкому лимиту Celery-задачи (300 секунд). Цикл рискует быть прерван по таймауту или задержать следующий запланированный запуск (каждые 15 минут)."
 
-      - alert: InfraScopeMLServiceDown
-        expr: max_over_time(up{job="infrascope-ml-service"}[2m]) == 0
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "InfraScope ML service недоступен"
-          description: "Prometheus не может собрать метрики ml-service более 2 минут."
-
       - alert: InfraScopeMLTrainFailures
         expr: sum(increase(infrascope_ml_train_runs_total{result!~"activated|candidate"}[1h])) > 0
         for: 5m
