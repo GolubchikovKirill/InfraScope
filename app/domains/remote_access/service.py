@@ -860,10 +860,18 @@ async def provision_account(
     group_id = await ensure_console_group()
     secret = (password or "").strip() or generate_password(16)
 
-    existing_console = {
-        str(u.get("username") or "").strip(): u for u in await rustdesk_client.list_console_users()
-    }
-    if username not in existing_console:
+    # The console stores logins lower-cased ("KlimovMA" is kept as "klimovma"), so a
+    # case-sensitive lookup misses an account it already has and the create then
+    # fails on the UNIQUE constraint - which is also how a retry after a half-done
+    # first attempt (account made, password step failed) used to get stuck.
+    async def _console_by_login() -> dict[str, dict[str, Any]]:
+        return {
+            str(u.get("username") or "").strip().casefold(): u
+            for u in await rustdesk_client.list_console_users()
+        }
+
+    existing_console = await _console_by_login()
+    if username.casefold() not in existing_console:
         await rustdesk_client.create_console_user(
             username=username,
             group_id=group_id,
@@ -871,13 +879,12 @@ async def provision_account(
             email=(email or "").strip(),
             nickname=(display_name or "").strip(),
         )
-        existing_console = {
-            str(u.get("username") or "").strip(): u for u in await rustdesk_client.list_console_users()
-        }
-    console_user = existing_console.get(username)
+        existing_console = await _console_by_login()
+    console_user = existing_console.get(username.casefold())
     if not console_user:
         raise RuntimeError(f"console account {username!r} was created but does not list")
     console_user_id = int(console_user["id"])
+    username = str(console_user.get("username") or username).strip()
     await rustdesk_client.set_console_user_password(console_user_id, secret)
 
     # already in the group -> already sees the shared book

@@ -311,6 +311,22 @@ def test_provision_account_is_idempotent_for_an_existing_username(db_session, mo
     assert len(rows) == 1
 
 
+def test_provision_account_finds_a_console_login_regardless_of_case(db_session, monkeypatch) -> None:
+    # the console keeps logins lower-cased; typing "KlimovMA" after a first attempt
+    # already made "klimovma" used to hit its UNIQUE constraint instead of reusing it
+    console = FakeConsole()
+    console.install(monkeypatch)
+    console.users.append(
+        {"id": 5, "username": "klimovma", "group_id": 3, "is_admin": True, "email": "", "status": 1}
+    )
+
+    account, secret = asyncio.run(service.provision_account(db_session, username="KlimovMA", is_admin=True))
+
+    assert len(console.users) == 2  # nothing new was created
+    assert account.username == "klimovma" and account.console_user_id == 5
+    assert console.passwords[5] == secret
+
+
 def test_sync_accounts_picks_up_logins_created_in_the_console(db_session, monkeypatch) -> None:
     console = FakeConsole()
     console.install(monkeypatch)
