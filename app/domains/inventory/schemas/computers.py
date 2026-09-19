@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-__all__ = ["ComputerCreate", "ComputerUpdate", "ComputerPublic", "ComputersPublic"]
+__all__ = ["ComputerCreate", "ComputerUpdate", "ComputerPublic", "ComputersPublic", "StaleComputerPublic", "StaleComputersPublic"]
 
 
 class ComputerCreate(BaseModel):
@@ -78,3 +78,24 @@ class ComputerPublic(BaseModel):
 class ComputersPublic(BaseModel):
     data: list[ComputerPublic]
     count: int
+
+
+class StaleComputerPublic(BaseModel):
+    id: uuid.UUID
+    hostname: str
+    location: str | None = None
+    comment: str | None = None
+    is_online: bool | None = None
+    last_polled_at: datetime | None = None
+    created_at: datetime
+    reason: str
+    # a portable machine (NB / NOTE / LPT): silent because it is off the network, not necessarily gone
+    laptop_like: bool = False
+    in_remote_access: bool = False
+
+
+class StaleComputersPublic(BaseModel):
+    # False when the RustDesk console could not be read: then nothing can be judged and data is empty
+    console_reachable: bool
+    count: int
+    data: list[StaleComputerPublic]

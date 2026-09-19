@@ -15,8 +15,17 @@ from app.domains.inventory.computer_polling import (
     poll_all_computers_local,
     probe_computer,
 )
+from app.domains.inventory.computer_stale import find_stale_computers
 from app.domains.inventory.models import Computer
-from app.domains.inventory.schemas import ComputerCreate, ComputerPublic, ComputersPublic, ComputerUpdate
+from app.domains.inventory.schemas import (
+    ComputerCreate,
+    ComputerPublic,
+    ComputersPublic,
+    ComputerUpdate,
+    StaleComputerPublic,
+    StaleComputersPublic,
+)
+from app.domains.remote_access import service as remote_access_service
 from app.domains.shared.schemas import Message
 from app.services.cache import get_cached_model, set_cached_model
 from app.services.smart_search import build_ilike_filter
@@ -118,9 +127,33 @@ async def update_computer(session: SessionDep, computer_id: uuid.UUID, payload: 
     return row
 
 
+@router.get("/stale", response_model=StaleComputersPublic, dependencies=[Depends(get_current_active_superuser)])
+async def read_stale_computers(session: SessionDep) -> StaleComputersPublic:
+    """Computers that are not in the RustDesk console and do not answer a ping - leftovers
+    of the AD import. Only reports; removal is the ordinary DELETE, one computer at a time."""
+    report = await find_stale_computers(session)
+    data = [
+        StaleComputerPublic(
+            id=item.computer.id,
+            hostname=item.computer.hostname,
+            location=item.computer.location,
+            comment=item.computer.comment,
+            is_online=item.computer.is_online,
+            last_polled_at=item.computer.last_polled_at,
+            created_at=item.computer.created_at,
+            reason=item.reason,
+            laptop_like=item.laptop_like,
+            in_remote_access=item.in_remote_access,
+        )
+        for item in report.items
+    ]
+    return StaleComputersPublic(console_reachable=report.console_reachable, count=len(data), data=data)
+
+
 @router.delete("/{computer_id}", dependencies=[Depends(get_current_active_superuser)])
 async def delete_computer(session: SessionDep, computer_id: uuid.UUID) -> Message:
     row = _get_computer_or_404(session, computer_id)
+    await remote_access_service.release_inventory_row(session, computer_id=row.id)
     session.delete(row)
     session.commit()
     await invalidate_computer_cache()

@@ -22,6 +22,7 @@ from app.domains.operations.schemas import (
     CashRegistersPublic,
     CashRegisterUpdate,
 )
+from app.domains.remote_access import service as remote_access_service
 from app.domains.shared.schemas import Message
 from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
 from app.services.smart_search import build_ilike_filter
@@ -132,6 +133,7 @@ async def delete_cash_register(session: SessionDep, cash_id: uuid.UUID) -> Messa
     cash = session.get(CashRegister, cash_id)
     if not cash:
         raise HTTPException(status_code=404, detail="Cash register not found")
+    await remote_access_service.release_inventory_row(session, cash_register_id=cash.id)
     session.delete(cash)
     session.commit()
     await _invalidate_cache()

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CircleCheck, CircleX, KeyRound } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CircleCheck, CircleX, KeyRound, Eraser } from "lucide-react";
 import { useAuth } from "../auth";
 import {
   createComputer,
@@ -21,6 +21,7 @@ import { useCredentialIndex } from "../hooks/useCredentialIndex";
 import { describeOfflineReason } from "../lib/offlineReason";
 import { credentialsHref, normalizeHostKey, rowDomId } from "../lib/deviceLinks";
 import RemoteAccessButtons from "../components/RemoteAccessButtons";
+import StaleComputersModal from "../components/StaleComputersModal";
 
 type StatusFilter = "all" | "online" | "offline";
 type ComputerForm = {
@@ -43,6 +44,7 @@ export default function ComputersPage() {
   const [focus] = useQueryParamState("focus");
   const debouncedQ = useDebouncedValue(q, 300);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [staleOpen, setStaleOpen] = useState(false);
   const [editing, setEditing] = useState<Computer | null>(null);
   const [form, setForm] = useState<ComputerForm>(emptyForm);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -182,6 +184,12 @@ export default function ComputersPage() {
                 Добавить компьютер
               </button>
             )}
+            {isSuperuser && (
+              <button onClick={() => setStaleOpen(true)} className="app-btn-secondary inline-flex items-center gap-2 px-4 py-2 text-sm" title="Компьютеры, которых нет в консоли RustDesk и которые не отвечают">
+                <Eraser className="h-4 w-4" />
+                Неактуальные
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -319,6 +327,8 @@ export default function ComputersPage() {
           })
         )}
       </div>
+
+      {staleOpen && <StaleComputersModal onClose={() => setStaleOpen(false)} />}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">

@@ -27,7 +27,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -625,6 +625,45 @@ async def delete_device(session: Session, dev: RemoteAccessDevice) -> None:
     dev.updated_at = _now()
     session.add(dev)
     session.commit()
+
+
+async def release_inventory_row(
+    session: Session,
+    *,
+    computer_id: uuid.UUID | None = None,
+    cash_register_id: uuid.UUID | None = None,
+    media_player_id: uuid.UUID | None = None,
+) -> int:
+    """Let go of the remote-access entries that point at an inventory row about to be deleted.
+
+    RemoteAccessDevice has real foreign keys to computer / cashregister / mediaplayer
+    (NO ACTION), so deleting a row that an entry still points at fails in the database.
+    Each entry is taken out of management the same way "delete device" does it (managed
+    off, shared-book row dropped - so it does not linger in the list for a machine that
+    is gone) and then unlinked. Returns how many entries were released.
+    """
+    conditions = []
+    if computer_id is not None:
+        conditions.append(RemoteAccessDevice.computer_id == computer_id)
+    if cash_register_id is not None:
+        conditions.append(RemoteAccessDevice.cash_register_id == cash_register_id)
+    if media_player_id is not None:
+        conditions.append(RemoteAccessDevice.media_player_id == media_player_id)
+    if not conditions:
+        return 0
+    devices = session.exec(select(RemoteAccessDevice).where(or_(*conditions))).all()
+    for dev in devices:
+        await delete_device(session, dev)
+        if computer_id is not None and dev.computer_id == computer_id:
+            dev.computer_id = None
+        if cash_register_id is not None and dev.cash_register_id == cash_register_id:
+            dev.cash_register_id = None
+        if media_player_id is not None and dev.media_player_id == media_player_id:
+            dev.media_player_id = None
+        session.add(dev)
+    if devices:
+        session.commit()
+    return len(devices)
 
 
 def package_config(dev: RemoteAccessDevice) -> dict:

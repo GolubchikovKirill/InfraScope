@@ -23,6 +23,7 @@ from app.domains.inventory.schemas import (
     MediaPlayersPublic,
     MediaPlayerUpdate,
 )
+from app.domains.remote_access import service as remote_access_service
 from app.domains.shared.schemas import Message
 from app.observability.metrics import (
     media_player_ops_total,
@@ -192,6 +193,7 @@ async def update_media_player(session: SessionDep, player_id: uuid.UUID, player_
 @router.delete("/{player_id}", dependencies=[Depends(get_current_active_superuser)])
 async def delete_media_player(session: SessionDep, player_id: uuid.UUID) -> Message:
     player = _get_media_player_or_404(session, player_id)
+    await remote_access_service.release_inventory_row(session, media_player_id=player.id)
     session.delete(player)
     session.commit()
     await _invalidate_cache()

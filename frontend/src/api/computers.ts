@@ -38,6 +38,33 @@ export async function updateComputer(id: string, payload: Partial<Computer>) {
   return data;
 }
 
+/** A computer that is not in the RustDesk console and does not answer a ping. */
+export interface StaleComputer {
+  id: string;
+  hostname: string;
+  location: string | null;
+  comment: string | null;
+  is_online: boolean | null;
+  last_polled_at: string | null;
+  created_at: string;
+  reason: string;
+  /** NB / NOTE / LPT: may just be off the office network, not gone */
+  laptop_like: boolean;
+  in_remote_access: boolean;
+}
+
+export interface StaleComputersResponse {
+  /** false when the console could not be read - nothing can be judged then */
+  console_reachable: boolean;
+  count: number;
+  data: StaleComputer[];
+}
+
+export async function getStaleComputers() {
+  const { data } = await api.get<StaleComputersResponse>("/computers/stale");
+  return data;
+}
+
 export async function deleteComputer(id: string) {
   await api.delete(`/computers/${id}`);
 }
