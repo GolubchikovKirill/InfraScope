@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import pytest
+
 from app.services.cisco_ssh import poe_cycle_ap, poe_cycle_ports_bulk, reboot_ap
+
+
+@pytest.fixture(autouse=True)
+def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """poe_cycle_* really wait 3-5 s between shutting a port and bringing it
+    back up (the AP needs the power gap). The tests drive a fake SSH session,
+    so there is nothing to wait for - it was 25 s of pure sleeping."""
+    monkeypatch.setattr("app.services.cisco_ssh.time.sleep", lambda _seconds: None)
 
 
 class _FakeSSH:
