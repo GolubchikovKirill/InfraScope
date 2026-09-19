@@ -35,6 +35,12 @@ vi.mock("../components/ConsoleAccountsPanel", () => ({
   ),
 }));
 
+vi.mock("../components/UnlistedConsolePeersPanel", () => ({
+  default: ({ isSuperuser }: { isSuperuser: boolean }) => (
+    <div>UnlistedConsolePeersPanel stub · superuser={String(isSuperuser)}</div>
+  ),
+}));
+
 import RemoteAccessPage from "./RemoteAccessPage";
 
 function makeDevice(overrides: Partial<RemoteDevice> = {}): RemoteDevice {
@@ -128,6 +134,20 @@ describe("RemoteAccessPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Подключения" }));
     expect(await screen.findByText("Последние подключения")).toBeInTheDocument();
+  });
+
+  it("offers the console machines that are not in the list on the devices tab", async () => {
+    api.getRemoteDevices.mockResolvedValue({ data: [makeDevice()], count: 1 });
+
+    renderPage();
+
+    expect(await screen.findByText("VNK-MGR-D1")).toBeInTheDocument();
+    expect(screen.getByText(/UnlistedConsolePeersPanel stub · superuser=true/)).toBeInTheDocument();
+
+    // it belongs to the devices list, not to the accounts tab
+    fireEvent.click(screen.getByRole("button", { name: "Админы" }));
+    await screen.findByText(/ConsoleAccountsPanel stub/);
+    expect(screen.queryByText(/UnlistedConsolePeersPanel stub/)).not.toBeInTheDocument();
   });
 
   it("requests a rollout from a device row and opens the command modal", async () => {

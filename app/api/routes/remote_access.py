@@ -48,6 +48,9 @@ from app.domains.remote_access.schemas import (
     DevicePublic,
     DevicesPublic,
     PackageConfig,
+    PeerAdoptRequest,
+    PeerDismissRequest,
+    UnlistedPeersPublic,
 )
 from app.domains.shared.schemas import Message
 
@@ -202,6 +205,52 @@ def device_package(device_id: uuid.UUID, session: SessionDep) -> PackageConfig:
     if not dev:
         raise not_found("Device not found")
     return PackageConfig(**service.package_config(dev))
+
+
+# --------------------------------------------------------------------------- #
+# console machines InfraScope does not track                                  #
+# --------------------------------------------------------------------------- #
+@router.get(
+    "/console-peers/unlisted",
+    response_model=UnlistedPeersPublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+async def unlisted_console_peers(session: SessionDep) -> UnlistedPeersPublic:
+    """Machines the RustDesk console knows but the list does not - the IT
+    department's own workstations, chiefly. Read-only; see adopt/dismiss."""
+    if not rustdesk_client.enabled():
+        return UnlistedPeersPublic(data=[], count=0, console_reachable=False)
+    try:
+        result = await service.list_unlisted_console_peers(session)
+    except Exception as exc:  # the console being down must not break the page
+        logger.warning("unlisted console peers: console unavailable: %s", exc)
+        return UnlistedPeersPublic(data=[], count=0, console_reachable=False)
+    return UnlistedPeersPublic(**result)
+
+
+@router.post(
+    "/console-peers/adopt",
+    response_model=DevicePublic,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def adopt_console_peer(payload: PeerAdoptRequest, session: SessionDep) -> DevicePublic:
+    """Take a console machine under management (the deploy profile is picked from
+    the hostname unless given). Records config only - nothing is applied to the
+    machine until a rollout runs on it."""
+    dev = service.adopt_peer(session, hostname=payload.hostname, profile=payload.profile)
+    return _to_public(dev)
+
+
+@router.post(
+    "/console-peers/dismiss",
+    response_model=Message,
+    dependencies=[Depends(get_current_active_superuser)],
+)
+def dismiss_console_peer(payload: PeerDismissRequest, session: SessionDep) -> Message:
+    """Stop suggesting a console machine (a personal laptop, a test box). It is
+    stored as removed-on-purpose, so it is never managed or pushed anywhere."""
+    service.dismiss_peer(session, hostname=payload.hostname)
+    return Message(message=f"{payload.hostname}: скрыто из предложений")
 
 
 @router.post("/sync", response_model=Message, dependencies=[Depends(get_current_active_superuser)])

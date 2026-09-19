@@ -122,3 +122,99 @@ def test_deploy_report_still_works_with_the_rate_limit_decorator(client, db_sess
         headers={"X-InfraScope-Deploy-Token": "s3cr3t"},
     )
     assert resp.status_code == 200
+
+
+def _fake_peers(monkeypatch, peers, *, enabled=True):
+    async def fake_peers():
+        return peers
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+    monkeypatch.setattr(service.rustdesk_client, "enabled", lambda: enabled)
+    from app.api.routes import remote_access as routes
+
+    monkeypatch.setattr(routes.rustdesk_client, "enabled", lambda: enabled)
+
+
+def test_unlisted_console_peers_is_superuser_only(client, user_token: str, monkeypatch):
+    _fake_peers(monkeypatch, [{"id": "a", "hostname": "vnk-itd-sa03"}])
+
+    resp = client.get("/api/v1/remote-access/console-peers/unlisted", headers={"Authorization": f"Bearer {user_token}"})
+
+    assert resp.status_code in (401, 403)
+
+
+def test_unlisted_console_peers_lists_untracked_machines(client, admin_token: str, monkeypatch):
+    _fake_peers(monkeypatch, [{"id": "VNKITDSA03", "hostname": "vnk-itd-sa03", "os": "windows"}])
+
+    resp = client.get("/api/v1/remote-access/console-peers/unlisted", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 1 and body["console_reachable"] is True
+    assert body["data"][0]["hostname"] == "vnk-itd-sa03"
+    assert body["data"][0]["suggested_profile"] == "admin"
+
+
+def test_unlisted_console_peers_survives_an_unreachable_console(client, admin_token: str, monkeypatch):
+    async def boom():
+        raise ConnectionError("console down")
+
+    _fake_peers(monkeypatch, [])
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", boom)
+
+    resp = client.get("/api/v1/remote-access/console-peers/unlisted", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"data": [], "count": 0, "nameless_peers": 0, "console_reachable": False}
+
+
+def test_unlisted_console_peers_reports_console_not_configured(client, admin_token: str, monkeypatch):
+    _fake_peers(monkeypatch, [{"id": "a", "hostname": "x-itd-1"}], enabled=False)
+
+    resp = client.get("/api/v1/remote-access/console-peers/unlisted", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert resp.json()["console_reachable"] is False
+
+
+def test_adopt_then_the_machine_is_in_the_device_list(client, admin_token: str, user_token: str, monkeypatch):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    adopted = client.post("/api/v1/remote-access/console-peers/adopt", json={"hostname": "vnk-itd-sa03"}, headers=headers)
+
+    assert adopted.status_code == 200
+    assert adopted.json()["hostname"] == "vnk-itd-sa03"
+    assert adopted.json()["deploy_profile"] == "admin"
+    listing = client.get("/api/v1/remote-access/devices", headers={"Authorization": f"Bearer {user_token}"})
+    assert "vnk-itd-sa03" in [d["hostname"] for d in listing.json()["data"]]
+
+
+def test_adopt_and_dismiss_require_a_superuser(client, user_token: str):
+    headers = {"Authorization": f"Bearer {user_token}"}
+
+    adopt = client.post("/api/v1/remote-access/console-peers/adopt", json={"hostname": "vnk-itd-sa03"}, headers=headers)
+    dismiss = client.post("/api/v1/remote-access/console-peers/dismiss", json={"hostname": "vnk-itd-sa03"}, headers=headers)
+
+    assert adopt.status_code in (401, 403)
+    assert dismiss.status_code in (401, 403)
+
+
+def test_dismissed_machine_stays_out_of_the_default_device_list(client, admin_token: str, user_token: str):
+    resp = client.post(
+        "/api/v1/remote-access/console-peers/dismiss",
+        json={"hostname": "macbook-pro"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert resp.status_code == 200
+    listing = client.get("/api/v1/remote-access/devices", headers={"Authorization": f"Bearer {user_token}"})
+    assert "macbook-pro" not in [d["hostname"] for d in listing.json()["data"]]
+
+
+def test_adopt_rejects_a_malformed_hostname(client, admin_token: str):
+    resp = client.post(
+        "/api/v1/remote-access/console-peers/adopt",
+        json={"hostname": "bad host!"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert resp.status_code == 422

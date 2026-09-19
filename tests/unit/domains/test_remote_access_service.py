@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -1091,3 +1092,118 @@ def test_bootstrap_script_reports_in_utf8_so_cyrillic_errors_survive(monkeypatch
     script = deploy_script.render_bootstrap()
     assert "charset=utf-8" in script
     assert "[System.Text.Encoding]::UTF8.GetBytes($body)" in script
+
+
+# --------------------------------------------------------------------------- #
+# console machines InfraScope does not track: list / adopt / dismiss          #
+# --------------------------------------------------------------------------- #
+def _fake_console(monkeypatch, peers):
+    async def fake_peers():
+        return peers
+
+    monkeypatch.setattr(service.rustdesk_client, "list_admin_peers", fake_peers)
+
+
+def test_unlisted_peers_shows_only_machines_no_row_tracks(db_session, monkeypatch):
+    now = int(datetime.now(UTC).timestamp())
+    service.ensure_device(db_session, hostname="VNA-KKM-1501")  # tracked
+    _fake_console(
+        monkeypatch,
+        [
+            {"id": "VNAKKM1501", "hostname": "vna-kkm-1501", "last_online_time": now},  # same host, other casing
+            {"id": "VNKITDSA03", "hostname": "vnk-itd-sa03", "os": "windows", "version": "1.4.9", "last_online_time": now},
+            {"id": "VNKITDSA04", "hostname": "VNK-ITD-SA04", "username": "ivanov", "last_online_time": now - 86400},
+            {"id": "123456789", "hostname": "", "last_online_time": now},  # never reported a name
+        ],
+    )
+
+    result = asyncio.run(service.list_unlisted_console_peers(db_session))
+
+    assert [p["hostname"] for p in result["data"]] == ["vnk-itd-sa03", "VNK-ITD-SA04"]
+    assert result["count"] == 2
+    assert result["nameless_peers"] == 1
+    online = {p["hostname"]: p["online"] for p in result["data"]}
+    assert online == {"vnk-itd-sa03": True, "VNK-ITD-SA04": False}  # online machines sort first
+
+
+def test_unlisted_peers_picks_the_freshest_of_several_registrations_of_one_host(db_session, monkeypatch):
+    now = int(datetime.now(UTC).timestamp())
+    _fake_console(
+        monkeypatch,
+        [
+            {"id": "111222333", "hostname": "vnk-itd-sa22", "last_online_time": now - 5000},
+            {"id": "VNKITDSA22", "hostname": "vnk-itd-sa22", "last_online_time": now},
+        ],
+    )
+
+    result = asyncio.run(service.list_unlisted_console_peers(db_session))
+
+    assert result["count"] == 1
+    assert result["data"][0]["rustdesk_id"] == "VNKITDSA22"
+
+
+def test_unlisted_peers_suggests_the_admin_profile_for_it_workstations_only(db_session, monkeypatch):
+    _fake_console(
+        monkeypatch,
+        [{"id": "a", "hostname": "vnk-itd-sa03"}, {"id": "b", "hostname": "vna-mgr-101"}],
+    )
+
+    result = asyncio.run(service.list_unlisted_console_peers(db_session))
+
+    profiles = {p["hostname"]: p["suggested_profile"] for p in result["data"]}
+    assert profiles == {"vnk-itd-sa03": "admin", "vna-mgr-101": "client"}
+
+
+def test_adopt_peer_starts_managing_it_with_the_suggested_profile(db_session):
+    dev = service.adopt_peer(db_session, hostname="vnk-itd-sa03")
+
+    assert dev.managed is True
+    assert dev.deploy_profile == "admin"
+    assert dev.desired_hidden is False and dev.desired_unattended is False
+    assert dev.permanent_password  # a password to push, like any other managed device
+
+
+def test_adopt_peer_honours_an_explicit_profile(db_session):
+    dev = service.adopt_peer(db_session, hostname="vnk-itd-sa03", profile="client")
+
+    assert dev.deploy_profile == "client"
+    assert dev.desired_hidden is True
+
+
+def test_an_adopted_machine_stops_being_offered(db_session, monkeypatch):
+    _fake_console(monkeypatch, [{"id": "a", "hostname": "vnk-itd-sa03"}])
+    assert asyncio.run(service.list_unlisted_console_peers(db_session))["count"] == 1
+
+    service.adopt_peer(db_session, hostname="vnk-itd-sa03")
+
+    assert asyncio.run(service.list_unlisted_console_peers(db_session))["count"] == 0
+
+
+def test_a_dismissed_machine_is_never_managed_nor_offered_again(db_session, monkeypatch):
+    _fake_console(monkeypatch, [{"id": "a", "hostname": "macbook-pro"}])
+
+    dev = service.dismiss_peer(db_session, hostname="macbook-pro")
+
+    assert dev.managed is False
+    assert asyncio.run(service.list_unlisted_console_peers(db_session))["count"] == 0
+    # the sync that once minted a managed row for exactly this kind of machine
+    # must leave the dismissal alone
+    asyncio.run(service.sync_from_console(db_session))
+    db_session.refresh(dev)
+    assert dev.managed is False
+
+
+def test_a_dismissed_machine_can_still_be_adopted_later(db_session):
+    service.dismiss_peer(db_session, hostname="vnk-itd-sa04")
+
+    dev = service.adopt_peer(db_session, hostname="vnk-itd-sa04")
+
+    assert dev.managed is True
+
+
+def test_a_removed_managed_device_does_not_come_back_as_a_suggestion(db_session, monkeypatch):
+    dev = service.ensure_device(db_session, hostname="vnk-itd-sa13")
+    asyncio.run(service.delete_device(db_session, dev))  # soft delete: managed=False
+    _fake_console(monkeypatch, [{"id": "a", "hostname": "vnk-itd-sa13"}])
+
+    assert asyncio.run(service.list_unlisted_console_peers(db_session))["count"] == 0

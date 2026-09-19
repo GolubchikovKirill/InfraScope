@@ -40,6 +40,7 @@ import { Button } from "../components/ui/Button";
 import { AppLockerMismatchBadge, ReadinessChip, deviceReadinessDetail } from "../components/RemoteAccessStatus";
 import DeployCommandModal from "../components/DeployCommandModal";
 import ConsoleAccountsPanel from "../components/ConsoleAccountsPanel";
+import UnlistedConsolePeersPanel from "../components/UnlistedConsolePeersPanel";
 
 type BadgeTone = "default" | "green" | "red" | "amber" | "sky" | "violet";
 const badgeTone: Record<BadgeTone, string> = {
@@ -289,6 +290,8 @@ export default function RemoteAccessPage() {
               если висит дольше, нажмите «В книгу адресов».
             </div>
           )}
+
+          <UnlistedConsolePeersPanel isSuperuser={isSuperuser} />
 
           <div className="grid gap-3 sm:grid-cols-4">
             {[

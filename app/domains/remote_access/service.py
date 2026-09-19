@@ -980,6 +980,87 @@ async def sync_accounts(session: Session) -> dict[str, int]:
 # --------------------------------------------------------------------------- #
 # shared address book                                                         #
 # --------------------------------------------------------------------------- #
+def suggested_profile(hostname: str) -> str:
+    """"admin" for an engineer workstation (VNK-ITD-*), "client" otherwise - see
+    DEPLOY_PROFILES for what each preset does to the machine."""
+    return "admin" if hostname_type_tag(hostname) == "ITD" else "client"
+
+
+async def list_unlisted_console_peers(session: Session) -> dict[str, Any]:
+    """Console machines InfraScope does not track.
+
+    sync_from_console deliberately never creates a device: the console lists
+    *everything that ever connected* (it once minted a managed row, with a
+    generated password, for someone's personal MacBook), and inventory decides
+    what is managed. The catch is that machines outside the inventory - the IT
+    department's own workstations - then never show up at all, however healthy
+    their RustDesk client is. This is the missing half: show them, and let a
+    person decide (adopt_peer / dismiss_peer). Nothing here writes.
+
+    A hostname already present as a row is skipped whether it is managed or was
+    removed on purpose (managed=False): removing a device is a decision, and it
+    must not come back as a suggestion.
+    """
+    now = _now()
+    peers = await rustdesk_client.list_admin_peers()
+    known = {h.lower() for h in session.exec(select(RemoteAccessDevice.hostname)).all() if h}
+    best: dict[str, dict[str, Any]] = {}
+    nameless = 0
+    for peer in peers:
+        hostname = (peer.get("hostname") or "").strip()
+        if not hostname:
+            nameless += 1
+            continue
+        key = hostname.lower()
+        if key in known:
+            continue
+        if key not in best or _peer_last_online(peer) > _peer_last_online(best[key]):
+            best[key] = peer
+
+    items = []
+    for peer in best.values():
+        hostname = (peer.get("hostname") or "").strip()
+        last = _peer_last_online(peer)
+        items.append(
+            {
+                "hostname": hostname,
+                "rustdesk_id": (str(peer.get("id") or "").strip() or None),
+                "os": (peer.get("os") or None),
+                "version": (peer.get("version") or None),
+                "username": (peer.get("username") or None),
+                "online": _peer_online(peer, now),
+                "last_online": datetime.fromtimestamp(last, tz=UTC) if last else None,
+                "suggested_profile": suggested_profile(hostname),
+            }
+        )
+    items.sort(key=lambda i: (not i["online"], i["hostname"].lower()))
+    return {"data": items, "count": len(items), "nameless_peers": nameless}
+
+
+def adopt_peer(session: Session, *, hostname: str, profile: str | None = None) -> RemoteAccessDevice:
+    """Start managing a console machine: same as the "add device" button, plus
+    the deploy profile in one step. Records config only - the machine itself is
+    untouched until a rollout runs on it."""
+    dev = ensure_device(session, hostname=hostname)
+    return apply_deploy_profile(session, dev, profile or suggested_profile(hostname))
+
+
+def dismiss_peer(session: Session, *, hostname: str) -> RemoteAccessDevice:
+    """Hide a console machine from the "not in the list" suggestions for good.
+
+    Stored as a managed=False row - the existing meaning of "removed on purpose"
+    (delete_device) - so no password is ever pushed and no address-book entry is
+    made for it (both filter on managed), and the console sync never turns it
+    back on. Adopting it later is still possible through ensure_device.
+    """
+    dev = _get_or_create_device(session, hostname)
+    dev.managed = False
+    session.add(dev)
+    session.commit()
+    session.refresh(dev)
+    return dev
+
+
 def hostname_type_tag(hostname: str) -> str | None:
     """The role token out of a `<SITE>-<TYPE>-<NUM>` hostname, e.g.
     VNA-KKM-1506 -> "KKM", VNK-MGR-D01 -> "MGR", VNA-SRV-LMG01 -> "SRV".

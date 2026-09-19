@@ -111,6 +111,46 @@ export async function deleteRemoteDevice(id: string) {
   return data;
 }
 
+/** A machine the RustDesk console knows that InfraScope does not track. The
+ *  device list is built from inventory only, so machines outside it - the IT
+ *  department's own workstations, chiefly - never show up there on their own. */
+export interface UnlistedPeer {
+  hostname: string;
+  rustdesk_id: string | null;
+  os: string | null;
+  version: string | null;
+  username: string | null;
+  online: boolean;
+  last_online: string | null;
+  /** "admin" for a VNK-ITD-* workstation, "client" otherwise. Only a suggestion. */
+  suggested_profile: DeployProfile;
+}
+
+export interface UnlistedPeersResponse {
+  data: UnlistedPeer[];
+  count: number;
+  /** console peers with no hostname at all - cannot be named, only counted */
+  nameless_peers: number;
+  console_reachable: boolean;
+}
+
+export async function getUnlistedConsolePeers() {
+  const { data } = await api.get<UnlistedPeersResponse>("/remote-access/console-peers/unlisted");
+  return data;
+}
+
+/** Take a console machine under management. Records config only. */
+export async function adoptConsolePeer(payload: { hostname: string; profile?: DeployProfile }) {
+  const { data } = await api.post<RemoteDevice>("/remote-access/console-peers/adopt", payload);
+  return data;
+}
+
+/** Stop offering a console machine (a personal laptop, a test box). It is never managed. */
+export async function dismissConsolePeer(hostname: string) {
+  const { data } = await api.post<{ message: string }>("/remote-access/console-peers/dismiss", { hostname });
+  return data;
+}
+
 export async function rotateRemotePassword(id: string) {
   const { data } = await api.post<RemoteDevice>(`/remote-access/devices/${id}/rotate-password`);
   return data;

@@ -144,6 +144,43 @@ class DeviceEnsureRequest(BaseModel):
         return v.strip() or None if v is not None else None
 
 
+class UnlistedPeerPublic(BaseModel):
+    """A machine the RustDesk console knows that InfraScope does not track."""
+
+    hostname: str
+    rustdesk_id: str | None = None
+    os: str | None = None
+    version: str | None = None
+    username: str | None = None
+    online: bool = False
+    last_online: datetime | None = None
+    # "admin" for an engineer workstation (VNK-ITD-*), "client" for everything
+    # else - the same split DEPLOY_PROFILES documents. Only a suggestion.
+    suggested_profile: str = "client"
+
+
+class UnlistedPeersPublic(BaseModel):
+    data: list[UnlistedPeerPublic]
+    count: int
+    # peers the console lists with no hostname at all (factory numeric ids that
+    # never reported one) - they cannot be named here, so they are only counted
+    nameless_peers: int = 0
+    console_reachable: bool = True
+
+
+class PeerAdoptRequest(BaseModel):
+    """Put a console machine under InfraScope management."""
+
+    hostname: str = Field(pattern=_HOSTNAME_RE)
+    profile: str | None = Field(default=None, pattern=r"^(client|admin)$")
+
+
+class PeerDismissRequest(BaseModel):
+    """Stop offering a console machine (a personal laptop, a test box...)."""
+
+    hostname: str = Field(pattern=_HOSTNAME_RE)
+
+
 class AddressBookSyncRequest(BaseModel):
     # optional narrowing; empty means all managed devices
     device_ids: list[uuid.UUID] | None = None
