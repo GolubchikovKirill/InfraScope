@@ -8,9 +8,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
-from urllib.parse import urlparse
 
-import httpx
 import redis
 from celery import shared_task
 from redis.exceptions import RedisError
@@ -34,17 +32,18 @@ from app.ml.pipeline import run_scoring_cycle, run_training_cycle
 from app.ml.retention import run_retention_cycle
 from app.observability.metrics import (
     ml_train_runs_total,
-    observe_service_edge,
     worker_task_duration_seconds,
     worker_task_executions_total,
     worker_tasks_enqueued_total,
     worker_tasks_in_progress,
 )
+from app.services.discovery import run_discovery_scan
 from app.services.polling_orchestrator import (
     poll_all_cash_registers_local,
     poll_all_computers_local,
     poll_all_media_players_local,
     poll_all_printers_local,
+    poll_all_switches_local,
     poll_switch_local,
 )
 from app.services.scanner import scan_subnet
@@ -164,42 +163,6 @@ def _task_finished(operation: str, started_at: float, result: str) -> None:
     worker_task_duration_seconds.labels(operation=operation).observe(max(perf_counter() - started_at, 0))
 
 
-def _internal_headers() -> dict[str, str]:
-    if settings.INTERNAL_SERVICE_TOKEN:
-        return {"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN}
-    return {}
-
-
-def _service_json(
-    *,
-    base_url: str,
-    method: str,
-    path: str,
-    timeout: float = 180.0,
-    params: dict | None = None,
-    json_body: dict | None = None,
-) -> dict:
-    target = (urlparse(base_url).hostname or "unknown").strip() or "unknown"
-    with observe_service_edge(
-        source="worker",
-        target=target,
-        transport="http",
-        operation=f"{method.upper()} {path}",
-    ):
-        with httpx.Client(timeout=timeout, headers=_internal_headers()) as client:
-            response = client.request(
-                method=method,
-                url=f"{base_url.rstrip('/')}{path}",
-                params=params,
-                json=json_body,
-            )
-    response.raise_for_status()
-    data = response.json()
-    if not isinstance(data, dict):
-        raise RuntimeError("internal service returned invalid payload")
-    return data
-
-
 @shared_task(
     bind=True,
     autoretry_for=(Exception,),
@@ -222,26 +185,48 @@ def scan_network_task(self, subnet: str, ports: str) -> dict:
                 }
                 for p in printers
             ]
-        if settings.DISCOVERY_SERVICE_ENABLED:
-            payload_data = _service_json(
-                base_url=settings.DISCOVERY_SERVICE_URL,
-                method="POST",
-                path="/discover/printers/run",
-                json_body={
-                    "subnet": subnet,
-                    "ports": ports,
-                    "known_printers": known,
-                },
-            )
-            devices = payload_data.get("devices", [])
-        else:
-            devices = _run_async(scan_subnet(subnet, ports, known))
+        devices = _run_async(scan_subnet(subnet, ports, known))
         payload = {
             "task_id": self.request.id,
             "operation": operation,
             "subnet": subnet,
             "ports": ports,
             "found_devices": len(devices),
+        }
+        _task_finished(operation, started_at, "success")
+        return payload
+    except Exception:
+        _task_finished(operation, started_at, "error")
+        raise
+
+
+@shared_task(
+    bind=True,
+    # No autoretry: a scan is started by a person, and a failed one already
+    # reports its error through the progress key the UI polls.
+    soft_time_limit=1500,
+    time_limit=1800,
+    name="tasks.discovery_scan",
+)
+def discovery_scan_task(self, kind: str, subnet: str, ports: str, known: list[dict]) -> dict:
+    """Network discovery scan ("printers", "iconbit" or "switch").
+
+    Progress and results live in Redis (see app.services.scanner/discovery),
+    which is what the status/results endpoints read.
+    """
+    operation = "discovery_scan"
+    started_at = _task_started(operation)
+    try:
+        if kind == "printers":
+            devices = _run_async(scan_subnet(subnet, ports, known))
+        else:
+            devices = _run_async(run_discovery_scan(kind, subnet, ports, known))
+        payload = {
+            "task_id": self.request.id,
+            "operation": operation,
+            "kind": kind,
+            "found_devices": len(devices),
+            "finished_at": datetime.now(UTC).isoformat(),
         }
         _task_finished(operation, started_at, "success")
         return payload
@@ -261,22 +246,11 @@ def poll_all_printers_task(self, printer_type: str = "laser") -> dict:
     operation = "poll_all_printers"
     started_at = _task_started(operation)
     try:
-        if settings.POLLING_SERVICE_ENABLED:
-            payload_data = _service_json(
-                base_url=settings.POLLING_SERVICE_URL,
-                method="POST",
-                path="/poll/printers",
-                params={"printer_type": printer_type},
-            )
-            all_printers = payload_data.get("data", [])
-            online_count = sum(1 for p in all_printers if p.get("is_online"))
-            total_count = len(all_printers)
-        else:
-            with Session(engine) as session:
-                _run_async(poll_all_printers_local(session=session, printer_type=printer_type))
-                all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
-            online_count = sum(1 for p in all_printers if p.is_online)
-            total_count = len(all_printers)
+        with Session(engine) as session:
+            _run_async(poll_all_printers_local(session=session, printer_type=printer_type))
+            all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+        online_count = sum(1 for p in all_printers if p.is_online)
+        total_count = len(all_printers)
         payload = {
             "task_id": self.request.id,
             "operation": operation,
@@ -303,30 +277,19 @@ def poll_all_media_players_task(self, device_type: str | None = None) -> dict:
     operation = "poll_all_media_players"
     started_at = _task_started(operation)
     try:
-        if settings.POLLING_SERVICE_ENABLED:
-            payload_data = _service_json(
-                base_url=settings.POLLING_SERVICE_URL,
-                method="POST",
-                path="/poll/media-players",
-                params={"device_type": device_type} if device_type else None,
-            )
-            players = payload_data.get("data", [])
-            total_count = len(players)
-            online_count = sum(1 for p in players if p.get("is_online"))
-        else:
-            with Session(engine) as session:
-                _run_async(
-                    poll_all_media_players_local(
-                        session=session,
-                        device_type=device_type,
-                    )
+        with Session(engine) as session:
+            _run_async(
+                poll_all_media_players_local(
+                    session=session,
+                    device_type=device_type,
                 )
-                statement = select(MediaPlayer)
-                if device_type:
-                    statement = statement.where(MediaPlayer.device_type == device_type)
-                players = session.exec(statement).all()
-            total_count = len(players)
-            online_count = sum(1 for p in players if p.is_online)
+            )
+            statement = select(MediaPlayer)
+            if device_type:
+                statement = statement.where(MediaPlayer.device_type == device_type)
+            players = session.exec(statement).all()
+        total_count = len(players)
+        online_count = sum(1 for p in players if p.is_online)
         payload = {
             "task_id": self.request.id,
             "operation": operation,
@@ -354,19 +317,10 @@ def poll_switch_task(self, switch_id: str) -> dict:
     started_at = _task_started(operation)
     try:
         switch_uuid = uuid.UUID(switch_id)
-        if settings.POLLING_SERVICE_ENABLED:
-            sw = _service_json(
-                base_url=settings.POLLING_SERVICE_URL,
-                method="POST",
-                path=f"/poll/switches/{switch_id}",
-            )
-            is_online = bool(sw.get("is_online"))
-            hostname = sw.get("hostname")
-        else:
-            with Session(engine) as session:
-                sw = _run_async(poll_switch_local(switch_id=switch_uuid, session=session))
-            is_online = bool(sw.is_online)
-            hostname = sw.hostname
+        with Session(engine) as session:
+            sw = _run_async(poll_switch_local(switch_id=switch_uuid, session=session))
+        is_online = bool(sw.is_online)
+        hostname = sw.hostname
         payload = {
             "task_id": self.request.id,
             "operation": operation,
@@ -393,34 +347,19 @@ def poll_all_switches_task(self) -> dict:
     operation = "poll_all_switches"
     started_at = _task_started(operation)
     try:
-        results: list[dict] = []
-        if settings.POLLING_SERVICE_ENABLED:
-            _service_json(
-                base_url=settings.POLLING_SERVICE_URL,
-                method="POST",
-                path="/poll/switches",
-            )
-            summary = _service_json(
-                base_url=settings.POLLING_SERVICE_URL,
-                method="GET",
-                path="/summary/switches",
-            )
-            total = int(summary.get("total", 0))
-            online = int(summary.get("online", 0))
-        else:
-            with Session(engine) as session:
-                switches = session.exec(select(NetworkSwitch)).all()
-                for sw in switches:
-                    updated = _run_async(poll_switch_local(switch_id=sw.id, session=session))
-                    results.append(
-                        {
-                            "switch_id": str(updated.id),
-                            "name": updated.name,
-                            "is_online": bool(updated.is_online),
-                        }
-                    )
-            total = len(results)
-            online = sum(1 for r in results if r["is_online"])
+        # The bulk poll, not a per-switch loop: it is what the polling service
+        # ran (concurrent, bounded by SWITCH_POLL_MAX_CONCURRENCY, and it
+        # detects "the whole subnet went dark" as a path failure instead of
+        # recording N false outages). The worker's own fallback used to poll
+        # one switch at a time and skipped both.
+        with Session(engine) as session:
+            _run_async(poll_all_switches_local(session=session))
+            switches = session.exec(select(NetworkSwitch)).all()
+            results = [
+                {"switch_id": str(sw.id), "name": sw.name, "is_online": bool(sw.is_online)} for sw in switches
+            ]
+        total = len(results)
+        online = sum(1 for r in results if r["is_online"])
         payload = {
             "task_id": self.request.id,
             "operation": operation,
@@ -475,21 +414,11 @@ def poll_all_cash_registers_task(self) -> dict:
     operation = "poll_all_cash_registers"
     started_at = _task_started(operation)
     try:
-        if settings.POLLING_SERVICE_ENABLED:
-            payload_data = _service_json(
-                base_url=settings.POLLING_SERVICE_URL,
-                method="POST",
-                path="/poll/cash-registers",
-            )
-            registers = payload_data.get("data", [])
-            total_count = len(registers)
-            online_count = sum(1 for r in registers if r.get("is_online"))
-        else:
-            with Session(engine) as session:
-                _run_async(poll_all_cash_registers_local(session=session))
-                registers = session.exec(select(CashRegister)).all()
-            total_count = len(registers)
-            online_count = sum(1 for r in registers if r.is_online)
+        with Session(engine) as session:
+            _run_async(poll_all_cash_registers_local(session=session))
+            registers = session.exec(select(CashRegister)).all()
+        total_count = len(registers)
+        online_count = sum(1 for r in registers if r.is_online)
         payload = {
             "task_id": self.request.id,
             "operation": operation,

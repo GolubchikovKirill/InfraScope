@@ -206,24 +206,6 @@ groups:
           summary: "Ошибки обучения ML моделей"
           description: "За последний час обнаружены неуспешные train run в ML контуре."
 
-      - alert: InfraScopePollingServiceDown
-        expr: max_over_time(up{job="infrascope-polling-service"}[2m]) == 0
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "InfraScope polling service недоступен"
-          description: "Prometheus не может собрать метрики polling-service более 2 минут."
-
-      - alert: InfraScopeDiscoveryServiceDown
-        expr: max_over_time(up{job="infrascope-discovery-service"}[2m]) == 0
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "InfraScope discovery service недоступен"
-          description: "Prometheus не может собрать метрики discovery-service более 2 минут."
-
       - alert: InfraScopeNetworkControlServiceDown
         expr: max_over_time(up{job="infrascope-network-control-service"}[2m]) == 0
         for: 2m

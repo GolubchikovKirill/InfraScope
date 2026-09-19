@@ -11,16 +11,6 @@
   },
   {
     "targets": [
-      "discovery-service:8012"
-    ],
-    "labels": {
-      "job": "infrascope-discovery-service",
-      "service_name": "discovery-service",
-      "__metrics_path__": "/metrics"
-    }
-  },
-  {
-    "targets": [
       "media-service:8014"
     ],
     "labels": {
@@ -36,16 +26,6 @@
     "labels": {
       "job": "infrascope-network-control-service",
       "service_name": "network-control-service",
-      "__metrics_path__": "/metrics"
-    }
-  },
-  {
-    "targets": [
-      "polling-service:8011"
-    ],
-    "labels": {
-      "job": "infrascope-polling-service",
-      "service_name": "polling-service",
       "__metrics_path__": "/metrics"
     }
   },

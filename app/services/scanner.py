@@ -342,6 +342,23 @@ async def scan_subnet(subnet: str, ports_str: str, known_printers: list[dict]) -
         await release_redis_lock(r, SCAN_KEY_LOCK, lock_owner)
 
 
+async def scan_in_progress() -> bool:
+    """True while a printer scan holds its Redis lock (i.e. one is really running)."""
+    r = await get_redis()
+    return bool(await r.exists(SCAN_KEY_LOCK))
+
+
+async def mark_scan_queued() -> None:
+    """Publish "running" the moment a scan is requested, before a worker picks it
+    up - otherwise the UI's first status poll would still see the previous scan's
+    finished state and load its stale results."""
+    await _update_progress("running", 0, 0, 0)
+
+
+async def mark_scan_failed_to_queue(message: str) -> None:
+    await _update_progress("error", 0, 0, 0, message)
+
+
 async def get_scan_progress() -> dict:
     r = await get_redis()
     data = await r.get(SCAN_KEY_PROGRESS)

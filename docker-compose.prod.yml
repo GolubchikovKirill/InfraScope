@@ -23,12 +23,6 @@ services:
   worker:
     restart: unless-stopped
 
-  polling-service:
-    restart: unless-stopped
-
-  discovery-service:
-    restart: unless-stopped
-
   network-control-service:
     restart: unless-stopped
 

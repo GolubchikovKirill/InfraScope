@@ -20,19 +20,25 @@ def test_get_scanner_settings(client: TestClient, admin_token: str):
     assert "ports" in response.json()
 
 
-def test_scanner_status_uses_discovery_service_when_enabled(client: TestClient, admin_token: str, monkeypatch):
-    async def _fake_proxy_request(**kwargs):
-        assert kwargs["path"] == "/discover/printers/status"
-        return {"status": "running", "scanned": 1, "total": 10, "found": 0, "message": None}
+def test_scanner_status_reads_progress_from_redis(client: TestClient, admin_token: str):
+    import asyncio
+    import json
 
-    monkeypatch.setattr(scanner_routes.settings, "DISCOVERY_SERVICE_ENABLED", True)
-    monkeypatch.setattr(scanner_routes, "_proxy_request", _fake_proxy_request)
+    from app.core.redis import get_redis
+    from app.services.scanner import SCAN_KEY_PROGRESS
+
+    async def _seed():
+        r = await get_redis()
+        await r.set(SCAN_KEY_PROGRESS, json.dumps({"status": "running", "scanned": 1, "total": 10, "found": 0, "message": None}))
+
+    asyncio.run(_seed())
     response = client.get(
         "/api/v1/scanner/status",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "running"
+    assert response.json()["total"] == 10
 
 
 def test_rediscover_by_mac_updates_known_devices(client: TestClient, admin_token: str, db_session, monkeypatch):

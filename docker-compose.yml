@@ -92,9 +92,12 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
-    # See polling-service for why: defense in depth against the SNMP engine
-    # socket leak (fixed in code, app/services/snmp), shared here since this
-    # image is common to every service.
+    # Defense in depth against the SNMP engine socket leak (fixed in code, see
+    # app/services/snmp): the default 1024 open files was exhausted in ~2 days
+    # of normal polling and every poll endpoint started returning 500
+    # (OSError: [Errno 24] Too many open files). A raised ceiling buys time to
+    # notice a future leak via monitoring instead of a hard outage. Every
+    # service below uses the same image, so they all carry the same limit.
     ulimits:
       nofile:
         soft: 65536
@@ -136,7 +139,7 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
-    # See polling-service for why.
+    # See backend for why.
     ulimits:
       nofile:
         soft: 65536
@@ -164,94 +167,7 @@ services:
       # /app isn't writable by the non-root "app" user (only its contents are,
       # from the build's --chown COPY), so point the schedule file at /tmp.
       - celery -A app.worker.celery_app.celery_app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
-    # See polling-service for why.
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-    networks:
-      - internal
-
-  polling-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      POSTGRES_SERVER: db
-      REDIS_URL: redis://redis:6379/0
-      MEDIA_LIBRARY_DIR: /var/lib/infrascope/media-library
-      POLLING_SERVICE_ENABLED: "false"
-      DISCOVERY_SERVICE_ENABLED: "false"
-      OTEL_ENABLED: ${OTEL_ENABLED:-true}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
-      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
-    command:
-      - sh
-      - -c
-      - uvicorn app.polling_service.main:app --host 0.0.0.0 --port 8011
-    dns:
-      - ${DNS_SERVER:-8.8.8.8}
-    dns_search:
-      - ${DNS_SEARCH_DOMAIN:-}
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/health')"]
-      interval: 20s
-      retries: 3
-      start_period: 30s
-      timeout: 5s
-    # Defense in depth against the SNMP engine socket leak (fixed in code,
-    # see app/services/snmp): the default 1024 was exhausted in ~2 days of
-    # normal polling and every poll endpoint started returning 500
-    # (OSError: [Errno 24] Too many open files). A raised ceiling buys time
-    # to notice a future leak via monitoring instead of a hard outage.
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-    networks:
-      - internal
-
-  discovery-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      POSTGRES_SERVER: db
-      REDIS_URL: redis://redis:6379/0
-      POLLING_SERVICE_ENABLED: "false"
-      DISCOVERY_SERVICE_ENABLED: "false"
-      OTEL_ENABLED: ${OTEL_ENABLED:-true}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
-      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
-    command:
-      - sh
-      - -c
-      - uvicorn app.discovery_service.main:app --host 0.0.0.0 --port 8012
-    dns:
-      - ${DNS_SERVER:-8.8.8.8}
-    dns_search:
-      - ${DNS_SEARCH_DOMAIN:-}
-    depends_on:
-      redis:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8012/health')"]
-      interval: 20s
-      retries: 3
-      start_period: 30s
-      timeout: 5s
-    # See polling-service for why.
+    # See backend for why.
     ulimits:
       nofile:
         soft: 65536
@@ -268,8 +184,6 @@ services:
     environment:
       POSTGRES_SERVER: db
       REDIS_URL: redis://redis:6379/0
-      POLLING_SERVICE_ENABLED: "false"
-      DISCOVERY_SERVICE_ENABLED: "false"
       NETWORK_CONTROL_SERVICE_ENABLED: "false"
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
@@ -291,7 +205,7 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
-    # See polling-service for why.
+    # See backend for why.
     ulimits:
       nofile:
         soft: 65536
@@ -310,8 +224,6 @@ services:
     environment:
       POSTGRES_SERVER: db
       REDIS_URL: redis://redis:6379/0
-      POLLING_SERVICE_ENABLED: "false"
-      DISCOVERY_SERVICE_ENABLED: "false"
       NETWORK_CONTROL_SERVICE_ENABLED: "false"
       MEDIA_SERVICE_ENABLED: "false"
       OTEL_ENABLED: ${OTEL_ENABLED:-true}
@@ -336,7 +248,7 @@ services:
       retries: 3
       start_period: 30s
       timeout: 5s
-    # See polling-service for why.
+    # See backend for why.
     ulimits:
       nofile:
         soft: 65536
@@ -361,10 +273,6 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
-      polling-service:
-        condition: service_healthy
-      discovery-service:
-        condition: service_healthy
       network-control-service:
         condition: service_healthy
       media-service:
@@ -387,10 +295,6 @@ services:
       - prometheus_data:/prometheus
     depends_on:
       backend:
-        condition: service_healthy
-      polling-service:
-        condition: service_healthy
-      discovery-service:
         condition: service_healthy
       network-control-service:
         condition: service_healthy

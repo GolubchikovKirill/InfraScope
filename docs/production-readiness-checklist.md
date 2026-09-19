@@ -37,7 +37,7 @@
 - [x] Route layer использует единый translation ошибок (`_service_errors.py`) и не содержит domain-logic.
 - [x] Frontend API декомпозирован на `api/http.ts` + bounded-context модули.
 - [x] Сохранена обратная совместимость импорта через `frontend/src/client.ts`.
-- [x] Добавлен архитектурный guard-test: `worker`/`polling-service` не импортируют `app.api.routes` напрямую.
+- [x] Добавлен архитектурный guard-test: `worker` не импортируют `app.api.routes` напрямую.
 - [x] Убрана private-coupling зависимость `discovery -> scanner._parse_arp_table` (вынесено в `net_inventory`).
 
 ## 6) Documentation and Operational Clarity

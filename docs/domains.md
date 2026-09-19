@@ -50,7 +50,7 @@ event logs, and worker lifecycle.
 Code here should depend on services, not API route modules.
 
 - Domain package: `app/domains/operations/`
-- Backend: `app/worker/`, `app/polling_service/`, `app/api/routes/tasks.py`,
+- Backend: `app/worker/`, `app/api/routes/tasks.py`,
   `app/api/routes/logs.py`, `app/api/routes/cash_registers.py`
 - Application services: `app/domains/operations/cash_register_polling.py`
 - Services: `app/services/event_log.py`, `poll_resilience.py`, `service_flow.py`,

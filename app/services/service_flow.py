@@ -136,8 +136,6 @@ def _node_links(node_id: str) -> list[ServiceFlowLinkPublic]:
     ]
     if node_id in {
         "backend",
-        "polling-service",
-        "discovery-service",
         "network-control-service",
         "media-service",
         "worker",

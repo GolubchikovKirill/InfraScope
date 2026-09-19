@@ -1,6 +1,7 @@
 from app.api.routes import cash_registers as cash_routes
 from app.domains.inventory.reachability import ReachabilityResult
 from app.domains.operations import cash_register_polling
+from app.domains.operations.schemas import CashRegistersPublic
 
 
 class _BusyRedis:
@@ -42,13 +43,14 @@ def test_create_cash_register(client, admin_token: str):
     assert body["cash_drawer"] == "Установлен"
 
 
-def test_poll_all_cash_registers_uses_polling_service_when_enabled(client, admin_token: str, monkeypatch):
-    async def _fake_proxy_request(**kwargs):
-        assert kwargs["path"] == "/poll/cash-registers"
-        return {"data": [], "count": 0}
+def test_poll_all_cash_registers_polls_in_process(client, admin_token: str, monkeypatch):
+    called: list[bool] = []
 
-    monkeypatch.setattr(cash_routes.settings, "POLLING_SERVICE_ENABLED", True)
-    monkeypatch.setattr(cash_routes, "_proxy_request", _fake_proxy_request)
+    async def _fake_poll_all(*, session):
+        called.append(True)
+        return CashRegistersPublic(data=[], count=0)
+
+    monkeypatch.setattr(cash_routes, "poll_all_cash_registers_local", _fake_poll_all)
 
     response = client.post(
         "/api/v1/cash-registers/poll-all",
@@ -56,6 +58,7 @@ def test_poll_all_cash_registers_uses_polling_service_when_enabled(client, admin
     )
     assert response.status_code == 200
     assert response.json()["count"] == 0
+    assert called == [True]
 
 
 def test_poll_cash_register_updates_reachability(client, admin_token: str, monkeypatch):

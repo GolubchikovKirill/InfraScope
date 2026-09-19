@@ -28,11 +28,9 @@ os.environ.setdefault("BACKEND_TRUSTED_HOSTS", '["testserver","localhost","127.0
 # .env, so pin the external integrations off here.
 os.environ.setdefault("OTEL_ENABLED", "false")
 # Likewise the internal-service switches: with the developer's .env they send
-# poll/discovery requests to http://polling-service:8011 & co., which do not
+# network-control requests to http://network-control-service:8013, which does not
 # exist here (-> 504 after a connect timeout). Tests that cover the proxied
 # path opt in per test via monkeypatch.
-os.environ.setdefault("POLLING_SERVICE_ENABLED", "false")
-os.environ.setdefault("DISCOVERY_SERVICE_ENABLED", "false")
 os.environ.setdefault("NETWORK_CONTROL_SERVICE_ENABLED", "false")
 os.environ.setdefault("MEDIA_SERVICE_ENABLED", "false")
 

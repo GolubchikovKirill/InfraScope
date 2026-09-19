@@ -42,37 +42,11 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Discovery Service up",
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 0
-      },
-      "targets": [
-        {
-          "expr": "avg(up{job=\"infrascope-discovery-service\"})",
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      }
-    },
-    {
-      "id": 3,
-      "type": "stat",
       "title": "Media Service up",
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 12,
+        "x": 6,
         "y": 0
       },
       "targets": [
@@ -92,13 +66,13 @@
       }
     },
     {
-      "id": 4,
+      "id": 3,
       "type": "stat",
       "title": "Network Control Service up",
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 18,
+        "x": 12,
         "y": 0
       },
       "targets": [
@@ -118,40 +92,14 @@
       }
     },
     {
-      "id": 5,
-      "type": "stat",
-      "title": "Polling Service up",
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 4
-      },
-      "targets": [
-        {
-          "expr": "avg(up{job=\"infrascope-polling-service\"})",
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      }
-    },
-    {
-      "id": 6,
+      "id": 4,
       "type": "stat",
       "title": "Worker up",
       "gridPos": {
         "h": 4,
         "w": 6,
-        "x": 6,
-        "y": 4
+        "x": 18,
+        "y": 0
       },
       "targets": [
         {

@@ -14,16 +14,6 @@ nodes:
     kind: worker
     prometheus_job: worker
     service_map_enabled: true
-  - id: polling-service
-    label: Polling Service
-    kind: service
-    prometheus_job: polling-service
-    service_map_enabled: true
-  - id: discovery-service
-    label: Discovery Service
-    kind: service
-    prometheus_job: discovery-service
-    service_map_enabled: true
   - id: network-control-service
     label: Network Control Service
     kind: service
@@ -45,14 +35,6 @@ edges:
     transport: http
     operation: ui requests
   - source: backend
-    target: polling-service
-    transport: http
-    operation: internal proxy
-  - source: backend
-    target: discovery-service
-    transport: http
-    operation: internal proxy
-  - source: backend
     target: network-control-service
     transport: http
     operation: internal proxy
@@ -60,11 +42,3 @@ edges:
     target: media-service
     transport: http
     operation: media manifests
-  - source: worker
-    target: polling-service
-    transport: http
-    operation: task dispatch
-  - source: worker
-    target: discovery-service
-    transport: http
-    operation: task dispatch

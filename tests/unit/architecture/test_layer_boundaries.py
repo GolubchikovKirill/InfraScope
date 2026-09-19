@@ -13,10 +13,8 @@ def _read(rel_path: str) -> str:
 def test_background_processes_do_not_import_api_routes_directly() -> None:
     """Background entrypoints should call services, not HTTP route modules."""
     worker_tasks = _read("app/worker/tasks.py")
-    polling_main = _read("app/polling_service/main.py")
 
     assert "from app.api.routes import" not in worker_tasks
-    assert "from app.api.routes import" not in polling_main
 
 
 def test_discovery_does_not_import_private_scanner_helpers() -> None:

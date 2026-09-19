@@ -8,7 +8,6 @@ from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import conflict, not_found
-from app.core.config import settings
 from app.domains.inventory.models import Printer
 from app.domains.inventory.printer_polling import (
     PrinterNotFoundError,
@@ -44,7 +43,6 @@ from app.services.cartridge_stock import (
     sync_cartridge_stock_from_printers,
     update_cartridge_stock,
 )
-from app.services.internal_services import _proxy_request
 from app.services.mac_lookup import resolve_mac_for_ip_address
 from app.services.smart_search import build_ilike_filter
 
@@ -357,15 +355,6 @@ async def poll_all_printers(
     printer_type: str = Query(default="laser"),
 ) -> PrintersPublic:
     del current_user
-    if settings.POLLING_SERVICE_ENABLED:
-        payload = await _proxy_request(
-            base_url=settings.POLLING_SERVICE_URL,
-            method="POST",
-            path="/poll/printers",
-            params={"printer_type": printer_type},
-        )
-        return PrintersPublic.model_validate(payload)
-
     result = await poll_all_printers_local(session=session, printer_type=printer_type)
     _attach_offline_counts(session, result.data)
     return result

@@ -29,7 +29,7 @@ class ConnectionManager:
     """Fans local realtime events out to WebSocket clients on this process only.
 
     Cross-process delivery (multiple uvicorn workers, or events published by
-    other services such as polling-service) is handled by RedisRelay below,
+    other processes such as the Celery worker) is handled by RedisRelay below,
     which republishes into this manager after receiving from Redis Pub/Sub.
     """
 
@@ -170,7 +170,7 @@ async def broadcast_event(event_type: str, item_id: str, payload: dict | None = 
     event_type examples: "printer_updated", "switch_updated", "cash_register_updated", "computer_updated"
 
     Publishes to Redis so the event reaches every backend worker/process
-    (including polling-service, which runs as a separate container) rather
+    (including the Celery worker, which is a separate process) rather
     than only the in-process ConnectionManager.
     """
     message = {"event": event_type, "id": item_id, "payload": payload or {}}

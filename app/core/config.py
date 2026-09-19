@@ -48,13 +48,7 @@ class Settings(BaseSettings):
                 )
         if self.ENVIRONMENT == "production" and self._is_weak_bootstrap_password(self.FIRST_SUPERUSER_PASSWORD):
             raise ValueError("FIRST_SUPERUSER_PASSWORD must be explicitly set to a strong value in production.")
-        internal_services_enabled = any(
-            (
-                self.POLLING_SERVICE_ENABLED,
-                self.DISCOVERY_SERVICE_ENABLED,
-                self.NETWORK_CONTROL_SERVICE_ENABLED,
-            )
-        )
+        internal_services_enabled = self.NETWORK_CONTROL_SERVICE_ENABLED
         if self.ENVIRONMENT == "production" and internal_services_enabled and not self.INTERNAL_SERVICE_TOKEN.strip():
             raise ValueError("INTERNAL_SERVICE_TOKEN must be set in production when internal services are enabled.")
         return self
@@ -78,8 +72,6 @@ class Settings(BaseSettings):
     REDIS_MAX_CONNECTIONS: int = 10
     UVICORN_WORKERS: int = 2
     ML_ENABLED: bool = True
-    POLLING_SERVICE_ENABLED: bool = False
-    POLLING_SERVICE_URL: str = "http://polling-service:8011"
     # Backend-driven scheduled polling (Celery Beat), staggered per entity type
     # so the frontend no longer needs to trigger real device polls on a timer.
     AUTO_POLL_ENABLED: bool = True
@@ -141,8 +133,6 @@ class Settings(BaseSettings):
     # simultaneously - a store's whole camera coverage must never drop to
     # zero at once, even for a few seconds.
     CAMERA_REBOOT_STAGGER_SECONDS: int = 10
-    DISCOVERY_SERVICE_ENABLED: bool = False
-    DISCOVERY_SERVICE_URL: str = "http://discovery-service:8012"
     NETWORK_CONTROL_SERVICE_ENABLED: bool = False
     NETWORK_CONTROL_SERVICE_URL: str = "http://network-control-service:8013"
     MEDIA_SERVICE_ENABLED: bool = False

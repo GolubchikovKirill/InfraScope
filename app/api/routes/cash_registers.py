@@ -9,7 +9,6 @@ from fastapi.responses import Response
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
-from app.core.config import settings
 from app.domains.operations.cash_register_polling import (
     CashRegisterNotFoundError,
     cash_register_offline_reason_ru,
@@ -25,7 +24,6 @@ from app.domains.operations.schemas import (
 )
 from app.domains.shared.schemas import Message
 from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
-from app.services.internal_services import _proxy_request
 from app.services.smart_search import build_ilike_filter
 
 CACHE_TTL = 30
@@ -145,14 +143,6 @@ async def poll_cash_register(
     cash_id: uuid.UUID, session: SessionDep, current_user: CurrentUser
 ) -> CashRegister | CashRegisterPublic:
     del current_user
-    if settings.POLLING_SERVICE_ENABLED:
-        payload = await _proxy_request(
-            base_url=settings.POLLING_SERVICE_URL,
-            method="POST",
-            path=f"/poll/cash-registers/{cash_id}",
-        )
-        return CashRegisterPublic.model_validate(payload)
-
     try:
         return await poll_single_cash_register_local(session=session, cash_id=cash_id)
     except CashRegisterNotFoundError:
@@ -162,14 +152,6 @@ async def poll_cash_register(
 @router.post("/poll-all", response_model=CashRegistersPublic)
 async def poll_all_cash_registers(session: SessionDep, current_user: CurrentUser) -> CashRegistersPublic:
     del current_user
-    if settings.POLLING_SERVICE_ENABLED:
-        payload = await _proxy_request(
-            base_url=settings.POLLING_SERVICE_URL,
-            method="POST",
-            path="/poll/cash-registers",
-        )
-        return CashRegistersPublic.model_validate(payload)
-
     return await poll_all_cash_registers_local(session=session)
 
 

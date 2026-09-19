@@ -54,8 +54,6 @@ APP_SERVICES=(
   worker
   beat
   frontend
-  polling-service
-  discovery-service
   network-control-service
   media-service
 )
@@ -112,7 +110,7 @@ validate_production_env() {
   first_password="$(env_value FIRST_SUPERUSER_PASSWORD)"
   internal_token="$(env_value INTERNAL_SERVICE_TOKEN)"
   internal_services_enabled=0
-  for flag in POLLING_SERVICE_ENABLED DISCOVERY_SERVICE_ENABLED NETWORK_CONTROL_SERVICE_ENABLED MEDIA_SERVICE_ENABLED; do
+  for flag in NETWORK_CONTROL_SERVICE_ENABLED MEDIA_SERVICE_ENABLED; do
     case "$(printf '%s' "$(env_value "$flag")" | tr '[:upper:]' '[:lower:]')" in
       true|1|yes|on) internal_services_enabled=1 ;;
     esac

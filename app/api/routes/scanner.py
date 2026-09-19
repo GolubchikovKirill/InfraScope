@@ -1,7 +1,7 @@
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -22,23 +22,16 @@ from app.domains.inventory.schemas import (
     SmartNetworkSearchRequest,
 )
 from app.services.app_settings import get_general_settings
+from app.services.discovery_jobs import enqueue_scan
 from app.services.event_log import write_event_log
-from app.services.internal_services import _proxy_request
 from app.services.mac_lookup import resolve_mac_for_ip_address
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
-from app.services.scanner import get_scan_progress, get_scan_results, scan_subnet, smart_probe_network
+from app.services.scanner import get_scan_progress, get_scan_results, smart_probe_network
 from app.services.smart_search import text_matches_query
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["scanner"])
-
-
-async def _run_scan(subnet: str, ports: str, known_printers: list[dict]) -> None:
-    try:
-        await scan_subnet(subnet, ports, known_printers)
-    except Exception as e:
-        logger.error("Scan failed: %s", e)
 
 
 def _candidate_confidence(is_high: bool, is_medium: bool) -> str:
@@ -109,7 +102,6 @@ def _classify_cash_register(device: dict, token: str | None) -> tuple[str, str] 
 )
 async def start_scan(
     body: ScanRequest,
-    background_tasks: BackgroundTasks,
     session: SessionDep,
 ) -> dict:
     """Start a network scan (runs in background)."""
@@ -123,43 +115,18 @@ async def start_scan(
         }
         for p in printers
     ]
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        return await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="POST",
-            path="/discover/printers/scan",
-            json_body={
-                "subnet": body.subnet,
-                "ports": body.ports,
-                "known_printers": known,
-            },
-        )
-    background_tasks.add_task(_run_scan, body.subnet, body.ports, known)
-    return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
+    return await enqueue_scan("printers", body.subnet, body.ports, known)
 
 
 @router.get("/status", response_model=ScanProgress)
 async def scan_status(current_user: CurrentUser) -> dict:
     """Get current scan progress."""
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        return await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="GET",
-            path="/discover/printers/status",
-        )
     return await get_scan_progress()
 
 
 @router.get("/results", response_model=ScanResults)
 async def scan_results(current_user: CurrentUser) -> dict:
     """Get results of the last scan."""
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        payload = await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="GET",
-            path="/discover/printers/results",
-        )
-        return ScanResults.model_validate(payload).model_dump()
     progress = await get_scan_progress()
     devices = await get_scan_results()
     return {"progress": progress, "devices": devices}

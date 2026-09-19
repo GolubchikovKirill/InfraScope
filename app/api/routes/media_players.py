@@ -32,7 +32,8 @@ from app.observability.metrics import (
     media_player_ops_total,
 )
 from app.services.cache import get_cached_model, set_cached_model
-from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
+from app.services.discovery import get_discovery_progress, get_discovery_results
+from app.services.discovery_jobs import enqueue_scan
 from app.services.event_log import write_event_log
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
@@ -91,13 +92,6 @@ def _ensure_unique_media_player_ip(
     existing = session.exec(select(MediaPlayer).where(*filters)).first()
     if existing:
         raise conflict("Device with this IP already exists", status_code=conflict_status_code)
-
-
-async def _run_iconbit_discovery(subnet: str, ports: str, known_players: list[dict]) -> None:
-    try:
-        await run_discovery_scan("iconbit", subnet, ports, known_players)
-    except Exception as exc:
-        logger.error("Iconbit discovery failed: %s", exc)
 
 
 async def _invalidate_cache() -> None:
@@ -181,43 +175,18 @@ async def discover_iconbit_scan(
 ) -> dict:
     players = session.exec(select(MediaPlayer).where(MediaPlayer.device_type == "iconbit")).all()
     known = [{"id": str(p.id), "ip_address": p.ip_address, "mac_address": p.mac_address} for p in players]
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        return await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="POST",
-            path="/discover/iconbit/scan",
-            json_body={
-                "subnet": body.subnet,
-                "ports": body.ports,
-                "known_devices": known,
-            },
-        )
-    asyncio.create_task(_run_iconbit_discovery(body.subnet, body.ports, known))
-    return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
+    return await enqueue_scan("iconbit", body.subnet, body.ports, known)
 
 
 @router.get("/discover/status", response_model=ScanProgress)
 async def discover_iconbit_status(current_user: CurrentUser) -> dict:
     del current_user
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        return await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="GET",
-            path="/discover/iconbit/status",
-        )
     return await get_discovery_progress("iconbit")
 
 
 @router.get("/discover/results", response_model=DiscoveryResults)
 async def discover_iconbit_results(current_user: CurrentUser) -> dict:
     del current_user
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        payload = await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="GET",
-            path="/discover/iconbit/results",
-        )
-        return DiscoveryResults.model_validate(payload).model_dump()
     progress = await get_discovery_progress("iconbit")
     devices = await get_discovery_results("iconbit")
     return {"progress": progress, "devices": devices}
@@ -348,15 +317,6 @@ async def poll_all_players(
     device_type: str | None = Query(default=None),
 ) -> MediaPlayersPublic:
     del current_user
-    if settings.POLLING_SERVICE_ENABLED:
-        payload = await _proxy_request(
-            base_url=settings.POLLING_SERVICE_URL,
-            method="POST",
-            path="/poll/media-players",
-            params={"device_type": device_type} if device_type else None,
-        )
-        return MediaPlayersPublic.model_validate(payload)
-
     return await poll_all_media_players_local(session=session, device_type=device_type)
 
 

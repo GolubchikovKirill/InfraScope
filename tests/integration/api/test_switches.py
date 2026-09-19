@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from time import monotonic
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ from app.api.routes.switches import crud as switch_crud
 from app.api.routes.switches import ports as switch_ports
 from app.core.config import settings
 from app.domains.inventory import switch_polling
+from app.services import discovery_jobs
 from app.services.cisco_ssh import CameraPortInfo
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 
@@ -217,7 +219,7 @@ def test_switch_ports_read_and_write(
 
 
 def test_switch_discovery_scan_and_results(client: TestClient, admin_token: str, monkeypatch):
-    async def _fake_run(kind: str, subnet: str, ports: str, known_devices: list[dict]):
+    def _fake_delay(kind: str, subnet: str, ports: str, known_devices: list[dict]):
         assert kind == "switch"
         assert subnet == "10.10.99.0/24"
         assert ports == "22,80,443"
@@ -244,7 +246,7 @@ def test_switch_discovery_scan_and_results(client: TestClient, admin_token: str,
             }
         ]
 
-    monkeypatch.setattr(switch_crud, "run_discovery_scan", _fake_run)
+    monkeypatch.setattr(discovery_jobs, "discovery_scan_task", SimpleNamespace(delay=_fake_delay))
     monkeypatch.setattr(switch_crud, "get_discovery_progress", _fake_progress)
     monkeypatch.setattr(switch_crud, "get_discovery_results", _fake_results)
 

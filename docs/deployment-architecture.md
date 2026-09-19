@@ -7,8 +7,7 @@ InfraScope already has a microservice-oriented Docker Compose setup:
 - `frontend` serves the SPA through Nginx and proxies API/WebSocket traffic to `backend`.
 - `backend` is the API gateway and owns authentication, UI-facing API, migrations, and orchestration.
 - `worker` runs Celery tasks through Redis.
-- `polling-service` performs network polling for printers, media players, switches, computers, and cash registers.
-- `discovery-service` performs network discovery scans.
+- Device polling and discovery scans run in `worker` (Celery); the API triggers manual polls in-process.
 - `network-control-service` performs direct switch/media-player control operations.
 - `media-service` serves media manifests and media files to Windows media clients.
 - Prediction training/scoring runs as Celery tasks in `worker` (there is no separate ml service).
@@ -49,16 +48,14 @@ POSTGRES_PASSWORD=...
 INTERNAL_SERVICE_TOKEN=...
 MEDIA_CLIENT_TOKEN=...
 NETWORK_CONTROL_SERVICE_ENABLED=true
-POLLING_SERVICE_ENABLED=true
-DISCOVERY_SERVICE_ENABLED=true
 MEDIA_SERVICE_ENABLED=true
 ```
 
 3. Start or update without touching database volumes:
 
 ```bash
-docker compose build backend worker frontend polling-service discovery-service network-control-service media-service
-docker compose up -d --no-deps backend worker frontend polling-service discovery-service network-control-service media-service
+docker compose build backend worker frontend network-control-service media-service
+docker compose up -d --no-deps backend worker frontend network-control-service media-service
 ```
 
 4. Apply production override:
@@ -72,7 +69,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```bash
 docker compose ps
 docker compose logs backend --tail=100
-docker compose logs polling-service --tail=100
+docker compose logs worker --tail=100
 docker compose logs network-control-service --tail=100
 ```
 
@@ -81,8 +78,6 @@ docker compose logs network-control-service --tail=100
 Keep this boundary:
 
 - `backend`: UI API, auth, orchestration, database migrations.
-- `polling-service`: all direct status polling.
-- `discovery-service`: subnet scanning and discovery state.
 - `network-control-service`: switch ports, PoE, Iconbit/direct device commands.
 - `media-service`: manifests and file delivery for Windows media clients.
 - `worker`: scheduled/long-running tasks.
@@ -100,8 +95,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 2. For updates, do rolling restart of app services without removing stateful volumes:
 
 ```bash
-docker compose build backend worker frontend polling-service discovery-service network-control-service media-service
-docker compose up -d --no-deps backend worker frontend polling-service discovery-service network-control-service media-service
+docker compose build backend worker frontend network-control-service media-service
+docker compose up -d --no-deps backend worker frontend network-control-service media-service
 ```
 
 3. Verify health and readiness:

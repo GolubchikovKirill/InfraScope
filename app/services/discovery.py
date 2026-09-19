@@ -390,6 +390,21 @@ async def run_discovery_scan(kind: str, subnet: str, ports_str: str, known_devic
         logger.info("Discovery scan '%s' completed in %.2fs", kind, max(perf_counter() - started, 0))
 
 
+async def discovery_in_progress(kind: str) -> bool:
+    """True while a discovery scan of this kind holds its Redis lock."""
+    r = await get_redis()
+    return bool(await r.exists(_lock_key(kind)))
+
+
+async def mark_discovery_queued(kind: str) -> None:
+    """See scanner.mark_scan_queued: publish "running" before a worker starts."""
+    await _update_progress(kind, "running", 0, 0, 0)
+
+
+async def mark_discovery_failed_to_queue(kind: str, message: str) -> None:
+    await _update_progress(kind, "error", 0, 0, 0, message)
+
+
 async def get_discovery_progress(kind: str) -> dict:
     r = await get_redis()
     data = await r.get(_progress_key(kind))

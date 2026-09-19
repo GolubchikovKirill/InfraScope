@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 
 from app.api.routes import printers as printer_routes
+from app.domains.inventory.schemas import PrintersPublic
 from app.domains.operations.models import EventLog
 
 
@@ -80,20 +81,22 @@ def test_poll_usb_printer_is_blocked(client: TestClient, admin_token: str):
     assert poll.status_code == 400
 
 
-def test_poll_all_printers_uses_polling_service_when_enabled(client: TestClient, admin_token: str, monkeypatch):
-    async def _fake_proxy_request(**kwargs):
-        assert kwargs["path"] == "/poll/printers"
-        return {"data": [], "count": 0}
+def test_poll_all_printers_polls_in_process_for_the_requested_type(client: TestClient, admin_token: str, monkeypatch):
+    seen: list[str] = []
 
-    monkeypatch.setattr(printer_routes.settings, "POLLING_SERVICE_ENABLED", True)
-    monkeypatch.setattr(printer_routes, "_proxy_request", _fake_proxy_request)
+    async def _fake_poll_all(*, session, printer_type):
+        seen.append(printer_type)
+        return PrintersPublic(data=[], count=0)
+
+    monkeypatch.setattr(printer_routes, "poll_all_printers_local", _fake_poll_all)
     response = client.post(
         "/api/v1/printers/poll-all",
-        params={"printer_type": "laser"},
+        params={"printer_type": "label"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 200
     assert response.json()["count"] == 0
+    assert seen == ["label"]
 
 
 def test_read_printers_reports_offline_count_24h(client: TestClient, admin_token: str, db_session, monkeypatch):

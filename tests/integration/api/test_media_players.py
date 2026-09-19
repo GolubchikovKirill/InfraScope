@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from app.api.routes import media_players as media_routes
 from app.domains.inventory import media_polling
 from app.domains.inventory.reachability import ReachabilityResult
+from app.services import discovery_jobs
 
 
 @dataclass
@@ -53,7 +55,7 @@ def test_create_media_player_and_poll(client: TestClient, admin_token: str, monk
 
 
 def test_iconbit_discovery_scan_and_results(client: TestClient, admin_token: str, monkeypatch):
-    async def _fake_run(kind: str, subnet: str, ports: str, known_devices: list[dict]):
+    def _fake_delay(kind: str, subnet: str, ports: str, known_devices: list[dict]):
         assert kind == "iconbit"
         assert subnet == "10.10.98.0/24"
         assert ports == "8081,80,443"
@@ -80,7 +82,7 @@ def test_iconbit_discovery_scan_and_results(client: TestClient, admin_token: str
             }
         ]
 
-    monkeypatch.setattr(media_routes, "run_discovery_scan", _fake_run)
+    monkeypatch.setattr(discovery_jobs, "discovery_scan_task", SimpleNamespace(delay=_fake_delay))
     monkeypatch.setattr(media_routes, "get_discovery_progress", _fake_progress)
     monkeypatch.setattr(media_routes, "get_discovery_results", _fake_results)
 

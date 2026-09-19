@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -10,7 +9,6 @@ from fastapi.concurrency import run_in_threadpool
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
-from app.core.config import settings
 from app.domains.inventory.models import NetworkSwitch
 from app.domains.inventory.schemas import (
     DiscoveryResults,
@@ -24,9 +22,9 @@ from app.domains.inventory.schemas import (
 from app.domains.shared.schemas import Message
 from app.observability.metrics import set_device_counts
 from app.services.cache import get_cached_model, set_cached_model
-from app.services.discovery import get_discovery_progress, get_discovery_results, run_discovery_scan
+from app.services.discovery import get_discovery_progress, get_discovery_results
+from app.services.discovery_jobs import enqueue_scan
 from app.services.event_log import write_event_log
-from app.services.internal_services import _proxy_request
 from app.services.smart_search import build_ilike_filter
 
 from ._shared import CACHE_TTL, _ensure_unique_switch_ip, _get_switch_or_404, _invalidate_cache
@@ -34,13 +32,6 @@ from ._shared import CACHE_TTL, _ensure_unique_switch_ip, _get_switch_or_404, _i
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["switches"])
-
-
-async def _run_switch_discovery(subnet: str, ports: str, known_switches: list[dict]) -> None:
-    try:
-        await run_discovery_scan("switch", subnet, ports, known_switches)
-    except Exception as exc:
-        logger.error("Switch discovery failed: %s", exc)
 
 
 def _query_switches_page(
@@ -111,43 +102,18 @@ async def create_switch(session: SessionDep, switch_in: NetworkSwitchCreate) -> 
 async def discover_switch_scan(body: ScanRequest, session: SessionDep) -> dict:
     switches = session.exec(select(NetworkSwitch)).all()
     known = [{"id": str(s.id), "ip_address": s.ip_address, "mac_address": None} for s in switches]
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        return await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="POST",
-            path="/discover/switch/scan",
-            json_body={
-                "subnet": body.subnet,
-                "ports": body.ports,
-                "known_devices": known,
-            },
-        )
-    asyncio.create_task(_run_switch_discovery(body.subnet, body.ports, known))
-    return {"status": "running", "scanned": 0, "total": 0, "found": 0, "message": None}
+    return await enqueue_scan("switch", body.subnet, body.ports, known)
 
 
 @router.get("/discover/status", response_model=ScanProgress)
 async def discover_switch_status(current_user: CurrentUser) -> dict:
     del current_user
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        return await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="GET",
-            path="/discover/switch/status",
-        )
     return await get_discovery_progress("switch")
 
 
 @router.get("/discover/results", response_model=DiscoveryResults)
 async def discover_switch_results(current_user: CurrentUser) -> dict:
     del current_user
-    if settings.DISCOVERY_SERVICE_ENABLED:
-        payload = await _proxy_request(
-            base_url=settings.DISCOVERY_SERVICE_URL,
-            method="GET",
-            path="/discover/switch/results",
-        )
-        return DiscoveryResults.model_validate(payload).model_dump()
     progress = await get_discovery_progress("switch")
     devices = await get_discovery_results("switch")
     return {"progress": progress, "devices": devices}

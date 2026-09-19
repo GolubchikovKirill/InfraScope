@@ -157,9 +157,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 - `frontend` — SPA + Nginx + HTTPS
 - `backend` — API gateway/orchestration, `/metrics`
-- `worker` — Celery worker для тяжёлых фоновых задач
-- `polling-service` — отдельный runtime polling устройств + `/metrics`
-- `discovery-service` — отдельный runtime discovery/scan + `/metrics`
+- `worker` — Celery worker: плановый опрос устройств, discovery-сканы, ML (обучение/скоринг), перезагрузка точек доступа
 - `network-control-service` — отдельный runtime control операций (Iconbit, switch write ops) + `/metrics`
 - `media-service` — отдельный runtime выдачи media manifest и файлов медиатеки для клиентских неттоп-агентов + `/metrics`
 - `jaeger` — distributed tracing (цепочки вызовов между сервисами)
@@ -274,8 +272,6 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `INTERNAL_HTTP_RETRY_BACKOFF_SECONDS`
 - Forecasting:
   - `ML_ENABLED`
-  - `POLLING_SERVICE_ENABLED`, `POLLING_SERVICE_URL`
-  - `DISCOVERY_SERVICE_ENABLED`, `DISCOVERY_SERVICE_URL`
   - `NETWORK_CONTROL_SERVICE_ENABLED`, `NETWORK_CONTROL_SERVICE_URL`
   - `INTERNAL_SERVICE_TOKEN`
   - `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAMESPACE`
@@ -359,7 +355,7 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
 
 После деплоя откройте `http://127.0.0.1:16686`:
 
-1. Выберите сервис (`backend`, `polling-service`, `discovery-service`, `network-control-service`).
+1. Выберите сервис (`backend`, `network-control-service`).
 2. Нажмите **Find Traces** и посмотрите end-to-end цепочку запроса.
 
 Операционные события (offline/online, смена IP, критические ошибки) пишутся в таблицу `event_log` и видны во вкладке «Логи». Отдельной шины событий нет: раньше они дублировались в Kafka, но читателей у топика не было, и её убрали.
