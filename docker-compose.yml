@@ -241,13 +241,17 @@ services:
     image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.11.3@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3}
     restart: unless-stopped
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--config.file=/etc/prometheus-conf/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}"
     ports:
       - "${PROMETHEUS_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # The config directory, not the single file: a file bind mount pins the
+      # inode, and `git merge` replaces files, so the container kept running the
+      # *old* prometheus.yml after a deploy (found when removed services were
+      # still listed as down targets). A directory mount follows the rename.
+      - ./monitoring/prometheus:/etc/prometheus-conf:ro
       - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     depends_on:
@@ -266,8 +270,10 @@ services:
   blackbox-exporter:
     image: ${BLACKBOX_EXPORTER_IMAGE:-prom/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc}
     restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus-conf/blackbox.yml"
     volumes:
-      - ./monitoring/prometheus/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+      - ./monitoring/prometheus:/etc/prometheus-conf:ro
     networks:
       - internal
 
