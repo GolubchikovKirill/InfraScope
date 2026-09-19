@@ -4,9 +4,9 @@ The script runs *on* the endpoint, as SYSTEM, and pulls everything it needs back
 from InfraScope: its own config (id, password, options), the installer, and the
 place to report the result. Nothing is pushed from the server - a Linux box
 remote-executing on domain workstations is indistinguishable from lateral
-movement and Kaspersky blocks it on this fleet. The trigger is whatever already
-reaches the machine (a KSC "run script" task, a GPO startup script, a one-off
-`schtasks /S <host> /RU SYSTEM`); InfraScope owns everything else.
+movement and gets blocked. The trigger is whatever already reaches the machine
+(a GPO startup script, a one-off `schtasks /S <host> /RU SYSTEM`, or the push kit
+run from a Windows admin host); InfraScope owns everything else.
 
 Two things about the install are deliberate and easy to get wrong:
 
@@ -82,7 +82,7 @@ def public_url() -> str:
 
 
 def deploy_command(api_prefix: str = "/api/v1") -> str:
-    """The single line an operator pastes into KSC / GPO / schtasks.
+    """The single line an operator pastes into a GPO startup script / schtasks.
 
     nginx hard-redirects plain HTTP to HTTPS (`return 301 https://...`), and
     that HTTPS is a self-signed cert with no public CA behind it (LAN-only
@@ -112,7 +112,7 @@ def deploy_command(api_prefix: str = "/api/v1") -> str:
     `SecurityProtocolType.Tls12` isn't a valid enum member there, so the very
     first line throws. No amount of registry/GPO tweaking fixes that; the
     fix is upgrading PowerShell/WMF on that machine, or - since it needs no
-    outbound HTTPS call at all - the offline rustdesk-ksc package instead.
+    outbound HTTPS call at all - the push kit run from an admin workstation instead.
     The catch block detects this exact failure shape and says so.
     """
     url = f"{public_url()}{api_prefix}/remote-access/deploy/bootstrap.ps1"
@@ -141,7 +141,7 @@ def deploy_command(api_prefix: str = "/api/v1") -> str:
         "$m=$_.Exception.Message; $hint='';"
         "if($m -match 'SecurityProtocolType'){"
         "$hint=' -- PowerShell/.NET here is too old for TLS1.2 (CLR '+[Environment]::Version+"
-        "'); use the offline rustdesk-ksc package instead, it makes no outbound HTTPS call'};"
+        "'); roll out with rustdesk-ksc/Push-RustDesk.ps1 from an admin workstation instead, it makes no outbound HTTPS call'};"
         "Add-Content (Join-Path $d 'rustdesk-configure.log') "
         "((Get-Date -Format o)+'  BOOTSTRAP FAILED before config fetch: '+$m+$hint)"
         '}"'

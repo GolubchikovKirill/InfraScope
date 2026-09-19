@@ -687,7 +687,7 @@ def test_readiness_does_not_leave_a_rollout_spinning_for_days(db_session) -> Non
 
 
 def test_readiness_trusts_the_console_for_machines_deployed_before_infrascope(db_session) -> None:
-    # rolled out by hand / by the old KSC package: no report will ever arrive
+    # rolled out by hand / by the old offline package: no report will ever arrive
     dev = service.ensure_device(db_session, hostname="VNA-MGR-901")
     dev.online = True
     assert service.readiness(dev) == "ready"
@@ -1039,7 +1039,7 @@ def test_deploy_command_logs_locally_when_the_bootstrap_fetch_itself_fails(monke
     assert "try{" in cmd and "}catch{" in cmd
     assert "rustdesk-configure.log" in cmd
     assert "SecurityProtocolType" in cmd.split("}catch{")[1]  # the CLR-too-old hint check
-    assert "offline rustdesk-ksc package" in cmd
+    assert "Push-RustDesk.ps1" in cmd
 
 
 def test_bootstrap_script_is_self_sufficient_against_the_same_cert(monkeypatch) -> None:

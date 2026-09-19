@@ -214,7 +214,7 @@ describe("RemoteAccessPage", () => {
     expect(await screen.findByText(/powershell.exe/)).toBeInTheDocument();
   });
 
-  it("opens the KSC command from the header without touching any device", async () => {
+  it("opens the deploy command from the header without touching any device", async () => {
     api.getRemoteDevices.mockResolvedValue({ data: [], count: 0 });
     api.getDeployCommand.mockResolvedValue({
       command: "powershell.exe -Command \"iex ...\"",
@@ -225,7 +225,7 @@ describe("RemoteAccessPage", () => {
     });
 
     renderPage();
-    fireEvent.click(await screen.findByText("Команда для KSC"));
+    fireEvent.click(await screen.findByText("Команда развёртывания"));
 
     expect(await screen.findByText(/powershell.exe/)).toBeInTheDocument();
     expect(api.requestDeploy).not.toHaveBeenCalled();

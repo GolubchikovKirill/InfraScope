@@ -486,7 +486,7 @@ async def sync_from_console(session: Session) -> dict[str, int]:
         if changed:
             dev.online = want
             dev.updated_at = now
-        # The KSC/offline rollout sends no deploy/report, so "stale" (set on a
+        # The push/offline rollout sends no deploy/report, so "stale" (set on a
         # password rotation) and "pending" (deploy requested) had no path back
         # to "configured" - the chip stayed a false warning forever even with
         # the client demonstrably online under our id. Clear it from the
@@ -667,7 +667,7 @@ async def release_inventory_row(
 
 
 def package_config(dev: RemoteAccessDevice) -> dict:
-    """Everything an offline KSC package needs for this machine.
+    """Everything an offline package needs for this machine.
 
     `rustdesk-ksc/configure.ps1` consumes exactly these keys. The online path
     (`deployment_config`) is richer and should be preferred.
@@ -753,7 +753,7 @@ def deployment_config(dev: RemoteAccessDevice) -> dict:
 
 def mark_deploy_requested(session: Session, dev: RemoteAccessDevice) -> RemoteAccessDevice:
     """Operator asked for a rollout. Nothing runs yet - the machine still has to
-    be reached by KSC / GPO / schtasks; this only makes the wait visible."""
+    be reached by the push kit / GPO / schtasks; this only makes the wait visible."""
     dev.deploy_state = "pending"
     dev.deploy_detail = None
     dev.deploy_requested_at = _now()

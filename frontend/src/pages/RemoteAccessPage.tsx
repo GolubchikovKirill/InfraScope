@@ -412,7 +412,7 @@ export default function RemoteAccessPage() {
                 {isSuperuser && (
                   <Button variant="secondary" onClick={() => setDeployModalOpen(true)}>
                     <Terminal className="mr-1 h-4 w-4" />
-                    Команда для KSC
+                    Команда развёртывания
                   </Button>
                 )}
                 {isSuperuser && (

@@ -162,7 +162,7 @@ describe("RemoteAccessButtons", () => {
     expect(screen.getByText("Home")).toBeInTheDocument();
   });
 
-  it("opens the offline KSC package as a secondary action", async () => {
+  it("opens the offline package as a secondary action", async () => {
     api.getDevicePackage.mockResolvedValue({
       hostname: "VNK-MGR-D1",
       rustdesk_id: "VNK_MGR_D1",
@@ -178,7 +178,7 @@ describe("RemoteAccessButtons", () => {
     });
     renderButtons();
 
-    fireEvent.click(screen.getByTitle("Оффлайн-пакет KSC (для машин без сети до InfraScope)"));
+    fireEvent.click(screen.getByTitle("Оффлайн-пакет (для машин без сети до InfraScope)"));
     expect(await screen.findByText("rustdesk-ksc.json · VNK-MGR-D1")).toBeInTheDocument();
     await waitFor(() => expect(api.getDevicePackage).toHaveBeenCalledWith("dev-1"));
   });

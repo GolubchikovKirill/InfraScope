@@ -1,11 +1,11 @@
-"""remote_access: drop the deploy job queue (rollout moves to Kaspersky Security Center)
+"""remote_access: drop the deploy job queue (rollout moves to the endpoint pull model)
 
 Revision ID: c9d0e1f2a3b4
 Revises: b8c9d0e1f2a3
 Create Date: 2026-09-02 20:00:00.000000
 
 InfraScope no longer pushes the RustDesk client - the preconfigured package is
-rolled out through KSC (docs/rustdesk-ksc-deployment.md). This removes the
+rolled out by the pull model (docs/rustdesk-deployment.md). This removes the
 Windows deploy agent's queue and the agent-only device columns, and adds
 `in_address_book` for the console address-book push InfraScope now owns.
 """

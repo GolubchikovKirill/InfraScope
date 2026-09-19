@@ -12,7 +12,7 @@ type Props = {
 const PUSH_COMMAND = ".\rustdesk-ksc\Push-RustDesk.ps1 -ComputerName <имя-машины>";
 const PUSH_COMMAND_ADMIN = PUSH_COMMAND + " -Profile admin";
 
-/** The one line an operator pastes into KSC / GPO / schtasks. Fleet-wide and
+/** The one line an operator pastes into a GPO startup script / schtasks. Fleet-wide and
  *  identical for every machine - the script asks InfraScope who it should be
  *  by its own hostname, so there is nothing per-device to fill in here. */
 export default function DeployCommandModal({ open, onClose }: Props) {
@@ -55,8 +55,8 @@ export default function DeployCommandModal({ open, onClose }: Props) {
             Тихое развёртывание не настроено на сервере — задайте{" "}
             <code className="app-mono">RUSTDESK_DEPLOY_TOKEN</code> и{" "}
             <code className="app-mono">RUSTDESK_PUBLIC_URL</code> в{" "}
-            <code className="app-mono">.env</code>. До этого раскатка возможна только
-            оффлайн-пакетом KSC (кнопка «Настроить» на карточке устройства).
+            <code className="app-mono">.env</code>. До этого раскатка возможна только push-утилитой
+            с рабочей станции админа (блок ниже) или оффлайн-пакетом (кнопка «Настроить» на карточке устройства).
           </div>
         )}
 
@@ -81,10 +81,6 @@ export default function DeployCommandModal({ open, onClose }: Props) {
               <p className="font-medium text-slate-700">Куда вставить:</p>
               <ul className="list-disc space-y-0.5 pl-4">
                 <li>
-                  <b>Kaspersky Security Center</b> — задача «Запуск скрипта», учётная запись
-                  SYSTEM; кассы — отдельным расписанием вне бизнес-часов.
-                </li>
-                <li>
                   <b>GPO</b> — Computer Configuration → Scripts → Startup → PowerShell Scripts.
                 </li>
                 <li>
@@ -94,7 +90,7 @@ export default function DeployCommandModal({ open, onClose }: Props) {
               </ul>
               <p>
                 Скрипт идемпотентен: если конфиг уже применён, он ничего не переустанавливает —
-                команду можно вешать на расписание. Подробности — docs/rustdesk-ksc-deployment.md.
+                команду можно вешать на расписание. Подробности — docs/rustdesk-deployment.md.
               </p>
             </div>
           </>
@@ -124,7 +120,7 @@ export default function DeployCommandModal({ open, onClose }: Props) {
               Скопировать push-команду
             </button>
           </div>
-          <p>Подробности и профили — docs/rustdesk-ksc-deployment.md, раздел «Раскатка с рабочей станции админа».</p>
+          <p>Подробности и профили — docs/rustdesk-deployment.md, раздел «Раскатка с рабочей станции админа».</p>
         </div>
       </div>
     </div>

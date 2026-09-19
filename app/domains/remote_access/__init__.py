@@ -17,7 +17,8 @@ machine is actually reachable right now.
   records the rollout state each endpoint reports.
 
 * `deploy_script` renders the PowerShell an endpoint runs to install and
-  configure itself. The endpoint pulls; InfraScope never remote-executes on the
-  fleet - that is indistinguishable from lateral movement and Kaspersky blocks
-  it here. See docs/rustdesk-v2-plan.md.
+  configure itself. The endpoint pulls; the server never remote-executes on the
+  fleet itself - from a Linux box that is indistinguishable from lateral movement
+  and gets blocked. Pushing over the network is done from a Windows admin host with
+  the push kit. See docs/rustdesk-deployment.md.
 """

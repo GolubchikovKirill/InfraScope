@@ -39,7 +39,7 @@ class RemoteAccessDevice(SQLModel, table=True):
     source_kind: str = Field(default="computer", max_length=16, index=True)
     location: str | None = Field(default=None, max_length=128, index=True)
 
-    # --- desired config the KSC package should carry ---
+    # --- desired config the offline package / push kit should carry ---
     rustdesk_id: str | None = Field(default=None, max_length=32, index=True)
     # the permanent password baked into the package for this machine; encrypted at rest
     permanent_password: str = Field(

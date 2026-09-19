@@ -175,7 +175,7 @@ export interface PackageConfig {
   unattended: boolean;
 }
 
-/** Config for an offline KSC package (a machine with no network path back here). */
+/** Config for an offline package (a machine with no network path back here). */
 export async function getDevicePackage(id: string) {
   const { data } = await api.get<PackageConfig>(`/remote-access/devices/${id}/package`);
   return data;
@@ -190,7 +190,7 @@ export async function syncRemoteAccess() {
 // rollout                                                                     //
 // --------------------------------------------------------------------------- //
 export interface DeployCommand {
-  /** The one line to paste into a KSC "run script" task, GPO, or schtasks. */
+  /** The one line to paste into a GPO startup script or schtasks. */
   command: string;
   bootstrap_url: string;
   installer_filename: string;
@@ -205,7 +205,7 @@ export async function getDeployCommand() {
 }
 
 /** Mark a device as awaiting rollout. InfraScope never remote-executes: the
- *  machine still has to run the bootstrap via KSC / GPO / schtasks. */
+ *  machine still has to run the bootstrap via the push kit / GPO / schtasks. */
 export async function requestDeploy(id: string) {
   const { data } = await api.post<RemoteDevice>(`/remote-access/devices/${id}/deploy`);
   return data;

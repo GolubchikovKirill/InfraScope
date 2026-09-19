@@ -200,7 +200,7 @@ async def delete_device(device_id: uuid.UUID, session: SessionDep) -> Message:
     dependencies=[Depends(get_current_active_superuser)],
 )
 def device_package(device_id: uuid.UUID, session: SessionDep) -> PackageConfig:
-    """Config for an offline KSC package (no network path back to InfraScope)."""
+    """Config for an offline package (no network path back to InfraScope)."""
     dev = session.get(RemoteAccessDevice, device_id)
     if not dev:
         raise not_found("Device not found")
@@ -449,8 +449,8 @@ def require_deploy_token(
 
 @router.get("/deploy/command", response_model=DeployCommand, dependencies=[Depends(get_current_active_superuser)])
 def deploy_command() -> DeployCommand:
-    """The line to paste into a KSC "run script" task, a GPO startup script, or a
-    one-off `schtasks /S <host> /RU SYSTEM`."""
+    """The line to paste into a GPO startup script or a one-off
+    `schtasks /S <host> /RU SYSTEM`."""
     return DeployCommand(
         command=deploy_script.deploy_command() if _deploy_ready() else "",
         bootstrap_url=f"{deploy_script.public_url()}/api/v1/remote-access/deploy/bootstrap.ps1",
@@ -469,7 +469,7 @@ def request_deploy(device_id: uuid.UUID, session: SessionDep) -> DevicePublic:
     """Mark a device as awaiting rollout.
 
     Nothing is executed here: InfraScope never remote-executes on the fleet. The
-    machine still has to run the bootstrap (KSC / GPO / schtasks); this only
+    machine still has to run the bootstrap (push kit / GPO / schtasks); this only
     makes the wait visible and resets any previous failure.
     """
     dev = session.get(RemoteAccessDevice, device_id)

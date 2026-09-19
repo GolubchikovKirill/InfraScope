@@ -189,7 +189,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
               <button
                 onClick={() => setPkgOpen(true)}
                 className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:bg-slate-100 hover:text-[var(--brand)]"
-                title="Оффлайн-пакет KSC (для машин без сети до InfraScope)"
+                title="Оффлайн-пакет (для машин без сети до InfraScope)"
               >
                 <FileCog className="h-3.5 w-3.5" />
               </button>
@@ -278,7 +278,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
               </button>
             </div>
             <p className="text-xs text-slate-500">
-              Только для машин без сети до InfraScope — конфиг зашивается в пакет KSC, InfraScope не
+              Только для машин без сети до InfraScope — конфиг зашивается в пакет, InfraScope не
               узнает о результате установки. Если сеть есть, используйте «Развернуть».
             </p>
             {pkg.isLoading && <div className="text-sm text-slate-400">Загрузка…</div>}

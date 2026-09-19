@@ -4,7 +4,7 @@
 
 * **[rustdesk-v2-plan.md](rustdesk-v2-plan.md)** — архитектура, находки по API
   консоли и документации RustDesk, схема БД, эндпоинты, что делает фронт.
-* **[rustdesk-ksc-deployment.md](rustdesk-ksc-deployment.md)** — практическая
+* **[rustdesk-deployment.md](rustdesk-deployment.md)** — практическая
   инструкция по раскатке.
 
 Этот файл оставлен как журнал: тут видно, какие выводы были сделаны раньше и
@@ -19,8 +19,8 @@
 - **Желаемый конфиг на устройство.** `rustdesk_id` (по hostname), пароль,
   `hidden`/`block_outgoing`/`unattended`.
 - **Раскатка pull-моделью.** Машина сама забирает скрипт, MSI и свой конфиг
-  (`/remote-access/deploy/*`) и отчитывается о результате. Триггер — KSC, GPO
-  или `schtasks`.
+  (`/remote-access/deploy/*`) и отчитывается о результате. Триггер — GPO,
+  `schtasks` или push с рабочей станции админа.
 - **Учётки инженеров.** `POST /remote-access/accounts` заводит логин в консоли
   RustDesk в группе `InfraScope Admins`; пароль показывается один раз.
 - **Общая адресная книга.** Одна коллекция с паролями устройств, расшаренная на
@@ -50,7 +50,7 @@
 
 - **Инвентарь — 3 источника** + `source_kind` + `cash_register_id` (миграция `f7e8d9c0b1a2`).
 - **Честные статусы** — `host_online` отдельно от `online` (миграция `b8c9d0e1f2a3`).
-- **Разворот на KSC** — убраны `RemoteAccessDeployJob`, Windows-агент,
+- **Разворот на pull-модель** — убраны `RemoteAccessDeployJob`, Windows-агент,
   `deploy_state`/`deploy_detail`/`last_deployed_at`/`last_error`/`password_confirmed_at`
   (миграция `c9d0e1f2a3b4`). Добавлен `in_address_book`.
 - **v2** (миграция `d1e2f3a4b5c6`) — `remoteaccessconsoleaccount`,

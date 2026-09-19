@@ -201,7 +201,7 @@ class AddressBookStatus(BaseModel):
 
 
 class PackageConfig(BaseModel):
-    """What an offline KSC package needs (`rustdesk-ksc/configure.ps1`)."""
+    """What an offline package or the push kit needs (`rustdesk-ksc/configure.ps1`)."""
 
     hostname: str
     rustdesk_id: str
@@ -263,7 +263,7 @@ class DeployReport(BaseModel):
 
 
 class DeployCommand(BaseModel):
-    """The one line an operator pastes into KSC / GPO / schtasks."""
+    """The one line an operator pastes into a GPO startup script / schtasks."""
 
     command: str
     bootstrap_url: str
