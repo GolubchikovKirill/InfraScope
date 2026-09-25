@@ -811,7 +811,7 @@ def _try_restore_admin_up(ssh: CiscoSSH, ip: str, interface: str) -> None:
         ssh.execute("end")
         logger.info("Recovered admin-up state on %s port %s after error", ip, interface)
     except Exception as recovery_exc:
-        logger.error(
+        logger.exception(
             "CRITICAL: %s port %s may be stuck administratively shut down - recovery attempt also failed: %s",
             ip,
             interface,
@@ -874,7 +874,7 @@ def _try_restore_poe_auto(ssh: CiscoSSH, ip: str, interface: str) -> None:
         ssh.execute("end")
         logger.info("Recovered PoE power state on %s port %s after error", ip, interface)
     except Exception as recovery_exc:
-        logger.error(
+        logger.exception(
             "CRITICAL: %s port %s may be stuck powered off - recovery attempt also failed: %s",
             ip,
             interface,
@@ -943,7 +943,7 @@ def _try_restore_poe_auto_bulk(ssh: CiscoSSH, ip: str, interfaces: list[str]) ->
         ssh.execute("end")
         logger.info("Recovered PoE power state on %s ports %s after error", ip, interfaces)
     except Exception as recovery_exc:
-        logger.error(
+        logger.exception(
             "CRITICAL: %s ports %s may be stuck powered off - recovery attempt also failed: %s",
             ip,
             interfaces,

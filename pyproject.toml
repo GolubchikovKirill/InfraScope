@@ -109,7 +109,17 @@ ignore = [
                # re-raises HTTPException unchanged before a broader
                # except Exception - extracting an inner function per site
                # would not make that clearer.
+    "PLW0603", # global-statement: a handful of small, well-scoped module-
+               # level caches (a minted auth token, a "did setup already
+               # run" flag) - `global` is simpler and clearer here than
+               # wrapping single-value process state in a singleton class.
 ]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's own DI style calls these in argument defaults on purpose
+# (Depends()/Query()/Body() already listed by ruff by default) - File()
+# and Form() are the same pattern and belong on this list too.
+extend-immutable-calls = ["fastapi.File", "fastapi.Form", "fastapi.Query"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
