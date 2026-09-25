@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import paramiko
+import paramiko.rsakey
 
 from app.services.cisco_ssh import _KexGroup1SHA1, _KexGroup14SHA1
 
@@ -13,13 +14,13 @@ def test_legacy_group14_sha1_kex_is_registered():
     switch polling and port listing). If this ever stops being true after a
     future paramiko upgrade, cisco_ssh's own _install_legacy_ssh_compat
     patch has silently stopped applying."""
-    assert paramiko.Transport._kex_info.get("diffie-hellman-group14-sha1") is _KexGroup14SHA1
+    assert paramiko.Transport._kex_info.get("diffie-hellman-group14-sha1") is _KexGroup14SHA1  # type: ignore[attr-defined]
 
 
 def test_legacy_kex_is_lowest_priority():
     """The legacy algorithm must never outrank a modern one - it should only
     ever be picked when a peer offers nothing better."""
-    preferred = paramiko.Transport._preferred_kex
+    preferred = paramiko.Transport._preferred_kex  # type: ignore[attr-defined]
     # group1 (1024-bit) is the weakest and must come after group14-sha1, which
     # in turn comes after everything modern
     assert preferred[-1] == "diffie-hellman-group1-sha1"
@@ -28,13 +29,13 @@ def test_legacy_kex_is_lowest_priority():
 
 
 def test_legacy_ssh_rsa_host_key_is_registered():
-    assert paramiko.Transport._key_info.get("ssh-rsa") is paramiko.RSAKey
+    assert paramiko.Transport._key_info.get("ssh-rsa") is paramiko.RSAKey  # type: ignore[attr-defined]
     assert "ssh-rsa" in paramiko.rsakey.RSAKey.HASHES
-    assert paramiko.Transport._preferred_keys[-1] == "ssh-rsa"
+    assert paramiko.Transport._preferred_keys[-1] == "ssh-rsa"  # type: ignore[attr-defined]
 
 
 def test_legacy_group1_sha1_kex_is_registered():
-    assert paramiko.Transport._kex_info.get("diffie-hellman-group1-sha1") is _KexGroup1SHA1
+    assert paramiko.Transport._kex_info.get("diffie-hellman-group1-sha1") is _KexGroup1SHA1  # type: ignore[attr-defined]
     assert _KexGroup1SHA1.name == "diffie-hellman-group1-sha1"
 
 
@@ -102,7 +103,7 @@ def test_group1_generates_a_private_exponent_inside_the_group_order():
     class _FakeTransport:
         server_mode = False
 
-    kex = _KexGroup1SHA1(_FakeTransport())
-    kex._generate_x()
+    kex = _KexGroup1SHA1(_FakeTransport())  # type: ignore[arg-type]  # duck-typed transport double, only .server_mode is read
+    kex._generate_x()  # type: ignore[attr-defined]  # exercising paramiko's own private Kex method on purpose
 
     assert 1 < kex.x < (_KexGroup1SHA1.P - 1) // 2
