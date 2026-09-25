@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import uuid
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
 from app.domains.ml.models import MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
-from app.domains.ml.schemas import MLModelsStatusPublic, MLOfflineRiskPredictionsPublic, MLTonerPredictionsPublic
+from app.domains.ml.schemas import (
+    MLModelsStatusPublic,
+    MLModelStatusPublic,
+    MLOfflineRiskPredictionPublic,
+    MLOfflineRiskPredictionsPublic,
+    MLTonerPredictionPublic,
+    MLTonerPredictionsPublic,
+)
 from app.domains.shared.schemas import Message
 from app.observability.metrics import worker_tasks_enqueued_total
 from app.services.cache import get_cached_model, set_cached_model
@@ -30,11 +38,11 @@ async def read_toner_predictions(
     if cached := await get_cached_model(cache_key, MLTonerPredictionsPublic):
         return cached
 
-    statement = select(MLTonerPrediction).order_by(MLTonerPrediction.created_at.desc())
+    statement = select(MLTonerPrediction).order_by(col(MLTonerPrediction.created_at).desc())
     if printer_id is not None:
         statement = statement.where(MLTonerPrediction.printer_id == printer_id)
     rows = session.exec(statement.limit(limit)).all()
-    result = MLTonerPredictionsPublic(data=rows, count=len(rows))
+    result = MLTonerPredictionsPublic(data=cast(list[MLTonerPredictionPublic], list(rows)), count=len(rows))
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)
     return result
 
@@ -51,11 +59,13 @@ async def read_offline_risk_predictions(
     if cached := await get_cached_model(cache_key, MLOfflineRiskPredictionsPublic):
         return cached
 
-    statement = select(MLOfflineRiskPrediction).order_by(MLOfflineRiskPrediction.created_at.desc())
+    statement = select(MLOfflineRiskPrediction).order_by(col(MLOfflineRiskPrediction.created_at).desc())
     if device_kind is not None:
         statement = statement.where(MLOfflineRiskPrediction.device_kind == device_kind)
     rows = session.exec(statement.limit(limit)).all()
-    result = MLOfflineRiskPredictionsPublic(data=rows, count=len(rows))
+    result = MLOfflineRiskPredictionsPublic(
+        data=cast(list[MLOfflineRiskPredictionPublic], list(rows)), count=len(rows)
+    )
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)
     return result
 
@@ -71,18 +81,20 @@ async def read_model_status(
     if cached := await get_cached_model(cache_key, MLModelsStatusPublic):
         return cached
 
-    rows = session.exec(select(MLModelRegistry).order_by(MLModelRegistry.trained_at.desc()).limit(limit)).all()
+    rows = session.exec(
+        select(MLModelRegistry).order_by(col(MLModelRegistry.trained_at).desc()).limit(limit)
+    ).all()
     data = [
-        {
-            "model_family": row.model_family,
-            "version": row.version,
-            "status": row.status,
-            "train_rows": row.train_rows,
-            "metric_primary": row.metric_primary,
-            "metric_secondary": row.metric_secondary,
-            "trained_at": row.trained_at,
-            "activated_at": row.activated_at,
-        }
+        MLModelStatusPublic(
+            model_family=row.model_family,
+            version=row.version,
+            status=row.status,
+            train_rows=row.train_rows,
+            metric_primary=row.metric_primary,
+            metric_secondary=row.metric_secondary,
+            trained_at=row.trained_at,
+            activated_at=row.activated_at,
+        )
         for row in rows
     ]
     result = MLModelsStatusPublic(data=data, count=len(data))
@@ -96,7 +108,7 @@ async def run_ml_cycle(current_user: CurrentUser) -> Message:
     if not settings.ML_ENABLED:
         raise HTTPException(status_code=503, detail="Prediction service is disabled")
     try:
-        ml_run_cycle_task.delay()
+        ml_run_cycle_task.delay()  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers .delay as list[str]
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Task queue unavailable: {exc}") from exc
     worker_tasks_enqueued_total.labels(operation="ml_run_cycle").inc()

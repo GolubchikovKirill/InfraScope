@@ -53,28 +53,28 @@ class MLCycleTaskRequest(BaseModel):
 
 @router.post("/poll-printers", response_model=TaskEnqueueResponse)
 def enqueue_poll_printers(body: PrinterPollTaskRequest, current_user: CurrentUser) -> TaskEnqueueResponse:
-    task = poll_all_printers_task.delay(body.printer_type)
+    task = poll_all_printers_task.delay(body.printer_type)  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers .delay as list[str]
     worker_tasks_enqueued_total.labels(operation="poll_all_printers").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_all_printers")
 
 
 @router.post("/poll-media-players", response_model=TaskEnqueueResponse)
 def enqueue_poll_media_players(body: MediaPollTaskRequest, current_user: CurrentUser) -> TaskEnqueueResponse:
-    task = poll_all_media_players_task.delay(body.device_type)
+    task = poll_all_media_players_task.delay(body.device_type)  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers .delay as list[str]
     worker_tasks_enqueued_total.labels(operation="poll_all_media_players").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_all_media_players")
 
 
 @router.post("/poll-switch", response_model=TaskEnqueueResponse)
 def enqueue_poll_switch(body: SwitchPollTaskRequest, current_user: CurrentUser) -> TaskEnqueueResponse:
-    task = poll_switch_task.delay(body.switch_id)
+    task = poll_switch_task.delay(body.switch_id)  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers .delay as list[str]
     worker_tasks_enqueued_total.labels(operation="poll_switch").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_switch")
 
 
 @router.post("/poll-switches", response_model=TaskEnqueueResponse)
 def enqueue_poll_switches(current_user: CurrentUser) -> TaskEnqueueResponse:
-    task = poll_all_switches_task.delay()
+    task = poll_all_switches_task.delay()  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers .delay as list[str]
     worker_tasks_enqueued_total.labels(operation="poll_all_switches").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="poll_all_switches")
 
@@ -82,7 +82,7 @@ def enqueue_poll_switches(current_user: CurrentUser) -> TaskEnqueueResponse:
 @router.post("/ml-run-cycle", response_model=TaskEnqueueResponse, dependencies=[Depends(get_current_active_superuser)])
 def enqueue_ml_run_cycle(body: MLCycleTaskRequest) -> TaskEnqueueResponse:
     del body
-    task = ml_run_cycle_task.delay()
+    task = ml_run_cycle_task.delay()  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers .delay as list[str]
     worker_tasks_enqueued_total.labels(operation="ml_run_cycle").inc()
     return TaskEnqueueResponse(task_id=task.id, state=task.state, operation="ml_run_cycle")
 
