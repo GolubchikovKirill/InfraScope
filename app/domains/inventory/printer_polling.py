@@ -7,6 +7,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
+from typing import cast
+
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -14,13 +16,14 @@ from app.core.redis import REDIS_ERRORS, get_redis
 from app.domains.inventory.models import Printer
 from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint
 from app.domains.inventory.schemas import PrintersPublic
+from app.domains.inventory.schemas.printers import PrinterPublic
 from app.observability.metrics import printer_polls_total, set_device_counts
 from app.services.cache import invalidate_entity_cache
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_printer_snapshots
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
-from app.services.snmp import get_snmp_mac_async, poll_printer_async, poll_printer_light_async
+from app.services.snmp import PrinterStatus, get_snmp_mac_async, poll_printer_async, poll_printer_light_async
 from app.services.snmp._pysnmp_compat import SnmpEngine
 
 logger = logging.getLogger(__name__)
@@ -75,17 +78,13 @@ def _subnet_of(ip: str) -> str:
     return ip.rsplit(".", 1)[0]
 
 
-def _result_is_online(result: object | None) -> bool:
-    return bool(
-        result
-        and (
-            (isinstance(result, dict) and result.get("is_online"))
-            or (hasattr(result, "is_online") and result.is_online)
-        )
-    )
+def _result_is_online(result: PrinterStatus | ReachabilityResult | None) -> bool:
+    return bool(result and result.is_online)
 
 
-def _subnets_with_total_failure(poll_results: dict[str, tuple[object | None, str | None]]) -> set[str]:
+def _subnets_with_total_failure(
+    poll_results: dict[str, tuple[PrinterStatus | ReachabilityResult | None, str | None]],
+) -> set[str]:
     """Subnets where practically everything stopped answering in one cycle.
 
     A store's worth of printers does not fail inside the same 15-minute
@@ -129,7 +128,7 @@ async def _snmp_engine() -> AsyncIterator[SnmpEngine]:
 
 async def poll_one_printer(
     printer: Printer, engine: SnmpEngine, *, full: bool = True
-) -> tuple[str, object | None, str | None]:
+) -> tuple[str, PrinterStatus | ReachabilityResult | None, str | None]:
     if printer.connection_type == "usb" or not printer.ip_address:
         return "", None, None
     ip = printer.ip_address
@@ -154,7 +153,9 @@ async def poll_one_printer(
         return ip, None, None
 
 
-async def poll_printer_alone(printer: Printer, *, full: bool = True) -> tuple[str, object | None, str | None]:
+async def poll_printer_alone(
+    printer: Printer, *, full: bool = True
+) -> tuple[str, PrinterStatus | ReachabilityResult | None, str | None]:
     """One printer on its own engine (manual poll, relocation check)."""
     async with _snmp_engine() as engine:
         return await poll_one_printer(printer, engine, full=full)
@@ -182,14 +183,14 @@ def verify_printer_mac(printer: Printer, current_mac: str | None) -> str | None:
 
 async def poll_printer_batch(
     printers: list[Printer], *, full: bool = True
-) -> dict[str, tuple[object | None, str | None]]:
+) -> dict[str, tuple[PrinterStatus | ReachabilityResult | None, str | None]]:
     """Poll every printer concurrently in this event loop.
 
     One SnmpEngine serves the whole cycle and a semaphore bounds how many printers
     are in flight (PRINTER_POLL_MAX_WORKERS) - the old shape was a thread pool where
     every thread ran its own asyncio.run() with its own engine.
     """
-    results: dict[str, tuple[object | None, str | None]] = {}
+    results: dict[str, tuple[PrinterStatus | ReachabilityResult | None, str | None]] = {}
     if not printers:
         return results
     gate = asyncio.Semaphore(max(1, min(settings.PRINTER_POLL_MAX_WORKERS, len(printers))))
@@ -203,12 +204,15 @@ async def poll_printer_batch(
         outcomes = await asyncio.gather(*(one(p) for p in printers), return_exceptions=True)
 
     for printer, outcome in zip(printers, outcomes, strict=True):
+        ip = printer.ip_address
+        if ip is None:
+            continue
         if isinstance(outcome, BaseException):
-            logger.warning("Poll failed for %s: %s", printer.ip_address, outcome)
-            results[printer.ip_address] = (None, None)
+            logger.warning("Poll failed for %s: %s", ip, outcome)
+            results[ip] = (None, None)
         else:
             _, result, mac = outcome
-            results[printer.ip_address] = (result, mac)
+            results[ip] = (result, mac)
     return results
 
 
@@ -309,7 +313,8 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
             elif not result.is_online:
                 printer.is_online = False
                 printer.status = "offline"
-                printer.reachability_reason = _printer_offline_reason(result.status)
+                result_status = result.status if isinstance(result, PrinterStatus) else result.reason
+                printer.reachability_reason = _printer_offline_reason(result_status)
                 printer.mac_status = "unavailable"
                 printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="offline").inc()
             else:
@@ -348,13 +353,13 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
     )
     if not lock_acquired:
         logger.info("Skipping duplicate poll-all request for printers (%s): lock busy", printer_type)
-        return PrintersPublic(data=all_printers, count=len(all_printers))
+        return PrintersPublic(data=cast(list[PrinterPublic], all_printers), count=len(all_printers))
     if not all_printers:
         return PrintersPublic(data=[], count=0)
 
     printers = [printer for printer in all_printers if printer.connection_type != "usb" and printer.ip_address]
     if not printers:
-        return PrintersPublic(data=all_printers, count=len(all_printers))
+        return PrintersPublic(data=cast(list[PrinterPublic], all_printers), count=len(all_printers))
 
     poll_targets: list[Printer] = []
     for printer in printers:
@@ -401,7 +406,7 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
                 ).inc()
                 continue
 
-            previous_online = printer.is_online
+            previous_online = bool(printer.is_online)
             raw_online = _result_is_online(result)
             effective_online = await apply_poll_outcome(
                 kind="printer",
@@ -486,7 +491,7 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
         )
 
         await invalidate_printer_cache()
-        return PrintersPublic(data=result_printers, count=len(result_printers))
+        return PrintersPublic(data=cast(list[PrinterPublic], result_printers), count=len(result_printers))
     finally:
         if lock_acquired:
             try:

@@ -5,7 +5,7 @@ import statistics
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, col, delete, select
 
 from app.core.config import settings
 from app.domains.inventory.models import Printer
@@ -43,7 +43,7 @@ def _latest_active_model(session: Session, family: str) -> MLModelRegistry | Non
     return session.exec(
         select(MLModelRegistry)
         .where(MLModelRegistry.model_family == family, MLModelRegistry.status == _ACTIVE)
-        .order_by(MLModelRegistry.activated_at.desc(), MLModelRegistry.trained_at.desc())
+        .order_by(col(MLModelRegistry.activated_at).desc(), col(MLModelRegistry.trained_at).desc())
     ).first()
 
 
@@ -77,14 +77,14 @@ def train_toner_model(session: Session, min_train_rows: int = 50) -> MLModelRegi
             select(MLFeatureSnapshot)
             .where(
                 MLFeatureSnapshot.device_kind == "printer",
-                MLFeatureSnapshot.toner_color.is_not(None),
-                MLFeatureSnapshot.toner_level.is_not(None),
+                col(MLFeatureSnapshot.toner_color).is_not(None),
+                col(MLFeatureSnapshot.toner_level).is_not(None),
                 MLFeatureSnapshot.captured_at >= since,
             )
             .order_by(
-                MLFeatureSnapshot.device_id,
-                MLFeatureSnapshot.toner_color,
-                MLFeatureSnapshot.captured_at,
+                col(MLFeatureSnapshot.device_id),
+                col(MLFeatureSnapshot.toner_color),
+                col(MLFeatureSnapshot.captured_at),
             )
         ).all()
 
@@ -163,8 +163,10 @@ def train_offline_risk_model(session: Session, min_train_rows: int = 50) -> MLMo
         since = datetime.now(UTC) - timedelta(days=max(settings.ML_FEATURE_SNAPSHOT_RETENTION_DAYS, 1))
         rows = session.exec(
             select(MLFeatureSnapshot)
-            .where(MLFeatureSnapshot.is_online.is_not(None), MLFeatureSnapshot.captured_at >= since)
-            .order_by(MLFeatureSnapshot.device_kind, MLFeatureSnapshot.device_id, MLFeatureSnapshot.captured_at)
+            .where(col(MLFeatureSnapshot.is_online).is_not(None), MLFeatureSnapshot.captured_at >= since)
+            .order_by(
+                col(MLFeatureSnapshot.device_kind), col(MLFeatureSnapshot.device_id), col(MLFeatureSnapshot.captured_at)
+            )
         ).all()
 
         grouped: dict[tuple[str, str], list[MLFeatureSnapshot]] = defaultdict(list)
@@ -300,10 +302,12 @@ def score_offline_risk(session: Session) -> int:
         rows = session.exec(
             select(MLFeatureSnapshot)
             .where(
-                MLFeatureSnapshot.is_online.is_not(None),
+                col(MLFeatureSnapshot.is_online).is_not(None),
                 MLFeatureSnapshot.captured_at >= since,
             )
-            .order_by(MLFeatureSnapshot.device_kind, MLFeatureSnapshot.device_id, MLFeatureSnapshot.captured_at)
+            .order_by(
+                col(MLFeatureSnapshot.device_kind), col(MLFeatureSnapshot.device_id), col(MLFeatureSnapshot.captured_at)
+            )
         ).all()
         grouped: dict[tuple[str, str], list[MLFeatureSnapshot]] = defaultdict(list)
         for row in rows:

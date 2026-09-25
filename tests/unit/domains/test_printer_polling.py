@@ -116,15 +116,16 @@ async def test_poll_printer_batch_preserves_result_for_each_ip(monkeypatch, fake
 
     async def fake_poll_one(printer: Printer, engine, *, full: bool = True):
         del engine, full
-        return printer.ip_address, {"is_online": printer.ip_address.endswith(".20")}, None
+        online = printer.ip_address.endswith(".20")
+        return printer.ip_address, PrinterStatus(is_online=online, status="online" if online else "offline"), None
 
     monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", fake_poll_one)
 
     result = await poll_printer_batch(printers)
 
     assert result == {
-        "10.10.10.20": ({"is_online": True}, None),
-        "10.10.10.21": ({"is_online": False}, None),
+        "10.10.10.20": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.10.21": (PrinterStatus(is_online=False, status="offline"), None),
     }
 
 
@@ -177,14 +178,14 @@ async def test_poll_printer_batch_survives_one_printer_raising(monkeypatch, fake
         del engine, full
         if printer.ip_address.endswith(".60"):
             raise RuntimeError("boom")
-        return printer.ip_address, {"is_online": True}, None
+        return printer.ip_address, PrinterStatus(is_online=True, status="online"), None
 
     monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", fake_poll_one)
 
     result = await poll_printer_batch(printers)
 
     assert result["10.10.10.60"] == (None, None)
-    assert result["10.10.10.61"] == ({"is_online": True}, None)
+    assert result["10.10.10.61"] == (PrinterStatus(is_online=True, status="online"), None)
     assert fake_engines[0].closed is True
 
 
@@ -319,9 +320,9 @@ def test_one_printer_down_among_healthy_neighbours_is_not_a_path_problem(monkeyp
 
     results = {
         "10.10.98.10": (None, None),
-        "10.10.98.11": ({"is_online": True}, None),
-        "10.10.98.12": ({"is_online": True}, None),
-        "10.10.98.13": ({"is_online": True}, None),
+        "10.10.98.11": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.98.12": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.98.13": (PrinterStatus(is_online=True, status="online"), None),
     }
 
     assert _subnets_with_total_failure(results) == set()
@@ -344,9 +345,9 @@ def test_subnets_are_judged_independently(monkeypatch) -> None:
         "10.10.98.10": (None, None),
         "10.10.98.11": (None, None),
         "10.10.98.12": (None, None),
-        "10.10.99.10": ({"is_online": True}, None),
-        "10.10.99.11": ({"is_online": True}, None),
-        "10.10.99.12": ({"is_online": True}, None),
+        "10.10.99.10": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.99.11": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.99.12": (PrinterStatus(is_online=True, status="online"), None),
     }
 
     assert _subnets_with_total_failure(results) == {"10.10.98"}

@@ -45,6 +45,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=1.3.0",
     "fakeredis>=2.26",
+    "pyright>=1.1.414",
 ]
 
 [tool.ruff]
