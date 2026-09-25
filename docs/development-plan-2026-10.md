@@ -46,7 +46,7 @@ Python 3.13, SQLite-профиль тестов.
 | # | Задача | Файлы | Готово, когда |
 |---|---|---|---|
 | A1 | Починить падающий тест. Тест ждёт `function Write-UserOpts` и запись опций в `\AppData\Roaming\RustDesk\config` при `hidden`. В закоммиченном скрипте этого нет. Скорее всего, правка осталась незакоммиченной в рабочем дереве на Windows (см. «ловушку №1» в `CLAUDE.md`). Сначала спросить владельца или сверить с сервером, и только если правки нигде нет — дописать её в скрипт | `rustdesk-ksc/*.ps1`, `tests/unit/domains/test_rustdesk_endpoint_scripts.py` | `pytest tests` полностью зелёный |
-| A2 | Переключить триггеры CI на `main` и `vnk-dev` (сделано этим коммитом). Проверить первый прогон в Actions и починить то, что упадёт | `.github/workflows/ci.yml` | Зелёный прогон на `vnk-dev` |
+| A2 | Добавить в триггеры CI ветки `main` и `vnk-dev` (сделано этим коммитом, `v2/*` остались). Проверить первый прогон в Actions и починить то, что упадёт | `.github/workflows/ci.yml` | Зелёный прогон на `vnk-dev` |
 | A3 | `pyrefly` перенести из runtime-зависимостей в `dev`; `uv lock` | `pyproject.toml`, `uv.lock` | Прод-образ без `pyrefly` |
 | A4 | Расширить `.dockerignore`: `tests/`, `docs/`, `frontend/` (уже есть), `rustdesk-ksc/`, `windows-media-agent/`, `clients/`, `tools/windows/`, `backups/`, `certs/`, `*.json`-сиды, кроме нужных в рантайме (проверить `scripts/import_*`) | `.dockerignore` | Контекст сборки меньше, образ собирается, `prestart.sh` работает |
 | A5 | Бинарник `windows-media-agent/*.exe` (9 МБ) убрать из git и публиковать в GitHub Releases. Историю не переписывать | `windows-media-agent/`, README агента | Файла нет в дереве, в README есть ссылка на релиз |
