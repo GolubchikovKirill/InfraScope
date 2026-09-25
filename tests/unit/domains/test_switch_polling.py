@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
+
+from sqlmodel import Session
 
 from app.domains.inventory.models import NetworkSwitch
 from app.domains.inventory.switch_polling import (
@@ -98,7 +102,7 @@ def test_record_switch_status_change_includes_offline_reason_in_message(monkeypa
         lambda _session, **kwargs: events.append(kwargs),
     )
 
-    record_switch_status_change(session=None, switch=switch, was_online=True)
+    record_switch_status_change(session=cast(Session, None), switch=switch, was_online=True)
 
     assert len(events) == 1
     assert events[0]["event_type"] == "device_offline"
@@ -115,7 +119,7 @@ def test_record_switch_status_change_omits_reason_suffix_when_none(monkeypatch) 
         lambda _session, **kwargs: events.append(kwargs),
     )
 
-    record_switch_status_change(session=None, switch=switch, was_online=False)
+    record_switch_status_change(session=cast(Session, None), switch=switch, was_online=False)
 
     assert events[0]["message"] == "Network device 'Core Switch' is now online"
 
@@ -128,7 +132,7 @@ def test_whole_switch_subnet_failing_at_once_is_flagged_as_a_path_problem(monkey
     monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
     monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
 
-    results = [
+    results: list[tuple[NetworkSwitch, SwitchPollInfo | None, str | None, Exception | None]] = [
         (_sw("172.19.17.10"), None, None, RuntimeError("unreachable")),
         (_sw("172.19.17.11"), None, None, RuntimeError("unreachable")),
         (_sw("172.19.17.12"), None, None, RuntimeError("unreachable")),
@@ -156,7 +160,9 @@ def test_a_lone_switch_failing_is_never_treated_as_a_path_problem(monkeypatch) -
     monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
     monkeypatch.setattr("app.domains.inventory.switch_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
 
-    results = [(_sw("172.19.17.10"), None, None, RuntimeError("unreachable"))]
+    results: list[tuple[NetworkSwitch, SwitchPollInfo | None, str | None, Exception | None]] = [
+        (_sw("172.19.17.10"), None, None, RuntimeError("unreachable"))
+    ]
 
     assert _subnets_with_total_failure(results) == set()
 

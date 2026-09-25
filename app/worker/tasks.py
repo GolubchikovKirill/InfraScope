@@ -187,11 +187,14 @@ class CeleryTask(Protocol):
     Proxy type fixes that at the one place it is produced.
     """
 
+    name: str
     autoretry_for: tuple[type[BaseException], ...]
+    retry_kwargs: dict[str, Any]
 
     def run(self, *args: Any, **kwargs: Any) -> dict: ...
     def delay(self, *args: Any, **kwargs: Any) -> Any: ...
     def apply_async(self, *args: Any, **kwargs: Any) -> Any: ...
+    def apply(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
 def _task(

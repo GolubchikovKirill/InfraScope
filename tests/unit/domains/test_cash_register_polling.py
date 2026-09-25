@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from typing import cast
+
+from sqlmodel import Session
+
 from app.domains.operations.cash_register_polling import (
     apply_cash_register_poll_result,
     cash_register_offline_reason_ru,
@@ -33,7 +37,7 @@ def test_record_cash_register_status_change_skips_unchanged_state(monkeypatch) -
 
     monkeypatch.setattr("app.domains.operations.cash_register_polling.write_event_log", should_not_write)
 
-    record_cash_register_status_change(None, cash, True)
+    record_cash_register_status_change(cast(Session, None), cash, True)
 
 
 def test_record_cash_register_status_change_writes_offline_event(monkeypatch) -> None:
@@ -50,7 +54,7 @@ def test_record_cash_register_status_change_writes_offline_event(monkeypatch) ->
 
     monkeypatch.setattr("app.domains.operations.cash_register_polling.write_event_log", fake_write_event_log)
 
-    record_cash_register_status_change(None, cash, True)
+    record_cash_register_status_change(cast(Session, None), cash, True)
 
     assert captured["event_type"] == "cash_register_offline"
     assert captured["severity"] == "warning"

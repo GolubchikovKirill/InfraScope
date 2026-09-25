@@ -91,8 +91,10 @@ def test_poll_media_player_batch_preserves_each_ip(monkeypatch) -> None:
 
     result = asyncio.run(poll_media_player_batch(players))
 
-    assert result["10.10.10.20"].is_online is True
-    assert result["10.10.10.21"].is_online is False
+    online_20 = result["10.10.10.20"]
+    offline_21 = result["10.10.10.21"]
+    assert online_20 is not None and online_20.is_online is True
+    assert offline_21 is not None and offline_21.is_online is False
 
 
 def test_poll_media_player_batch_shares_one_port_semaphore(monkeypatch) -> None:

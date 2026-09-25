@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from app.domains.inventory.models import NetworkSwitch
 from app.services import cisco_ssh as cisco_ssh_module
 from app.services.cisco_ssh import CiscoSSH, get_access_points
@@ -163,7 +165,7 @@ def test_get_access_points_reuses_a_caller_supplied_session(monkeypatch):
     monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", _must_not_construct)
 
     shared = _Session()
-    result = get_access_points("10.0.0.10", "admin", "pass", "enable", 22, 20, shared)
+    result = get_access_points("10.0.0.10", "admin", "pass", "enable", 22, 20, cast(CiscoSSH, shared))
 
     assert result == []
     assert shared.ensure_calls == 1
@@ -181,7 +183,7 @@ def test_session_for_labels_a_live_shared_session_as_reused():
             return True
 
     before = _reuse_metric_value("reused")
-    session, owned = _session_for(_AliveSession(), "10.0.0.20", "admin", "pass", "enable", 22)
+    session, owned = _session_for(cast(CiscoSSH, _AliveSession()), "10.0.0.20", "admin", "pass", "enable", 22)
 
     assert owned is False
     assert session is not None
@@ -199,7 +201,7 @@ def test_session_for_labels_a_dead_shared_session_as_new_connection():
             return True
 
     before = _reuse_metric_value("new_connection")
-    _session_for(_DeadThenReconnectedSession(), "10.0.0.21", "admin", "pass", "enable", 22)
+    _session_for(cast(CiscoSSH, _DeadThenReconnectedSession()), "10.0.0.21", "admin", "pass", "enable", 22)
 
     assert _reuse_metric_value("new_connection") == before + 1
 
@@ -215,7 +217,7 @@ def test_session_for_labels_a_failed_reconnect_as_connect_failed():
             return False
 
     before = _reuse_metric_value("connect_failed")
-    session, _owned = _session_for(_UnrecoverableSession(), "10.0.0.22", "admin", "pass", "enable", 22)
+    session, _owned = _session_for(cast(CiscoSSH, _UnrecoverableSession()), "10.0.0.22", "admin", "pass", "enable", 22)
 
     assert session is None
     assert _reuse_metric_value("connect_failed") == before + 1
