@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import ClassVar
 
 from app.api.routes import tasks as task_routes
 
@@ -21,7 +22,7 @@ def test_enqueue_poll_printers(client, user_token: str, monkeypatch):
 def test_get_task_status_success(client, user_token: str, monkeypatch):
     class _DummyResult:
         state = "SUCCESS"
-        result = {"ok": True}
+        result: ClassVar[dict] = {"ok": True}
 
         def ready(self):
             return True

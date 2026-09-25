@@ -58,12 +58,10 @@ async def is_token_blacklisted(jti: str) -> bool:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     # Support legacy bcrypt hashes during migration
-    if hashed_password.startswith("$2b$") or hashed_password.startswith("$2a$"):
+    if hashed_password.startswith(("$2b$", "$2a$")):
         import bcrypt
 
-        if bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8")):
-            return True
-        return False
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     try:
         return _ph.verify(hashed_password, plain_password)
     except VerifyMismatchError:
@@ -72,7 +70,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def needs_rehash(hashed_password: str) -> bool:
     """Check if password hash needs upgrading (bcrypt -> argon2id)."""
-    if hashed_password.startswith("$2b$") or hashed_password.startswith("$2a$"):
+    if hashed_password.startswith(("$2b$", "$2a$")):
         return True
     return _ph.check_needs_rehash(hashed_password)
 

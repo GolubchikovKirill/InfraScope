@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import ClassVar, cast
 
 from app.domains.inventory.models import NetworkSwitch
 from app.services import cisco_ssh as cisco_ssh_module
@@ -68,7 +68,7 @@ def test_set_poe_cycle_uses_single_session(monkeypatch):
     class _FakeSSH:
         connect_calls = 0
         close_calls = 0
-        commands: list[str] = []
+        commands: ClassVar[list[str]] = []
 
         def __init__(self, *_args, **_kwargs):
             pass

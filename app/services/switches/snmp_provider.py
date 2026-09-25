@@ -51,8 +51,7 @@ def _uptime_ticks_to_human(raw_ticks: str | None) -> str | None:
 
 class SnmpSwitchProvider:
     def poll_switch(self, switch: NetworkSwitch) -> SwitchPollInfo:
-        result = asyncio.run(self._poll_switch_async(switch))
-        return result
+        return asyncio.run(self._poll_switch_async(switch))
 
     async def _poll_switch_async(self, switch: NetworkSwitch) -> SwitchPollInfo:
         try:

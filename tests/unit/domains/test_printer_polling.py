@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import cast
+from typing import ClassVar, cast
 
 import pytest
 
@@ -92,7 +92,7 @@ def test_verify_printer_mac_detects_mismatch() -> None:
 class _FakeEngine:
     """Stands in for SnmpEngine: records how many exist and whether each was closed."""
 
-    created: list[_FakeEngine] = []
+    created: ClassVar[list[_FakeEngine]] = []
 
     def __init__(self) -> None:
         self.closed = False
