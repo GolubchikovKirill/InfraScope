@@ -188,7 +188,7 @@ class SnmpSwitchProvider:
                 return None
             return {
                 "hostname": sys_name or host,
-                "model_info": sys_descr,
+                "model_info": sys_descr or "",
                 "uptime": _uptime_ticks_to_human(sys_uptime) or sys_uptime or "",
             }
         finally:
@@ -294,10 +294,6 @@ class SnmpSwitchProvider:
         timeout: int,
         retries: int,
     ) -> UdpTransportTarget:
-        """Support both modern and legacy pysnmp async transport APIs."""
-        create = getattr(UdpTransportTarget, "create", None)
-        if callable(create):
-            return await create((host, port), timeout=timeout, retries=retries)
         return await UdpTransportTarget.create((host, port), timeout=timeout, retries=retries)
 
     def set_admin_state(self, switch: NetworkSwitch, port: str, admin_state: str) -> None:

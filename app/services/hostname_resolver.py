@@ -5,6 +5,7 @@ import random
 import socket
 import struct
 from pathlib import Path
+from typing import cast
 
 from app.core.bounded_cache import BoundedTTLCache
 
@@ -86,7 +87,9 @@ def _resolve_with_system_dns(candidate: str) -> str | None:
     try:
         infos = socket.getaddrinfo(candidate, None, family=socket.AF_INET, type=socket.SOCK_STREAM)
         for info in infos:
-            address = info[4][0]
+            # family=socket.AF_INET above guarantees a (str, port) sockaddr;
+            # the stub's return type also covers AF_UNIX's (int, bytes) shape.
+            address = cast(str, info[4][0])
             if address:
                 return address
     except OSError:

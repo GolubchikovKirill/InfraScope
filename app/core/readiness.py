@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def check_database(engine) -> bool:
     try:
         with Session(engine) as session:
-            session.exec(text("SELECT 1")).one()
+            session.execute(text("SELECT 1")).one()
         return True
     except Exception as exc:  # noqa: BLE001 - a health probe reports any failure as "not ready"
         logger.warning("Readiness: database check failed: %s", exc)

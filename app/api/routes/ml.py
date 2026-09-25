@@ -108,7 +108,7 @@ async def run_ml_cycle(current_user: CurrentUser) -> Message:
     if not settings.ML_ENABLED:
         raise HTTPException(status_code=503, detail="Prediction service is disabled")
     try:
-        ml_run_cycle_task.delay()  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers .delay as list[str]
+        ml_run_cycle_task.delay()
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Task queue unavailable: {exc}") from exc
     worker_tasks_enqueued_total.labels(operation="ml_run_cycle").inc()
