@@ -6,7 +6,6 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-
 from typing import cast
 
 from sqlmodel import Session, select
@@ -148,7 +147,7 @@ async def poll_one_printer(
             result = await poll_printer_light_async(engine, ip, printer.snmp_community)
             current_mac = None
         return ip, result, current_mac
-    except Exception as exc:  # noqa: BLE001 - one printer failing must not sink the batch; reported as "no result"
+    except Exception as exc:
         logger.warning("Poll failed for %s: %s", ip, exc)
         return ip, None, None
 

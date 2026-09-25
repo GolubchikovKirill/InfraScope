@@ -5,8 +5,8 @@ import io
 from dataclasses import dataclass
 
 import qrcode
-from qrcode.image.pil import PilImage
 from PIL import Image, ImageDraw
+from qrcode.image.pil import PilImage
 
 from app.domains.integrations.schemas import BoardingPassRequest
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
+from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
     ObjectIdentity,
@@ -14,11 +14,11 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
     set_cmd,
     walk_cmd,
 )
-from pysnmp.proto.rfc1902 import Integer, OctetString  # noqa: E402
+from pysnmp.proto.rfc1902 import Integer, OctetString
 
-from app.domains.inventory.models import NetworkSwitch  # noqa: E402
-from app.observability.metrics import snmp_operations_total  # noqa: E402
-from app.services.switches.base import SwitchPollInfo, SwitchPortState  # noqa: E402
+from app.domains.inventory.models import NetworkSwitch
+from app.observability.metrics import snmp_operations_total
+from app.services.switches.base import SwitchPollInfo, SwitchPortState
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ class SnmpSwitchProvider:
                 except ValueError:
                     speed_mbps = None
 
-            admin_status = {"1": "up", "2": "down", "3": "testing"}.get(admin_by_idx.get(idx, ""), None)
+            admin_status = {"1": "up", "2": "down", "3": "testing"}.get(admin_by_idx.get(idx, ""))
             oper_status = {
                 "1": "up",
                 "2": "down",
@@ -134,7 +134,7 @@ class SnmpSwitchProvider:
                 "5": "dormant",
                 "6": "notPresent",
                 "7": "lowerLayerDown",
-            }.get(oper_by_idx.get(idx, ""), None)
+            }.get(oper_by_idx.get(idx, ""))
 
             vlan: int | None = None
             vlan_raw = vlan_by_idx.get(idx)

@@ -7,8 +7,6 @@ from typing import cast
 import pytest
 
 from app.domains.inventory.models import Printer
-from app.services.snmp._pysnmp_compat import SnmpEngine
-
 from app.domains.inventory.printer_polling import (
     _apply_full_printer_result,
     _apply_light_printer_result,
@@ -23,6 +21,7 @@ from app.domains.inventory.printer_polling import (
 )
 from app.domains.inventory.reachability import ReachabilityResult
 from app.services.snmp import PrinterStatus
+from app.services.snmp._pysnmp_compat import SnmpEngine
 
 
 class _NoLockRedis:

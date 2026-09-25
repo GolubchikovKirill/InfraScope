@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
@@ -8,8 +9,6 @@ from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import conflict, not_found
-from typing import cast
-
 from app.domains.inventory.models import CartridgeStock, Printer
 from app.domains.inventory.printer_polling import (
     PrinterNotFoundError,

@@ -14,7 +14,7 @@ def check_database(engine) -> bool:
         with Session(engine) as session:
             session.execute(text("SELECT 1")).one()
         return True
-    except Exception as exc:  # noqa: BLE001 - a health probe reports any failure as "not ready"
+    except Exception as exc:
         logger.warning("Readiness: database check failed: %s", exc)
         return False
 
@@ -24,7 +24,7 @@ async def check_redis(get_redis) -> bool:
         redis = await get_redis()
         await redis.ping()
         return True
-    except Exception as exc:  # noqa: BLE001 - a health probe reports any failure as "not ready"
+    except Exception as exc:
         logger.warning("Readiness: redis check failed: %s", exc)
         return False
 

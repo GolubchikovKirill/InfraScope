@@ -18,7 +18,7 @@ import struct
 import weakref
 from dataclasses import dataclass, field
 
-from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
+from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
     ObjectIdentity,
@@ -29,8 +29,8 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
     walk_cmd,
 )
 
-from app.core.bounded_cache import BoundedTTLCache  # noqa: E402
-from app.observability.metrics import media_player_ops_total  # noqa: E402
+from app.core.bounded_cache import BoundedTTLCache
+from app.observability.metrics import media_player_ops_total
 
 logger = logging.getLogger(__name__)
 _RESOLVE_WARN_COOLDOWN_SECONDS = 300.0
@@ -148,7 +148,7 @@ async def _get_snmp_info(ip: str, community: str = "public") -> dict:
 async def _get_snmp_info_inner(engine: SnmpEngine, ip: str, community: str) -> dict:
     try:
         target = await UdpTransportTarget.create((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP target %s not usable: %s", ip, exc)
         return {}
 
@@ -200,7 +200,7 @@ async def _get_snmp_mac(ip: str, community: str = "public") -> str | None:
 async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> str | None:
     try:
         target = await UdpTransportTarget.create((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP target %s not usable: %s", ip, exc)
         return None
 
@@ -221,7 +221,7 @@ async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> st
                     octets = val.asOctets()
                     if len(octets) == 6 and any(b != 0 for b in octets):
                         return ":".join(f"{b:02x}" for b in octets)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP MAC walk on %s failed: %s", ip, exc)
     return None
 

@@ -11,8 +11,8 @@ from sqlmodel import Session
 from app.core.config import settings
 from app.core.db import engine
 from app.core.readiness import build_readiness_response, check_database, check_redis
-from app.domains.media_center.models import MediaClientHeartbeat
 from app.core.redis import close_redis, get_redis
+from app.domains.media_center.models import MediaClientHeartbeat
 from app.domains.media_center.schemas import (
     MediaClientHeartbeatPayload,
     MediaClientHeartbeatPublic,

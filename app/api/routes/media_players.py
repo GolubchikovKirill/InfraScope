@@ -467,7 +467,7 @@ async def iconbit_bulk_replace(
                 success += 1
             else:
                 failed += 1
-        except Exception as exc:  # noqa: BLE001 - one player failing must not stop the bulk run; counted as failed
+        except Exception as exc:
             logger.warning("Iconbit bulk replace failed for %s: %s", p.ip_address, exc)
             failed += 1
     media_player_ops_total.labels(operation="iconbit_bulk_replace", result="success").inc(success)

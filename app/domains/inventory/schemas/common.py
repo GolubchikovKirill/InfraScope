@@ -4,7 +4,7 @@ import re
 
 from app.domains.shared.schemas import _IP_PATTERN, validate_ip_address
 
-__all__ = ["_validate_ip", "_normalize_mac", "_HOSTNAME_PATTERN", "_validate_ip_or_hostname"]
+__all__ = ["_HOSTNAME_PATTERN", "_normalize_mac", "_validate_ip", "_validate_ip_or_hostname"]
 
 
 def _validate_ip(v: str) -> str:

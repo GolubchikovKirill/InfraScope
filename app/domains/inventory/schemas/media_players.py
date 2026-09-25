@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from .common import _HOSTNAME_PATTERN, _normalize_mac, _validate_ip_or_hostname
 
-__all__ = ["MediaPlayerCreate", "MediaPlayerUpdate", "MediaPlayerPublic", "MediaPlayersPublic"]
+__all__ = ["MediaPlayerCreate", "MediaPlayerPublic", "MediaPlayerUpdate", "MediaPlayersPublic"]
 
 
 class MediaPlayerCreate(BaseModel):

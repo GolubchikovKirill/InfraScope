@@ -509,7 +509,7 @@ def remote_access_sync_task(self) -> dict:
                 accounts_seen = _run_async(_remote_access_service.sync_accounts(session)).get("accounts_seen", 0)
                 # only rows the console is missing or whose password went stale
                 book_pushed = _run_async(_remote_access_service.sync_stale_address_book(session)).get("pushed", 0)
-            except Exception as exc:  # noqa: BLE001 - reported through console_error, not raised
+            except Exception as exc:
                 logger.warning("RustDesk console sync failed: %s", exc)
                 console_error = str(exc)
         statuses = _remote_access_service.refresh_status_from_inventory(session)

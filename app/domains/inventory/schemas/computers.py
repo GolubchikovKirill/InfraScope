@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-__all__ = ["ComputerCreate", "ComputerUpdate", "ComputerPublic", "ComputersPublic", "StaleComputerPublic", "StaleComputersPublic"]
+__all__ = ["ComputerCreate", "ComputerPublic", "ComputerUpdate", "ComputersPublic", "StaleComputerPublic", "StaleComputersPublic"]
 
 
 class ComputerCreate(BaseModel):

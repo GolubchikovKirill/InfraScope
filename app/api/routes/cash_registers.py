@@ -3,12 +3,11 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from io import StringIO
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
-from typing import cast
-
 from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser

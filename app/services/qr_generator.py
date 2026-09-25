@@ -117,10 +117,9 @@ def _query_rows(
         login_timeout=settings.QR_SQL_TIMEOUT_SECONDS,
         autocommit=True,
         as_dict=True,
-    ) as conn:
-        with conn.cursor() as cur:
-            cur.execute(query, tuple(params))
-            rows = cur.fetchall() or []
+    ) as conn, conn.cursor() as cur:
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall() or []
     return list(rows)
 
 

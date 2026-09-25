@@ -312,7 +312,7 @@ def test_switch_poe_cycle_is_rate_limited_by_cooldown(client: TestClient, admin_
 
         def set_poe(self, _switch, port, action):
             calls.append((port, action))
-            return None
+            return
 
     fake_redis = _FakeRedis()
 

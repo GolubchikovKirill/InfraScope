@@ -1207,7 +1207,7 @@ async def push_shared_address_book(
             else:
                 await rustdesk_client.create_address_book_row(payload)
                 created += 1
-        except Exception as exc:  # noqa: BLE001 - one bad row must not sink the push
+        except Exception as exc:
             logger.warning("address-book push failed for %s: %s", dev.hostname, exc)
             failed += 1
             continue

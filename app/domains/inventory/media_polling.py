@@ -6,7 +6,6 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
-
 from typing import cast
 
 from sqlmodel import Session, col, select

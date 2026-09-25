@@ -53,8 +53,52 @@ target-version = "py313"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-ignore = ["E501"]
+select = [
+    "E", "F", "I", "UP",
+    "B",      # flake8-bugbear: common bug patterns
+    "C4",     # flake8-comprehensions
+    "PIE",    # misc lint (redundant code)
+    "RET",    # flake8-return
+    "SIM",    # flake8-simplify
+    "PERF",   # perflint
+    "RUF",    # ruff-specific
+    "N",      # pep8-naming
+    "PLW",    # pylint warnings
+    "PLE",    # pylint errors
+    "TRY",    # tryceratops (exception handling style)
+]
+ignore = [
+    "E501",
+    # Below: rules that fire on patterns this codebase uses on purpose, not
+    # bugs to fix. Each is a deliberate choice, not an oversight - see
+    # docs/development-plan-2026-10.md phase C3.
+    "TRY003",  # raise-vanilla-args: FastAPI HTTPException/ValueError need the
+               # message inline; a custom exception class per call site would
+               # be pure ceremony for one-shot API/validation errors.
+    "RUF001",  # ambiguous-unicode-character-string: the product is in
+    "RUF002",  # Russian; Cyrillic look-alikes in strings/docstrings are the
+    "RUF003",  # actual, intended text, not typos.
+    "PLR2004", # magic-value-comparison: SNMP/HTTP/protocol code compares
+               # against numeric status codes and OIDs constantly; naming
+               # every one of them would obscure the comparison, not clarify it.
+    "PLR0913", # too-many-arguments: several polling/service functions take
+               # more parameters than the default threshold by design (they
+               # mirror a device's config); splitting them into a dataclass
+               # is tracked separately, not enforced rule-by-rule here.
+    "FBT001", "FBT002", "FBT003",  # boolean-trap: plenty of `bool` kwargs
+               # here are genuinely boolean device/API flags (e.g. `full`,
+               # `include_inactive`), not ambiguous positional booleans.
+    "ARG001", "ARG002", "ARG005",  # unused-argument: FastAPI dependencies
+               # (`current_user: CurrentUser` for auth-only routes) and
+               # monkeypatched test doubles legitimately ignore parameters
+               # required by the interface they implement.
+    "PLC0415", # import-outside-top-level: used deliberately in a number of
+               # places to break import cycles (each with its own comment);
+               # auditing every remaining case is tracked separately.
+    "PLR0911", "PLR0912", "PLR0915",  # complexity metrics (too many
+               # returns/branches/statements): tracked as refactoring work
+               # (development plan phase D), not a lint gate.
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]

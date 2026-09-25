@@ -4,7 +4,6 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-
 from typing import cast
 
 from sqlmodel import Session, select

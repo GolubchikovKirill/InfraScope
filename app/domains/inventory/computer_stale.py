@@ -56,7 +56,7 @@ async def find_stale_computers(session: Session) -> StaleReport:
         return StaleReport(console_reachable=False, items=[])
     try:
         peers = await rustdesk_client.list_admin_peers()
-    except Exception as exc:  # noqa: BLE001 - any console failure means "cannot judge", never "everything is stale"
+    except Exception as exc:
         logger.warning("Stale computers: RustDesk console unreadable: %s", exc)
         return StaleReport(console_reachable=False, items=[])
     if not peers:

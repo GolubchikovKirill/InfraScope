@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from collections.abc import Sequence
-
 from sqlmodel import Session, col, select
 
 from app.core.config import settings

@@ -26,7 +26,7 @@ async def _snmp_mac_on_engine(engine: SnmpEngine, ip_address: str, community: st
     """ifPhysAddress over an engine the caller owns (and closes)."""
     try:
         target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP target %s not usable: %s", ip_address, exc)
         return None
 
@@ -47,7 +47,7 @@ async def _snmp_mac_on_engine(engine: SnmpEngine, ip_address: str, community: st
                     octets = val.asOctets()
                     if len(octets) == 6 and any(b != 0 for b in octets):
                         return ":".join(f"{b:02x}" for b in octets)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP MAC walk on %s failed: %s", ip_address, exc)
     return None
 

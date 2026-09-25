@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
-
 from sqlmodel import Session
 
 from app.domains.inventory.models import NetworkSwitch

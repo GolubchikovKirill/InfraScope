@@ -11,10 +11,9 @@ purpose" (e.g. a guest device that isn't actually one of our APs).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-
-from collections.abc import Sequence
 
 from sqlmodel import Session, select
 
