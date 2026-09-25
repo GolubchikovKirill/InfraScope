@@ -4,11 +4,13 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
-from sqlmodel import func, select
+from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import conflict, not_found
-from app.domains.inventory.models import Printer
+from typing import cast
+
+from app.domains.inventory.models import CartridgeStock, Printer
 from app.domains.inventory.printer_polling import (
     PrinterNotFoundError,
     UnsupportedPrinterPollError,
@@ -19,6 +21,7 @@ from app.domains.inventory.printer_polling import (
 from app.domains.inventory.schemas import (
     CartridgeIssueRequest,
     CartridgeStockCreate,
+    CartridgeStockMovementPublic,
     CartridgeStockMovementsPublic,
     CartridgeStockPublic,
     CartridgeStocksPublic,
@@ -100,7 +103,7 @@ def _attach_offline_counts(session: SessionDep, printers: list[PrinterPublic]) -
             EventLog.device_kind == "printer",
             EventLog.event_type == "device_offline",
             EventLog.created_at >= cutoff,
-            EventLog.device_name.in_(store_names),
+            col(EventLog.device_name).in_(store_names),
         )
         .group_by(EventLog.device_name)
     ).all()
@@ -145,7 +148,7 @@ def read_cartridge_stock(
 ) -> CartridgeStocksPublic:
     del current_user
     rows = list_cartridge_stock(session, search=search, include_inactive=include_inactive)
-    return CartridgeStocksPublic(data=rows, count=len(rows))
+    return CartridgeStocksPublic(data=cast(list[CartridgeStockPublic], list(rows)), count=len(rows))
 
 
 @router.post(
@@ -157,7 +160,7 @@ def create_cartridge(
     payload: CartridgeStockCreate,
     session: SessionDep,
     current_user: CurrentUser,
-) -> CartridgeStockPublic:
+) -> CartridgeStock:
     try:
         return create_cartridge_stock(session, payload, actor=current_user.email)
     except CartridgeStockDuplicateError as exc:
@@ -176,7 +179,7 @@ def archive_cartridge(
     stock_id: uuid.UUID,
     session: SessionDep,
     current_user: CurrentUser,
-) -> CartridgeStockPublic:
+) -> CartridgeStock:
     try:
         return deactivate_cartridge_stock(session, stock_id, actor=current_user.email)
     except CartridgeStockMissingError as exc:
@@ -190,7 +193,7 @@ def archive_cartridge(
 )
 def sync_cartridge_stock(session: SessionDep) -> CartridgeStocksPublic:
     rows = sync_cartridge_stock_from_printers(session)
-    return CartridgeStocksPublic(data=rows, count=len(rows))
+    return CartridgeStocksPublic(data=cast(list[CartridgeStockPublic], rows), count=len(rows))
 
 
 @router.patch(
@@ -203,7 +206,7 @@ def patch_cartridge_stock(
     payload: CartridgeStockUpdate,
     session: SessionDep,
     current_user: CurrentUser,
-) -> CartridgeStockPublic:
+) -> CartridgeStock:
     try:
         return update_cartridge_stock(session, stock_id, payload, actor=current_user.email)
     except CartridgeStockMissingError as exc:
@@ -225,7 +228,7 @@ def issue_cartridge(
     payload: CartridgeIssueRequest,
     session: SessionDep,
     current_user: CurrentUser,
-) -> CartridgeStockPublic:
+) -> CartridgeStock:
     try:
         return issue_cartridge_stock(session, stock_id, payload, actor=current_user.email)
     except CartridgeStockMissingError as exc:
@@ -246,7 +249,9 @@ def read_cartridge_movements(
         rows = list_cartridge_movements(session, stock_id, limit=limit)
     except CartridgeStockMissingError as exc:
         raise HTTPException(status_code=404, detail="Cartridge stock item not found") from exc
-    return CartridgeStockMovementsPublic(data=rows, count=len(rows))
+    return CartridgeStockMovementsPublic(
+        data=cast(list[CartridgeStockMovementPublic], list(rows)), count=len(rows)
+    )
 
 
 @router.get("/", response_model=PrintersPublic)

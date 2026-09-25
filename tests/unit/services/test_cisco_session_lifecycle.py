@@ -266,6 +266,6 @@ def test_cisco_ssh_close_closes_channel_and_transport():
     ssh.close()
 
     assert shell.closed is True
-    assert "exit\n" in shell.sent
+    assert b"exit\n" in shell.sent
     assert client.transport.closed is True
     assert client.closed is True

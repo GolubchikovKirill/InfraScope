@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.domains.inventory.models import CartridgeStock, CartridgeStockMovement, Printer
 from app.domains.inventory.schemas import (
@@ -156,16 +157,16 @@ def list_cartridge_stock(
     search: str | None = None,
     *,
     include_inactive: bool = False,
-) -> list[CartridgeStock]:
+) -> Sequence[CartridgeStock]:
     statement = select(CartridgeStock)
     if not include_inactive:
         statement = statement.where(CartridgeStock.is_active == True)  # noqa: E712
     if search:
         pattern = f"%{search.strip()}%"
         statement = statement.where(
-            CartridgeStock.cartridge_name.ilike(pattern)
-            | CartridgeStock.compatible_printer_models.ilike(pattern)
-            | CartridgeStock.toner_color.ilike(pattern)
+            col(CartridgeStock.cartridge_name).ilike(pattern)
+            | col(CartridgeStock.compatible_printer_models).ilike(pattern)
+            | col(CartridgeStock.toner_color).ilike(pattern)
         )
     return session.exec(statement.order_by(CartridgeStock.cartridge_name)).all()
 
@@ -177,12 +178,14 @@ def get_cartridge_stock_or_raise(session: Session, stock_id: uuid.UUID) -> Cartr
     return row
 
 
-def list_cartridge_movements(session: Session, stock_id: uuid.UUID, limit: int = 50) -> list[CartridgeStockMovement]:
+def list_cartridge_movements(
+    session: Session, stock_id: uuid.UUID, limit: int = 50
+) -> Sequence[CartridgeStockMovement]:
     get_cartridge_stock_or_raise(session, stock_id)
     return session.exec(
         select(CartridgeStockMovement)
         .where(CartridgeStockMovement.stock_id == stock_id)
-        .order_by(CartridgeStockMovement.created_at.desc())
+        .order_by(col(CartridgeStockMovement.created_at).desc())
         .limit(limit)
     ).all()
 

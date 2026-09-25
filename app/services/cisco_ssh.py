@@ -85,31 +85,38 @@ class _KexGroup1SHA1(KexGroup14SHA256):
 
 
 def _install_legacy_ssh_compat() -> None:
-    kex_info = paramiko.Transport._kex_info
+    # Reaching into paramiko.Transport's class-level registries (_kex_info,
+    # _preferred_kex, _key_info, _preferred_keys) is the only way to re-add
+    # an algorithm paramiko itself dropped - there is no public API for it.
+    # These attributes are real at runtime (paramiko has carried them under
+    # these exact names across the affected versions) but are intentionally
+    # left out of paramiko's type stubs, so pyright sees Transport as not
+    # having them.
+    kex_info = paramiko.Transport._kex_info  # type: ignore[attr-defined]
     if _KexGroup14SHA1.name not in kex_info:
         kex_info[_KexGroup14SHA1.name] = _KexGroup14SHA1
-    preferred_kex = paramiko.Transport._preferred_kex
+    preferred_kex = paramiko.Transport._preferred_kex  # type: ignore[attr-defined]
     if _KexGroup14SHA1.name not in preferred_kex:
-        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup14SHA1.name)
+        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup14SHA1.name)  # type: ignore[attr-defined]
 
     # group1 goes in last of all - see _KexGroup1SHA1.
     if _KexGroup1SHA1.name not in kex_info:
         kex_info[_KexGroup1SHA1.name] = _KexGroup1SHA1
-    preferred_kex = paramiko.Transport._preferred_kex
+    preferred_kex = paramiko.Transport._preferred_kex  # type: ignore[attr-defined]
     if _KexGroup1SHA1.name not in preferred_kex:
-        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup1SHA1.name)
+        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup1SHA1.name)  # type: ignore[attr-defined]
 
     # ssh-rsa host keys: same RSA key blob format as rsa-sha2-*, paramiko
     # still implements RSAKey fully - it was only delisted as a host-key
     # *type* and its SHA-1 signature hash was dropped from RSAKey.HASHES.
-    key_info = paramiko.Transport._key_info
+    key_info = paramiko.Transport._key_info  # type: ignore[attr-defined]
     if "ssh-rsa" not in key_info:
         key_info["ssh-rsa"] = paramiko.RSAKey
     if "ssh-rsa" not in paramiko.rsakey.RSAKey.HASHES:
         paramiko.rsakey.RSAKey.HASHES["ssh-rsa"] = hashes.SHA1
-    preferred_keys = paramiko.Transport._preferred_keys
+    preferred_keys = paramiko.Transport._preferred_keys  # type: ignore[attr-defined]
     if "ssh-rsa" not in preferred_keys:
-        paramiko.Transport._preferred_keys = (*preferred_keys, "ssh-rsa")
+        paramiko.Transport._preferred_keys = (*preferred_keys, "ssh-rsa")  # type: ignore[attr-defined]
 
 
 _install_legacy_ssh_compat()
@@ -391,7 +398,7 @@ class CiscoSSH:
 
             self.client = paramiko.SSHClient()
             self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self.client._transport = transport
+            self.client._transport = transport  # type: ignore[attr-defined]  # attach an already-authenticated Transport to a bare SSHClient wrapper; no public API for this
             self.shell = transport.open_session()
             self.shell.get_pty()
             self.shell.invoke_shell()
@@ -441,7 +448,7 @@ class CiscoSSH:
             if self.shell:
                 # Graceful session teardown on Cisco side before channel close.
                 with suppress(Exception):
-                    self.shell.send("exit\n")
+                    self.shell.send(b"exit\n")
                 with suppress(Exception):
                     self.shell.close()
             if self.client:
@@ -458,7 +465,7 @@ class CiscoSSH:
 
     def _send(self, cmd: str) -> None:
         if self.shell:
-            self.shell.send(cmd + "\n")
+            self.shell.send((cmd + "\n").encode())
 
     def _recv_until_prompt(self, timeout: float = CMD_TIMEOUT) -> str:
         if not self.shell:
