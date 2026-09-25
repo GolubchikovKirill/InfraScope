@@ -74,7 +74,7 @@ def test_laptops_are_flagged_and_listed_after_the_rest(client, admin_token, db_s
 
     data = client.get("/api/v1/computers/stale", headers=_auth(admin_token)).json()["data"]
 
-    assert [c["hostname"] for c in data][0] == "VNK-SEC-07"
+    assert next(c["hostname"] for c in data) == "VNK-SEC-07"
     assert {c["hostname"] for c in data if c["laptop_like"]} == {"VNK-TAM-NB01", "VNK-DIR-NOTE", "VNK-HR-N02", "VNK-LPT-01"}
     assert next(c for c in data if c["hostname"] == "VNK-SEC-07")["laptop_like"] is False
 

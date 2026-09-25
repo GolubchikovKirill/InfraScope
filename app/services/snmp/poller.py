@@ -99,10 +99,9 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
             toners = await _get_ricoh_toners(engine, target, comm, toners)
 
     # Strategy 3: vendor-specific SNMP fallback
-    if not toners:
-        if vendor == "brother":
-            logger.debug("%s: standard MIB empty, trying Brother proprietary OIDs", ip_address)
-            toners = await _get_brother_toners(engine, target, comm)
+    if not toners and vendor == "brother":
+        logger.debug("%s: standard MIB empty, trying Brother proprietary OIDs", ip_address)
+        toners = await _get_brother_toners(engine, target, comm)
 
     # Strategy 4: HTTP scraping (HP EWS XML, works even with restricted SNMP)
     if not toners:

@@ -16,7 +16,4 @@ def _tcp_port_open(ip: str, port: int, timeout: float = _TCP_TIMEOUT) -> bool:
 
 def _tcp_reachable(ip: str) -> bool:
     """Check if any common printer port is open (HTTP, HTTPS, JetDirect, IPP)."""
-    for port in _TCP_FALLBACK_PORTS:
-        if _tcp_port_open(ip, port):
-            return True
-    return False
+    return any(_tcp_port_open(ip, port) for port in _TCP_FALLBACK_PORTS)

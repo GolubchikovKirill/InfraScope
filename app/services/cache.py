@@ -35,9 +35,7 @@ async def invalidate_entity_cache(namespace: str, *, event_id: str | None = None
 
         await broadcast_event("invalidate", event_id or namespace)
         redis = await get_redis()
-        keys = []
-        async for key in redis.scan_iter(f"{namespace}:*"):
-            keys.append(key)
+        keys = [key async for key in redis.scan_iter(f"{namespace}:*")]
         if keys:
             await redis.delete(*keys)
     except Exception as exc:

@@ -715,8 +715,8 @@ def parse_interface_status_table(output: str) -> list[InterfaceStatusRow]:
     is most of them.
     """
     rows: list[InterfaceStatusRow] = []
-    for line in output.splitlines():
-        line = line.rstrip()
+    for raw_line in output.splitlines():
+        line = raw_line.rstrip()
         if not line or line.lower().startswith("port ") or line.startswith("---"):
             continue
         m = _INTERFACE_STATUS_RE.match(line)
@@ -810,12 +810,11 @@ def _try_restore_admin_up(ssh: CiscoSSH, ip: str, interface: str) -> None:
         ssh.execute("no shutdown")
         ssh.execute("end")
         logger.info("Recovered admin-up state on %s port %s after error", ip, interface)
-    except Exception as recovery_exc:
+    except Exception:
         logger.exception(
-            "CRITICAL: %s port %s may be stuck administratively shut down - recovery attempt also failed: %s",
+            "CRITICAL: %s port %s may be stuck administratively shut down - recovery attempt also failed",
             ip,
             interface,
-            recovery_exc,
         )
 
 
@@ -873,12 +872,11 @@ def _try_restore_poe_auto(ssh: CiscoSSH, ip: str, interface: str) -> None:
         ssh.execute("power inline auto")
         ssh.execute("end")
         logger.info("Recovered PoE power state on %s port %s after error", ip, interface)
-    except Exception as recovery_exc:
+    except Exception:
         logger.exception(
-            "CRITICAL: %s port %s may be stuck powered off - recovery attempt also failed: %s",
+            "CRITICAL: %s port %s may be stuck powered off - recovery attempt also failed",
             ip,
             interface,
-            recovery_exc,
         )
 
 
@@ -942,12 +940,11 @@ def _try_restore_poe_auto_bulk(ssh: CiscoSSH, ip: str, interfaces: list[str]) ->
             ssh.execute("power inline auto")
         ssh.execute("end")
         logger.info("Recovered PoE power state on %s ports %s after error", ip, interfaces)
-    except Exception as recovery_exc:
+    except Exception:
         logger.exception(
-            "CRITICAL: %s ports %s may be stuck powered off - recovery attempt also failed: %s",
+            "CRITICAL: %s ports %s may be stuck powered off - recovery attempt also failed",
             ip,
             interfaces,
-            recovery_exc,
         )
 
 

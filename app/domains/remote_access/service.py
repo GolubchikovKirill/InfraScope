@@ -280,18 +280,23 @@ def _inventory_rows(session: Session) -> list[tuple[str, str, str | None]]:
     Cash registers and computers are Windows by definition; of the media players
     only nettops are (iconbit/twix run Android).
     """
-    rows: list[tuple[str, str, str | None]] = []
-    for cr in session.exec(select(CashRegister)).all():
-        if cr.hostname and cr.hostname.strip():
-            rows.append((cr.hostname.strip(), "cash_register", _cr_location(cr)))
-    for host, loc in session.exec(select(Computer.hostname, Computer.location)).all():
-        if host and host.strip():
-            rows.append((host.strip(), "computer", loc))
-    for host, name in session.exec(
-        select(MediaPlayer.hostname, MediaPlayer.name).where(MediaPlayer.device_type == _NETTOP)
-    ).all():
-        if host and host.strip():
-            rows.append((host.strip(), "media_player", None))
+    rows: list[tuple[str, str, str | None]] = [
+        (cr.hostname.strip(), "cash_register", _cr_location(cr))
+        for cr in session.exec(select(CashRegister)).all()
+        if cr.hostname and cr.hostname.strip()
+    ]
+    rows.extend(
+        (host.strip(), "computer", loc)
+        for host, loc in session.exec(select(Computer.hostname, Computer.location)).all()
+        if host and host.strip()
+    )
+    rows.extend(
+        (host.strip(), "media_player", None)
+        for host, _name in session.exec(
+            select(MediaPlayer.hostname, MediaPlayer.name).where(MediaPlayer.device_type == _NETTOP)
+        ).all()
+        if host and host.strip()
+    )
     return rows
 
 
