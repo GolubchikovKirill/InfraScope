@@ -104,6 +104,11 @@ ignore = [
                # narrower re-raise clause; moving those to `else` is a
                # real refactor, not a lint fix, and is not worth doing
                # blindly 20 times over.
+    "TRY301", # raise-within-try: the handful of call sites raise
+               # HTTPException deliberately inside a try/except that
+               # re-raises HTTPException unchanged before a broader
+               # except Exception - extracting an inner function per site
+               # would not make that clearer.
 ]
 
 [tool.ruff.lint.isort]
