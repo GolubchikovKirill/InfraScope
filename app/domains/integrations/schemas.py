@@ -192,8 +192,8 @@ class HonestSignTargetIpUpdate(BaseModel):
         value = v.strip()
         try:
             return str(ipaddress.IPv4Address(value))
-        except ValueError:
-            raise ValueError("new_ip must be a valid IPv4 address")
+        except ValueError as exc:
+            raise ValueError("new_ip must be a valid IPv4 address") from exc
 
 
 class HonestSignStatusPublic(HonestSignTargetPublic):

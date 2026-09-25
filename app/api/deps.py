@@ -49,12 +49,12 @@ async def get_current_user(session: SessionDep, token: TokenDep, background_task
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         token_data = TokenPayload(**payload)
-    except (InvalidTokenError, ValidationError):
+    except (InvalidTokenError, ValidationError) as exc:
         auth_events_total.labels(result="failure", reason="token_invalid").inc()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
-        )
+        ) from exc
     if token_data.type != "access":
         auth_events_total.labels(result="failure", reason="token_wrong_type").inc()
         raise HTTPException(

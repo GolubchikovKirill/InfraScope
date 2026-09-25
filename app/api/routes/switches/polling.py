@@ -24,8 +24,8 @@ async def poll_switch(
     del current_user
     try:
         return await poll_single_switch_local(session=session, switch_id=switch_id)
-    except SwitchNotFoundError:
-        raise HTTPException(status_code=404, detail="Switch not found")
+    except SwitchNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Switch not found") from exc
 
 
 @router.post("/poll-all", response_model=Message)

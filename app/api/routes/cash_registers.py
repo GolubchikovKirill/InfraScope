@@ -149,8 +149,8 @@ async def poll_cash_register(
     del current_user
     try:
         return await poll_single_cash_register_local(session=session, cash_id=cash_id)
-    except CashRegisterNotFoundError:
-        raise HTTPException(status_code=404, detail="Cash register not found")
+    except CashRegisterNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Cash register not found") from exc
 
 
 @router.post("/poll-all", response_model=CashRegistersPublic)

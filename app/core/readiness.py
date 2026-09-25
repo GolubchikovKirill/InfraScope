@@ -13,20 +13,22 @@ def check_database(engine) -> bool:
     try:
         with Session(engine) as session:
             session.execute(text("SELECT 1")).one()
-        return True
     except Exception as exc:
         logger.warning("Readiness: database check failed: %s", exc)
         return False
+    else:
+        return True
 
 
 async def check_redis(get_redis) -> bool:
     try:
         redis = await get_redis()
         await redis.ping()
-        return True
     except Exception as exc:
         logger.warning("Readiness: redis check failed: %s", exc)
         return False
+    else:
+        return True
 
 
 def build_readiness_response(checks: dict[str, bool]) -> dict | JSONResponse:

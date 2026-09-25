@@ -95,6 +95,7 @@ def _get_mac_from_arp(ip_address: str) -> str | None:
         subprocess.run(
             ["ping", "-c", "1", "-W", "1", ip_address],
             capture_output=True,
+            check=False,
             timeout=3,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -115,6 +116,7 @@ def _get_mac_from_arp(ip_address: str) -> str | None:
         out = subprocess.run(
             ["ip", "neigh", "show", ip_address],
             capture_output=True,
+            check=False,
             text=True,
             timeout=3,
         ).stdout.strip()

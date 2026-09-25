@@ -142,7 +142,7 @@ async def _enforce_switch_cooldown(*, switch_id: uuid.UUID, port: str, operation
                 raise HTTPException(
                     status_code=429,
                     detail=f"Operation throttled by safety cooldown ({cooldown}s). Try again later.",
-                )
+                ) from None
             _local_switch_cooldowns[cooldown_key] = now + cooldown
 
 

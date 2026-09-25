@@ -98,6 +98,12 @@ ignore = [
     "PLR0911", "PLR0912", "PLR0915",  # complexity metrics (too many
                # returns/branches/statements): tracked as refactoring work
                # (development plan phase D), not a lint gate.
+    "TRY300", # try-consider-else: valid in the simple one-statement cases
+               # (fixed inline), but the multi-statement try blocks in the
+               # polling/SSH code mix a success return with cleanup and a
+               # narrower re-raise clause; moving those to `else` is a
+               # real refactor, not a lint fix, and is not worth doing
+               # blindly 20 times over.
 ]
 
 [tool.ruff.lint.isort]

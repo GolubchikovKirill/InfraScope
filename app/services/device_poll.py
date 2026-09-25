@@ -233,6 +233,7 @@ def _get_mac_from_arp(ip: str) -> str | None:
         subprocess.run(
             _ping_command(ip),
             capture_output=True,
+            check=False,
             timeout=3,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -253,6 +254,7 @@ def _get_mac_from_arp(ip: str) -> str | None:
         out = subprocess.run(
             ["ip", "neigh", "show", ip],
             capture_output=True,
+            check=False,
             text=True,
             timeout=3,
         ).stdout.strip()
@@ -512,6 +514,7 @@ def _check_arp_for_mac(target_mac: str) -> str | None:
         out = subprocess.run(
             ["ip", "neigh"],
             capture_output=True,
+            check=False,
             text=True,
             timeout=5,
         ).stdout
@@ -577,6 +580,7 @@ def _arp_table_mac_to_ip() -> dict[str, str]:
         neigh = subprocess.run(
             ["ip", "neigh"],
             capture_output=True,
+            check=False,
             text=True,
             timeout=5,
         ).stdout
