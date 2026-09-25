@@ -294,7 +294,9 @@ def ap_auto_reboot_cycle_task(self) -> dict:
         stagger = max(settings.AUTO_REBOOT_AP_STAGGER_SECONDS, 0)
         cycle_id = self.request.id or str(uuid.uuid4())
         for index, switch in enumerate(switches):
-            ap_auto_reboot_switch_task.apply_async(args=[str(switch.id), cycle_id], countdown=index * stagger)
+            ap_auto_reboot_switch_task.apply_async(  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers as list[str]
+                args=[str(switch.id), cycle_id], countdown=index * stagger
+            )
             worker_tasks_enqueued_total.labels(operation="ap_auto_reboot_switch").inc()
     return {
         "status": "dispatched",
@@ -358,7 +360,9 @@ def switch_port_snapshot_cycle_task(self) -> dict:
         switches = get_switches_for_snapshot(session)
         stagger = max(settings.SWITCH_PORT_SNAPSHOT_STAGGER_SECONDS, 0)
         for index, switch in enumerate(switches):
-            switch_port_snapshot_task.apply_async(args=[str(switch.id)], countdown=index * stagger)
+            switch_port_snapshot_task.apply_async(  # type: ignore[operator]  # celery Proxy.__getattr__ untyped; pyright infers as list[str]
+                args=[str(switch.id)], countdown=index * stagger
+            )
             worker_tasks_enqueued_total.labels(operation="switch_port_snapshot").inc()
     return {"status": "dispatched", "switches_scheduled": len(switches), "stagger_seconds": stagger}
 
