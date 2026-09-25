@@ -77,7 +77,7 @@ def record_seen_aps(session: Session, *, switch_id: uuid.UUID, live_aps: list[AP
 
 
 def recover_missing_macs_from_registry(
-    live_aps: list[APInfo], known_rows: list[SwitchAccessPoint]
+    live_aps: list[APInfo], known_rows: Sequence[SwitchAccessPoint]
 ) -> list[APInfo]:
     """Fall back to a known MAC when CDP found an AP but its MAC couldn't be
     resolved this scan.
@@ -114,7 +114,7 @@ def get_known_aps(session: Session, *, switch_id: uuid.UUID) -> Sequence[SwitchA
 
 
 def merge_live_and_known(
-    live_aps: list[APInfo], known_rows: list[SwitchAccessPoint], *, vlan: int
+    live_aps: list[APInfo], known_rows: Sequence[SwitchAccessPoint], *, vlan: int
 ) -> list[MergedAccessPoint]:
     """Combine a live CDP scan with the registry: live APs plus any known AP
     that didn't show up this time (a hang signal), oldest-stale ones dropped.
@@ -172,7 +172,7 @@ def merge_live_and_known(
     return merged
 
 
-def known_aps_as_still_responding(known_rows: list[SwitchAccessPoint], *, vlan: int) -> list[MergedAccessPoint]:
+def known_aps_as_still_responding(known_rows: Sequence[SwitchAccessPoint], *, vlan: int) -> list[MergedAccessPoint]:
     """Build a merged view for a cycle where the switch could not be scanned
     at all (SSH failed), as opposed to a successful scan that found nothing.
 
