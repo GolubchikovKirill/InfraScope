@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from ._pysnmp_compat import CommunityData, SnmpEngine, UdpTransportTarget
@@ -93,10 +94,8 @@ async def _get_standard_toners(
         device_idx = key.split(".")[0] if "." in key else "1"
 
         supply_type: int | None = None
-        try:
+        with contextlib.suppress(ValueError, TypeError):
             supply_type = int(types_map[key]) if key in types_map else None
-        except (ValueError, TypeError):
-            pass
 
         if not _is_toner_supply(desc, supply_type):
             logger.debug("Skipping non-toner supply: %r (type=%s)", desc, supply_type)

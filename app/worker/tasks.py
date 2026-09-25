@@ -86,10 +86,8 @@ class _AutoRebootLease:
         )
 
     def close(self) -> None:
-        try:
+        with suppress(RedisError):
             self.client.close()
-        except RedisError:
-            pass
 
 
 def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoRebootLease | None, str | None]:

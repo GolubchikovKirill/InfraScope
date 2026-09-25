@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import ipaddress
 import json
 import os
@@ -98,10 +99,8 @@ def update_env(path: Path, updates: dict[str, str]) -> None:
     try:
         with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as temporary:
             temporary.write("\n".join(output) + "\n")
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(temporary_name, 0o600)
-        except OSError:
-            pass
         os.replace(temporary_name, path)
     finally:
         if os.path.exists(temporary_name):

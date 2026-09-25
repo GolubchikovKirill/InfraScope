@@ -8,6 +8,7 @@ Supports NetBIOS name resolution for Windows hosts.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import logging
 import os
@@ -229,15 +230,13 @@ async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> st
 def _get_mac_from_arp(ip: str) -> str | None:
     import subprocess
 
-    try:
+    with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired):
         subprocess.run(
             _ping_command(ip),
             capture_output=True,
             check=False,
             timeout=3,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
 
     try:
         with open("/proc/net/arp") as f:
@@ -370,10 +369,8 @@ def _netbios_resolve(name: str, subnets: list[str] | None = None) -> str | None:
 
     try:
         for ip in targets:
-            try:
+            with contextlib.suppress(OSError):
                 sock.sendto(packet, (ip, 137))
-            except OSError:
-                pass
 
         logger.debug("NetBIOS: sent query for '%s' to %d hosts", name, len(targets))
 
