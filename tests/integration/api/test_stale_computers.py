@@ -161,14 +161,15 @@ def test_deleting_a_cash_register_or_media_player_releases_its_remote_access_ent
     monkeypatch.setattr(media_routes, "_invalidate_cache", _noop)
     if kind == "cash_register":
         row = CashRegister(kkm_number="1", hostname="VNA-KKM-999")
-        link = "cash_register_id"
     else:
         row = MediaPlayer(device_type="nettop", name="n", model="m", ip_address="10.0.0.9", hostname="VNA-MUZ-999")
-        link = "media_player_id"
     db_session.add(row)
     db_session.commit()
     db_session.refresh(row)
-    device = RemoteAccessDevice(hostname="host-999", managed=True, **{link: row.id})
+    if kind == "cash_register":
+        device = RemoteAccessDevice(hostname="host-999", managed=True, cash_register_id=row.id)
+    else:
+        device = RemoteAccessDevice(hostname="host-999", managed=True, media_player_id=row.id)
     db_session.add(device)
     db_session.commit()
     device_id = device.id
@@ -178,4 +179,5 @@ def test_deleting_a_cash_register_or_media_player_releases_its_remote_access_ent
     assert response.status_code == 200
     db_session.expire_all()
     kept = db_session.get(RemoteAccessDevice, device_id)
+    link = "cash_register_id" if kind == "cash_register" else "media_player_id"
     assert kept is not None and getattr(kept, link) is None and kept.managed is False
