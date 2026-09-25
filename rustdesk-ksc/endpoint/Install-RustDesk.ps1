@@ -163,6 +163,19 @@ function Write-Opts($locks) {
         [IO.File]::WriteAllText((Join-Path $d 'RustDesk2.toml'), $t, [Text.Encoding]::ASCII)
     }
 }
+# The connection-manager pop-up (the "accept incoming connection?" dialog)
+# runs in the logged-on user's own session and reads *that* user's config,
+# not the service profile's above - a hidden/unattended till still popped
+# the confirm dialog without this, because the user's own RustDesk2.toml
+# was never written.
+function Write-UserOpts {
+    $t = Build-Toml $true
+    Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $d = Join-Path $_.FullName 'AppData\Roaming\RustDesk\config'
+        if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
+        [IO.File]::WriteAllText((Join-Path $d 'RustDesk2.toml'), $t, [Text.Encoding]::ASCII)
+    }
+}
 
 Stop-RD
 Write-Opts $false
@@ -198,6 +211,7 @@ if ($unattended) {
 }
 
 if ($hidden) {
+    Write-UserOpts
     $n = 0
     Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | ForEach-Object {
         Get-ChildItem ($_.FullName + '\Desktop') -Filter 'RustDesk*.lnk' -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item $_.FullName -Force; $n++ }
