@@ -5,6 +5,8 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from typing import cast
+
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -16,7 +18,7 @@ from app.domains.inventory.reachability import (
     probe_host_ports,
 )
 from app.domains.operations.models import CashRegister
-from app.domains.operations.schemas import CashRegistersPublic
+from app.domains.operations.schemas import CashRegisterPublic, CashRegistersPublic
 from app.services.cache import invalidate_entity_cache
 from app.services.event_log import write_event_log
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
@@ -143,7 +145,7 @@ async def poll_all_cash_registers_local(*, session: Session) -> CashRegistersPub
 
     rows = session.exec(select(CashRegister)).all()
     if not lock_acquired:
-        return CashRegistersPublic(data=rows, count=len(rows))
+        return CashRegistersPublic(data=cast(list[CashRegisterPublic], rows), count=len(rows))
 
     try:
         poll_targets = [row for row in rows if not await is_circuit_open("cash_register", str(row.id))]
@@ -172,7 +174,7 @@ async def poll_all_cash_registers_local(*, session: Session) -> CashRegistersPub
         session.commit()
         result = session.exec(select(CashRegister).order_by(CashRegister.kkm_number)).all()
         await invalidate_cash_register_cache()
-        return CashRegistersPublic(data=result, count=len(result))
+        return CashRegistersPublic(data=cast(list[CashRegisterPublic], result), count=len(result))
     finally:
         if lock_acquired:
             try:

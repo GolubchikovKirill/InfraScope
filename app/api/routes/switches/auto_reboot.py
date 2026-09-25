@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import func, select
+from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
@@ -62,9 +62,9 @@ def get_switch_auto_reboot_history(
         select(EventLog)
         .where(
             EventLog.device_name == switch.name,
-            EventLog.event_type.like("ap_auto_reboot%"),
+            col(EventLog.event_type).like("ap_auto_reboot%"),
         )
-        .order_by(EventLog.created_at.desc())
+        .order_by(col(EventLog.created_at).desc())
         .limit(limit)
     ).all()
     return [
@@ -93,7 +93,7 @@ def get_auto_reboot_summary(
     since = datetime.now(UTC) - timedelta(hours=hours)
     rows = session.exec(
         select(EventLog).where(
-            EventLog.event_type.like("ap_auto_reboot%"),
+            col(EventLog.event_type).like("ap_auto_reboot%"),
             EventLog.created_at >= since,
         )
     ).all()
@@ -102,10 +102,14 @@ def get_auto_reboot_summary(
     # event count - an AP stays "needing attention" for as long as it's
     # excluded, however many days that spans, not just the last N hours.
     aps_needing_attention = session.exec(
-        select(func.count()).select_from(SwitchAccessPoint).where(SwitchAccessPoint.needs_attention_since.is_not(None))
+        select(func.count())
+        .select_from(SwitchAccessPoint)
+        .where(col(SwitchAccessPoint.needs_attention_since).is_not(None))
     ).one()
     switches_needing_attention = session.exec(
-        select(func.count()).select_from(NetworkSwitch).where(NetworkSwitch.switch_needs_attention_since.is_not(None))
+        select(func.count())
+        .select_from(NetworkSwitch)
+        .where(col(NetworkSwitch.switch_needs_attention_since).is_not(None))
     ).one()
 
     if not rows:

@@ -7,13 +7,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
 
-from sqlmodel import Session, select
+from typing import cast
+
+from sqlmodel import Session, col, select
 
 from app.core.config import settings
 from app.core.redis import REDIS_ERRORS, get_redis
 from app.domains.inventory.models import MediaPlayer
 from app.domains.inventory.reachability import probe_tcp_endpoint
 from app.domains.inventory.schemas import MediaPlayersPublic
+from app.domains.inventory.schemas.media_players import MediaPlayerPublic
 from app.observability.metrics import (
     media_player_ops_total,
     media_player_polls_total,
@@ -22,7 +25,7 @@ from app.observability.metrics import (
     set_device_counts,
 )
 from app.services.cache import invalidate_entity_cache
-from app.services.device_poll import poll_device, poll_device_sync
+from app.services.device_poll import DeviceStatus, poll_device, poll_device_sync
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_media_player_snapshot
@@ -97,7 +100,9 @@ def _probe_iconbit(ip_address: str) -> LightMediaPollResult:
     )
 
 
-def poll_one_media_player(player: MediaPlayer) -> tuple[str, object | None]:
+def poll_one_media_player(
+    player: MediaPlayer,
+) -> tuple[str, DeviceStatus | LightMediaPollResult | None]:
     try:
         poll_jitter_sync()
         if player.device_type == "iconbit":
@@ -113,7 +118,7 @@ async def poll_one_media_player_async(
     player: MediaPlayer,
     *,
     port_scan_semaphore: asyncio.Semaphore,
-) -> tuple[str, object | None]:
+) -> tuple[str, DeviceStatus | LightMediaPollResult | None]:
     """Poll one media player in the caller's event loop.
 
     The old batch wrapped this synchronous helper in many threads, each of
@@ -132,7 +137,7 @@ async def poll_one_media_player_async(
         return player.ip_address, None
 
 
-def apply_media_poll_result(player: MediaPlayer, result) -> None:
+def apply_media_poll_result(player: MediaPlayer, result: DeviceStatus | LightMediaPollResult | None) -> None:
     if result is None or not result.is_online:
         player.is_online = False
         return
@@ -236,7 +241,7 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
     )
     if not lock_acquired:
         logger.info("Skipping duplicate poll-all request for media players (%s): lock busy", device_type or "all")
-        return MediaPlayersPublic(data=players, count=len(players))
+        return MediaPlayersPublic(data=cast(list[MediaPlayerPublic], players), count=len(players))
     if not players:
         return MediaPlayersPublic(data=[], count=0)
 
@@ -258,7 +263,7 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
                 continue
 
             result = results.get(player.ip_address)
-            previous_online = player.is_online
+            previous_online = bool(player.is_online)
             raw_online = bool(result and result.is_online)
             effective_online = await apply_poll_outcome(
                 kind="media_player",
@@ -304,7 +309,7 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
         )
 
         await invalidate_media_player_cache()
-        return MediaPlayersPublic(data=all_players, count=len(all_players))
+        return MediaPlayersPublic(data=cast(list[MediaPlayerPublic], all_players), count=len(all_players))
     finally:
         if lock_acquired:
             try:
@@ -315,7 +320,9 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
                 logger.debug("Could not release poll lock %s: %s", lock_key, exc)
 
 
-async def poll_media_player_batch(players: list[MediaPlayer]) -> dict[str, object | None]:
+async def poll_media_player_batch(
+    players: list[MediaPlayer],
+) -> dict[str, DeviceStatus | LightMediaPollResult | None]:
     """Poll a fleet in one event loop with bounded device and TCP concurrency."""
     if not players:
         return {}
@@ -323,7 +330,7 @@ async def poll_media_player_batch(players: list[MediaPlayer]) -> dict[str, objec
     device_semaphore = asyncio.Semaphore(max(1, min(settings.MEDIA_POLL_MAX_WORKERS, len(players))))
     port_scan_semaphore = asyncio.Semaphore(64)
 
-    async def _poll(player: MediaPlayer) -> tuple[str, object | None]:
+    async def _poll(player: MediaPlayer) -> tuple[str, DeviceStatus | LightMediaPollResult | None]:
         async with device_semaphore:
             return await poll_one_media_player_async(player, port_scan_semaphore=port_scan_semaphore)
 
@@ -333,7 +340,7 @@ async def poll_media_player_batch(players: list[MediaPlayer]) -> dict[str, objec
 
 async def rediscover_media_players_local(*, session: Session) -> MediaPlayersPublic:
     started = perf_counter()
-    players = session.exec(select(MediaPlayer).where(MediaPlayer.mac_address.isnot(None))).all()
+    players = session.exec(select(MediaPlayer).where(col(MediaPlayer.mac_address).isnot(None))).all()
     if not players:
         return MediaPlayersPublic(data=[], count=0)
 
@@ -394,7 +401,7 @@ async def rediscover_media_players_local(*, session: Session) -> MediaPlayersPub
         max(perf_counter() - started, 0)
     )
     all_players = session.exec(select(MediaPlayer)).all()
-    return MediaPlayersPublic(data=all_players, count=len(all_players))
+    return MediaPlayersPublic(data=cast(list[MediaPlayerPublic], all_players), count=len(all_players))
 
 
 async def _relocate_offline_media_players(session: Session, offline_with_mac: list[MediaPlayer]) -> None:
