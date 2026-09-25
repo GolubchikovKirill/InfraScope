@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import pytds
 import qrcode
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.enum.section import WD_SECTION_START
 from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -145,7 +146,7 @@ def _process_name(value: str) -> str:
 def _generate_qr_png_bytes(data: str) -> bytes:
     qr = qrcode.QRCode(
         version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        error_correction=qrcode.ERROR_CORRECT_L,
         box_size=10,
         border=4,
     )
@@ -153,11 +154,11 @@ def _generate_qr_png_bytes(data: str) -> bytes:
     qr.make(fit=True)
     image = qr.make_image(fill_color="black", back_color="white")
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    image.save(buffer)
     return buffer.getvalue()
 
 
-def _configure_document_layout(doc: Document) -> None:
+def _configure_document_layout(doc: DocxDocument) -> None:
     """
     Normalize page geometry so Word does not shift table right.
 
@@ -190,7 +191,6 @@ def _build_word_from_nameext(
         table = doc.add_table(rows=3, cols=3)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
-        table.allow_autofit = False
         for row in table.rows:
             row.height = Inches(2.75)
         for col in table.columns:
@@ -252,7 +252,6 @@ def _build_word_from_login(rows: list[dict], *, airport_code: str, add_login: bo
         table = doc.add_table(rows=3, cols=3)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
-        table.allow_autofit = False
         for row in table.rows:
             row.height = Inches(2.75)
         for col in table.columns:

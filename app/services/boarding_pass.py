@@ -5,6 +5,7 @@ import io
 from dataclasses import dataclass
 
 import qrcode
+from qrcode.image.pil import PilImage
 from PIL import Image, ImageDraw
 
 from app.domains.integrations.schemas import BoardingPassRequest
@@ -81,9 +82,10 @@ class BoardingPassRenderer:
         # 2D payload image and embed it into the resulting PNG.
         qr = qrcode.QRCode(
             version=None,
-            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            error_correction=qrcode.ERROR_CORRECT_M,
             box_size=10,
             border=2,
+            image_factory=PilImage,
         )
         qr.add_data(payload_text)
         qr.make(fit=True)
