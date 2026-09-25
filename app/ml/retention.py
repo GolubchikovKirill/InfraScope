@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, col, delete, select
 
 from app.domains.ml.models import MLFeatureSnapshot, MLModelRegistry
 from app.observability.metrics import ml_retention_rows_deleted_total
@@ -69,7 +69,7 @@ def prune_model_registry(session: Session, *, keep_per_family: int) -> int:
         rows = session.exec(
             select(MLModelRegistry)
             .where(MLModelRegistry.model_family == family)
-            .order_by(MLModelRegistry.trained_at.desc())
+            .order_by(col(MLModelRegistry.trained_at).desc())
         ).all()
         keep_ids = {row.id for row in rows[:keep_per_family]}
         keep_ids.update(row.id for row in rows if row.status == _ACTIVE)

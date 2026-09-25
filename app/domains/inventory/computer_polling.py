@@ -4,6 +4,8 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
+from typing import cast
+
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -16,6 +18,7 @@ from app.domains.inventory.reachability import (
     probe_host_ports,
 )
 from app.domains.inventory.schemas import ComputersPublic
+from app.domains.inventory.schemas.computers import ComputerPublic
 from app.services.cache import invalidate_entity_cache
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
 
@@ -69,7 +72,7 @@ async def poll_all_computers_local(*, session: Session) -> ComputersPublic:
     rows = session.exec(select(Computer)).all()
     if not lock_acquired:
         logger.info("Skipping duplicate poll-all request for computers: lock busy")
-        return ComputersPublic(data=rows, count=len(rows))
+        return ComputersPublic(data=cast(list[ComputerPublic], rows), count=len(rows))
 
     try:
         # A computer whose circuit is open keeps its last known state rather
@@ -94,7 +97,7 @@ async def poll_all_computers_local(*, session: Session) -> ComputersPublic:
             session.add(row)
         session.commit()
         await invalidate_computer_cache()
-        return ComputersPublic(data=rows, count=len(rows))
+        return ComputersPublic(data=cast(list[ComputerPublic], rows), count=len(rows))
     finally:
         if lock_acquired:
             try:

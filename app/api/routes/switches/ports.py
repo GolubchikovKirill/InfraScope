@@ -4,7 +4,7 @@ import asyncio
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.domains.inventory.models import SwitchPortSnapshot
@@ -119,7 +119,7 @@ def get_switch_port_config_history(
     rows = session.exec(
         select(SwitchPortSnapshot)
         .where(SwitchPortSnapshot.switch_id == switch_id)
-        .order_by(SwitchPortSnapshot.captured_at.desc())
+        .order_by(col(SwitchPortSnapshot.captured_at).desc())
         .limit(limit)
     ).all()
     return SwitchPortSnapshotHistory(

@@ -14,6 +14,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from collections.abc import Sequence
+
 from sqlmodel import Session, select
 
 from app.domains.inventory.models import SwitchAccessPoint
@@ -102,7 +104,7 @@ def recover_missing_macs_from_registry(
     return live_aps
 
 
-def get_known_aps(session: Session, *, switch_id: uuid.UUID) -> list[SwitchAccessPoint]:
+def get_known_aps(session: Session, *, switch_id: uuid.UUID) -> Sequence[SwitchAccessPoint]:
     return session.exec(
         select(SwitchAccessPoint).where(
             SwitchAccessPoint.switch_id == switch_id,

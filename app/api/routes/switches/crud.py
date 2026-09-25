@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import cast
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.concurrency import run_in_threadpool
@@ -34,7 +36,7 @@ def _query_switches_page(
     name: str | None,
     skip: int,
     limit: int,
-) -> tuple[list[NetworkSwitch], int]:
+) -> tuple[Sequence[NetworkSwitch], int]:
     statement = select(NetworkSwitch)
     count_stmt = select(func.count()).select_from(NetworkSwitch)
     if name:
@@ -75,7 +77,7 @@ async def read_switches(
         total=len(switches),
         online=sum(1 for s in switches if s.is_online),
     )
-    result = NetworkSwitchesPublic(data=switches, count=count)
+    result = NetworkSwitchesPublic(data=cast(list[NetworkSwitchPublic], list(switches)), count=count)
 
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)
 

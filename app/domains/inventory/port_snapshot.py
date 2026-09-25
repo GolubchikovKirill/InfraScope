@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.domains.inventory.models import NetworkSwitch, SwitchPortSnapshot
 from app.services.switches import resolve_switch_provider
@@ -61,7 +61,7 @@ def capture_switch_port_snapshot(session: Session, switch: NetworkSwitch) -> Swi
     last = session.exec(
         select(SwitchPortSnapshot)
         .where(SwitchPortSnapshot.switch_id == switch.id)
-        .order_by(SwitchPortSnapshot.captured_at.desc())
+        .order_by(col(SwitchPortSnapshot.captured_at).desc())
         .limit(1)
     ).first()
     if last is not None and last.ports_hash == new_hash:

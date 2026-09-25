@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import cast
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.concurrency import run_in_threadpool
@@ -63,7 +65,7 @@ def _query_computers_page(
     q: str | None,
     skip: int,
     limit: int,
-) -> tuple[list[Computer], int]:
+) -> tuple[Sequence[Computer], int]:
     statement = select(Computer)
     count_stmt = select(func.count()).select_from(Computer)
     if q:
@@ -93,7 +95,7 @@ async def read_computers(
         return cached
 
     rows, count = await run_in_threadpool(_query_computers_page, session, q, skip, limit)
-    result = ComputersPublic(data=rows, count=count)
+    result = ComputersPublic(data=cast(list[ComputerPublic], list(rows)), count=count)
 
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)
 
