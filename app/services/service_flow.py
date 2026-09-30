@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 import yaml
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.core.bounded_cache import BoundedTTLCache
 from app.core.config import settings
@@ -265,7 +265,7 @@ def _build_edges() -> list[ServiceFlowEdgePublic]:
 
 
 def build_service_flow_map(session: Session) -> ServiceFlowMapPublic:
-    events = session.exec(select(EventLog).order_by(EventLog.created_at.desc()).limit(30)).all()
+    events = session.exec(select(EventLog).order_by(col(EventLog.created_at).desc()).limit(30)).all()
     return ServiceFlowMapPublic(
         generated_at=datetime.now(UTC),
         nodes=_build_nodes(),

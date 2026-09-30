@@ -1059,7 +1059,7 @@ body {
 @keyframes progress-sweep {
   0% {
     width: 15%;
-    margin-left: 0%;
+    margin-left: 0;
   }
   50% {
     width: 30%;

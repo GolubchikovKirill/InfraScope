@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.domains.inventory.models import CartridgeStock, CartridgeStockMovement, Printer
 from app.domains.inventory.schemas import (
@@ -163,8 +163,8 @@ def list_cartridge_stock(
     if search:
         pattern = f"%{search.strip()}%"
         statement = statement.where(
-            CartridgeStock.cartridge_name.ilike(pattern)
-            | CartridgeStock.compatible_printer_models.ilike(pattern)
+            col(CartridgeStock.cartridge_name).ilike(pattern)
+            | col(CartridgeStock.compatible_printer_models).ilike(pattern)
             | CartridgeStock.toner_color.ilike(pattern)
         )
     return session.exec(statement.order_by(CartridgeStock.cartridge_name)).all()
@@ -182,7 +182,7 @@ def list_cartridge_movements(session: Session, stock_id: uuid.UUID, limit: int =
     return session.exec(
         select(CartridgeStockMovement)
         .where(CartridgeStockMovement.stock_id == stock_id)
-        .order_by(CartridgeStockMovement.created_at.desc())
+        .order_by(col(CartridgeStockMovement.created_at).desc())
         .limit(limit)
     ).all()
 

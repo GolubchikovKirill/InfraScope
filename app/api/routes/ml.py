@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
@@ -30,7 +30,7 @@ async def read_toner_predictions(
     if cached := await get_cached_model(cache_key, MLTonerPredictionsPublic):
         return cached
 
-    statement = select(MLTonerPrediction).order_by(MLTonerPrediction.created_at.desc())
+    statement = select(MLTonerPrediction).order_by(col(MLTonerPrediction.created_at).desc())
     if printer_id is not None:
         statement = statement.where(MLTonerPrediction.printer_id == printer_id)
     rows = session.exec(statement.limit(limit)).all()
@@ -51,7 +51,7 @@ async def read_offline_risk_predictions(
     if cached := await get_cached_model(cache_key, MLOfflineRiskPredictionsPublic):
         return cached
 
-    statement = select(MLOfflineRiskPrediction).order_by(MLOfflineRiskPrediction.created_at.desc())
+    statement = select(MLOfflineRiskPrediction).order_by(col(MLOfflineRiskPrediction.created_at).desc())
     if device_kind is not None:
         statement = statement.where(MLOfflineRiskPrediction.device_kind == device_kind)
     rows = session.exec(statement.limit(limit)).all()
@@ -71,7 +71,7 @@ async def read_model_status(
     if cached := await get_cached_model(cache_key, MLModelsStatusPublic):
         return cached
 
-    rows = session.exec(select(MLModelRegistry).order_by(MLModelRegistry.trained_at.desc()).limit(limit)).all()
+    rows = session.exec(select(MLModelRegistry).order_by(col(MLModelRegistry.trained_at).desc()).limit(limit)).all()
     data = [
         {
             "model_family": row.model_family,

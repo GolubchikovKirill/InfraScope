@@ -5,7 +5,7 @@ import statistics
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, col, delete, select
 
 from app.core.config import settings
 from app.domains.inventory.models import Printer
@@ -43,7 +43,7 @@ def _latest_active_model(session: Session, family: str) -> MLModelRegistry | Non
     return session.exec(
         select(MLModelRegistry)
         .where(MLModelRegistry.model_family == family, MLModelRegistry.status == _ACTIVE)
-        .order_by(MLModelRegistry.activated_at.desc(), MLModelRegistry.trained_at.desc())
+        .order_by(col(MLModelRegistry.activated_at).desc(), col(MLModelRegistry.trained_at).desc())
     ).first()
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from app.core.db import engine
-from app.models import CashRegister
+from app.domains.operations.models import CashRegister
 
 
 def main() -> int:

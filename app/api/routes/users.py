@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import func, select
+from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.domains.identity import crud
@@ -24,7 +24,7 @@ def read_users(
 ) -> UsersPublic:
     count_statement = select(func.count()).select_from(User)
     count = session.exec(count_statement).one()
-    statement = select(User).offset(skip).limit(limit).order_by(User.created_at.desc())
+    statement = select(User).offset(skip).limit(limit).order_by(col(User.created_at).desc())
     users = session.exec(statement).all()
     return UsersPublic(data=users, count=count)
 

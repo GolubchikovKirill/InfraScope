@@ -10,7 +10,6 @@ type Props = {
 
 // Runs on the admin workstation (never on this server): pushes over C$ + WMI, no reboot.
 const PUSH_COMMAND = ".\rustdesk-ksc\Push-RustDesk.ps1 -ComputerName <имя-машины>";
-const PUSH_COMMAND_ADMIN = PUSH_COMMAND + " -Profile admin";
 
 /** The one line an operator pastes into a GPO startup script / schtasks. Fleet-wide and
  *  identical for every machine - the script asks InfraScope who it should be

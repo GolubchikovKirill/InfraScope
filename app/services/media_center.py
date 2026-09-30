@@ -6,7 +6,7 @@ from pathlib import Path
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.core.config import settings
 from app.domains.inventory.models import MediaPlayer
@@ -64,7 +64,7 @@ def get_assignment(session: Session, player_id: uuid.UUID) -> MediaAssignment | 
 
 def list_assets(session: Session) -> list[MediaAsset]:
     return session.exec(
-        select(MediaAsset).where(MediaAsset.is_active == True).order_by(MediaAsset.created_at.desc())  # noqa: E712
+        select(MediaAsset).where(MediaAsset.is_active == True).order_by(col(MediaAsset.created_at).desc())  # noqa: E712
     ).all()
 
 

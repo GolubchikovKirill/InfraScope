@@ -176,7 +176,6 @@ export default function OverviewPage() {
   const totalMonitored = fleets.reduce((total, fleet) => total + fleet.total, 0);
   const healthBase = totalOnline + totalOffline;
   const healthPercent = healthBase ? Math.round((totalOnline / healthBase) * 100) : 0;
-  const attentionCount = totalOffline + totalUnknown + lowTonerCount + lowStockCount + cashRegisterAttentionCount + errorEventCount;
 
   const priorities: Priority[] = (() => {
     const result: Priority[] = [];

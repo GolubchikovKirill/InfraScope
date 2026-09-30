@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from sqlmodel import select
+from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.domains.media_center.models import MediaAsset, MediaAssignment, MediaClientHeartbeat
@@ -84,7 +84,7 @@ def read_asset_file(asset_id: uuid.UUID, session: SessionDep, current_user: Curr
 @router.get("/heartbeats", response_model=MediaClientHeartbeatsPublic)
 def list_client_heartbeats(session: SessionDep, current_user: CurrentUser) -> MediaClientHeartbeatsPublic:
     del current_user
-    rows = session.exec(select(MediaClientHeartbeat).order_by(MediaClientHeartbeat.last_seen_at.desc())).all()
+    rows = session.exec(select(MediaClientHeartbeat).order_by(col(MediaClientHeartbeat.last_seen_at).desc())).all()
     return MediaClientHeartbeatsPublic(data=rows, count=len(rows))
 
 

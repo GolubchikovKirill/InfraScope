@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.core.config import settings
 from app.core.redis import REDIS_ERRORS, get_redis
@@ -63,7 +63,7 @@ def enqueue_push_jobs(
         raise ValueError(f"unknown deploy profile {profile!r}")
     busy = {
         job.device_id
-        for job in session.exec(select(RemoteAccessPushJob).where(RemoteAccessPushJob.state.in_(PUSH_JOB_ACTIVE))).all()
+        for job in session.exec(select(RemoteAccessPushJob).where(col(RemoteAccessPushJob.state).in_(PUSH_JOB_ACTIVE))).all()
         if job.device_id
     }
     queued: list[RemoteAccessPushJob] = []
@@ -130,7 +130,7 @@ def reap_stale_push_jobs(session: Session) -> int:
 
 def list_push_jobs(session: Session, limit: int = 100) -> list[RemoteAccessPushJob]:
     reap_stale_push_jobs(session)
-    return list(session.exec(select(RemoteAccessPushJob).order_by(RemoteAccessPushJob.created_at.desc()).limit(limit)).all())
+    return list(session.exec(select(RemoteAccessPushJob).order_by(col(RemoteAccessPushJob.created_at).desc()).limit(limit)).all())
 
 
 # --------------------------------------------------------------------------- #

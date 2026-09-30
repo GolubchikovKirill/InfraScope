@@ -1,5 +1,4 @@
 import React from "react";
-import { motion, HTMLMotionProps } from "framer-motion";
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: boolean;

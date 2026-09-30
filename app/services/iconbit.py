@@ -123,13 +123,13 @@ def _parse_now_html(text: str) -> str | None:
 
 def _parse_free_space(html: str) -> str | None:
     """Extract free space from main page HTML."""
-    m = re.search(r"[Дд]оступно\s+(\d+[\.,]?\d*\s*[GMKT]B)\s*/\s*(\d+[\.,]?\d*\s*[GMKT]B)", html, re.IGNORECASE)
+    m = re.search(r"[Дд]оступно\s+(\d+[.,]?\d*\s*[GMKT]B)\s*/\s*(\d+[.,]?\d*\s*[GMKT]B)", html, re.IGNORECASE)
     if m:
         return f"{m.group(1)} / {m.group(2)}"
-    m = re.search(r"(\d+[\.,]?\d*\s*[GMKT]B)\s*/\s*(\d+[\.,]?\d*\s*[GMKT]B)", html, re.IGNORECASE)
+    m = re.search(r"(\d+[.,]?\d*\s*[GMKT]B)\s*/\s*(\d+[.,]?\d*\s*[GMKT]B)", html, re.IGNORECASE)
     if m:
         return f"{m.group(1)} / {m.group(2)}"
-    m = re.search(r"(\d+[\.,]?\d*\s*[GMKT]B)\s+available", html, re.IGNORECASE)
+    m = re.search(r"(\d+[.,]?\d*\s*[GMKT]B)\s+available", html, re.IGNORECASE)
     if m:
         return m.group(1)
     return None

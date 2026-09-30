@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Monitor, Music, ExternalLink, Clock, Cpu,
   Network, Wifi, Play, Square, Volume2, Upload, X, FileAudio, Copy, MoreHorizontal, Radio,
@@ -48,7 +48,6 @@ function webPanelUrl(player: MediaPlayer): string {
 }
 
 function IconbitControls({ playerId }: { playerId: string }) {
-  const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
