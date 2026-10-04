@@ -55,8 +55,43 @@ def test_create_printer_autofills_mac_from_ip(client: TestClient, admin_token: s
     )
 
     assert response.status_code == 200
-    assert response.json()["mac_address"] == "aa:bb:cc:dd:ee:11"
-    assert response.json()["mac_status"] == "verified"
+    # The lookup runs as a background task, after the response is built.
+    stored = client.get(
+        f"/api/v1/printers/{response.json()['id']}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    ).json()
+    assert stored["mac_address"] == "aa:bb:cc:dd:ee:11"
+    assert stored["mac_status"] == "verified"
+
+
+def test_update_printer_ip_drops_stale_mac_and_refills_it(client: TestClient, admin_token: str, monkeypatch):
+    macs = {"10.10.10.12": "aa:bb:cc:dd:ee:12", "10.10.10.13": None}
+
+    async def _fake_resolve_mac(ip_address: str, **kwargs):
+        return macs[ip_address]
+
+    monkeypatch.setattr(printer_routes, "resolve_mac_for_ip_address", _fake_resolve_mac)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    printer_id = client.post(
+        "/api/v1/printers/",
+        json={
+            "printer_type": "laser",
+            "connection_type": "ip",
+            "store_name": "Store C",
+            "model": "HP M404",
+            "ip_address": "10.10.10.12",
+        },
+        headers=headers,
+    ).json()["id"]
+    assert client.get(f"/api/v1/printers/{printer_id}", headers=headers).json()["mac_address"] == "aa:bb:cc:dd:ee:12"
+
+    # New IP is unreachable: the old printer's MAC must not survive the move.
+    moved = client.patch(f"/api/v1/printers/{printer_id}", json={"ip_address": "10.10.10.13"}, headers=headers)
+    assert moved.status_code == 200
+    assert moved.json()["mac_address"] is None
+    stored = client.get(f"/api/v1/printers/{printer_id}", headers=headers).json()
+    assert stored["mac_address"] is None
+    assert stored["mac_status"] is None
 
 
 def test_poll_usb_printer_is_blocked(client: TestClient, admin_token: str):
@@ -281,7 +316,9 @@ def test_cartridge_card_full_crud(client: TestClient, admin_token: str):
     # Archiving must not throw the counted stock away.
     assert archived.json()["quantity_on_hand"] == 2
 
-    assert stock_id not in [row["id"] for row in client.get("/api/v1/printers/cartridges", headers=headers).json()["data"]]
+    assert stock_id not in [
+        row["id"] for row in client.get("/api/v1/printers/cartridges", headers=headers).json()["data"]
+    ]
     with_archive = client.get("/api/v1/printers/cartridges?include_inactive=true", headers=headers)
     assert stock_id in [row["id"] for row in with_archive.json()["data"]]
 
@@ -296,12 +333,8 @@ def test_cartridge_card_full_crud(client: TestClient, admin_token: str):
 
 def test_cartridge_rename_onto_existing_name_is_rejected(client: TestClient, admin_token: str):
     headers = {"Authorization": f"Bearer {admin_token}"}
-    first = client.post(
-        "/api/v1/printers/cartridges", json={"cartridge_name": "W2070A"}, headers=headers
-    )
-    second = client.post(
-        "/api/v1/printers/cartridges", json={"cartridge_name": "W2071A"}, headers=headers
-    )
+    first = client.post("/api/v1/printers/cartridges", json={"cartridge_name": "W2070A"}, headers=headers)
+    second = client.post("/api/v1/printers/cartridges", json={"cartridge_name": "W2071A"}, headers=headers)
     assert first.status_code == 200 and second.status_code == 200
 
     clash = client.patch(

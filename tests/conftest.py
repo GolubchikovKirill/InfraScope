@@ -147,6 +147,7 @@ def client(db_session, monkeypatch: pytest.MonkeyPatch):
     # too, not the production engine (host "db"), which does not exist here.
     monkeypatch.setattr(deps, "engine", engine)
     monkeypatch.setattr("app.main.engine", engine)
+    monkeypatch.setattr("app.api.routes.printers.engine", engine)
 
     monkeypatch.setattr(deps, "is_token_blacklisted", _is_blacklisted)
     from app.api.routes import auth as auth_routes

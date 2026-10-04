@@ -2,12 +2,13 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
-from sqlmodel import func, select
+from sqlmodel import Session, func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import conflict, not_found
+from app.core.db import engine
 from app.domains.inventory.models import Printer
 from app.domains.inventory.printer_polling import (
     PrinterNotFoundError,
@@ -136,6 +137,27 @@ async def _resolve_mac_for_printer(printer: Printer) -> str | None:
     )
 
 
+async def _fill_mac_in_background(printer_id: uuid.UUID, ip_address: str) -> None:
+    # MAC lookup against an unreachable host runs into SNMP and ping timeouts
+    # (~20s), so it must not hold up the create/edit request: the save button
+    # in the UI would spin for that long. Look the MAC up after the response
+    # and write it only if the printer still sits on the same IP and nobody
+    # has set a MAC in the meantime.
+    with Session(engine) as session:
+        printer = session.get(Printer, printer_id)
+        if printer is None:
+            return
+        resolved_mac = await _resolve_mac_for_printer(printer)
+        session.refresh(printer)
+        if not resolved_mac or printer.ip_address != ip_address or printer.mac_address:
+            return
+        printer.mac_address = resolved_mac
+        printer.mac_status = "verified"
+        session.add(printer)
+        session.commit()
+    await invalidate_printer_cache()
+
+
 @router.get("/cartridges", response_model=CartridgeStocksPublic)
 def read_cartridge_stock(
     session: SessionDep,
@@ -262,9 +284,7 @@ async def read_printers(
     if cached := await get_cached_model(cache_key, PrintersPublic):
         return cached
 
-    printers, count = await run_in_threadpool(
-        _query_printers_page, session, printer_type, store_name, skip, limit
-    )
+    printers, count = await run_in_threadpool(_query_printers_page, session, printer_type, store_name, skip, limit)
     result = PrintersPublic(data=printers, count=count)
 
     await set_cached_model(cache_key, result, ttl=CACHE_TTL)
@@ -273,17 +293,16 @@ async def read_printers(
 
 
 @router.post("/", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
-async def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Printer:
+async def create_printer(session: SessionDep, printer_in: PrinterCreate, background_tasks: BackgroundTasks) -> Printer:
     if printer_in.connection_type == "ip" and printer_in.ip_address:
         _check_unique_ip(session, printer_in.ip_address)
     printer = Printer(**printer_in.model_dump())
-    if printer.connection_type == "ip" and printer.ip_address and not printer.mac_address:
-        printer.mac_address = await _resolve_mac_for_printer(printer)
-        printer.mac_status = "verified" if printer.mac_address else None
     session.add(printer)
     session.commit()
     session.refresh(printer)
     await invalidate_printer_cache()
+    if printer.connection_type == "ip" and printer.ip_address and not printer.mac_address:
+        background_tasks.add_task(_fill_mac_in_background, printer.id, printer.ip_address)
     return printer
 
 
@@ -296,7 +315,9 @@ def read_printer(printer_id: uuid.UUID, session: SessionDep, current_user: Curre
 
 
 @router.patch("/{printer_id}", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
-async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in: PrinterUpdate) -> Printer:
+async def update_printer(
+    session: SessionDep, printer_id: uuid.UUID, printer_in: PrinterUpdate, background_tasks: BackgroundTasks
+) -> Printer:
     printer = _get_printer_or_404(session, printer_id)
     update_data = printer_in.model_dump(exclude_unset=True)
     if "ip_address" in update_data and update_data["ip_address"] is not None:
@@ -305,20 +326,17 @@ async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in:
     ip_changed = "ip_address" in update_data and update_data.get("ip_address") != printer.ip_address
     explicit_mac = "mac_address" in update_data
     printer.sqlmodel_update(update_data)
-    if (
-        printer.connection_type == "ip"
-        and printer.ip_address
-        and ip_changed
-        and not explicit_mac
-    ):
-        resolved_mac = await _resolve_mac_for_printer(printer)
-        if resolved_mac:
-            printer.mac_address = resolved_mac
-            printer.mac_status = "verified"
+    if ip_changed and not explicit_mac:
+        # The old MAC belongs to whatever used to sit on the old IP; keeping it
+        # "verified" would point MAC/ARP checks at the wrong device.
+        printer.mac_address = None
+        printer.mac_status = None
     session.add(printer)
     session.commit()
     session.refresh(printer)
     await invalidate_printer_cache()
+    if printer.connection_type == "ip" and printer.ip_address and ip_changed and not explicit_mac:
+        background_tasks.add_task(_fill_mac_in_background, printer.id, printer.ip_address)
     return printer
 
 
