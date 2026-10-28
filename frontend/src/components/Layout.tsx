@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../auth";
 import {
@@ -23,6 +23,8 @@ import {
   Tv,
   MonitorSmartphone,
   KeyRound,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { readThemeMode, setThemeMode, type ThemeMode } from "../theme";
 
@@ -95,13 +97,48 @@ export default function Layout({ children }: { children: ReactNode }) {
     location.pathname.startsWith(item.to),
   );
 
+  // The mobile chip strips scroll sideways; bring the current page's chip into
+  // view, or on /computers the strip opened on "Принтеры" with the active
+  // chip off-screen to the right.
+  const mobileHeaderRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const active = mobileHeaderRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    active?.scrollIntoView?.({ block: "nearest", inline: "center" });
+  }, [location.pathname, isEquipmentOpen]);
+
   const handleToggleTheme = () => {
     const next: ThemeMode = themeMode === "light" ? "dark" : "light";
     setThemeMode(next);
     setThemeModeState(next);
   };
 
+  const collapsed = !isSidebarVisible;
+  // The rail has no labels, so hovering or tabbing onto an item names it. The
+  // tip is fixed-positioned outside the nav: the nav scrolls, and a scroller
+  // clips anything that pokes out past the rail's edge.
+  const [railTip, setRailTip] = useState<{ label: string; top: number; left: number } | null>(null);
+  const showRailTip = (label: string, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    setRailTip({ label, top: rect.top + rect.height / 2, left: rect.right + 12 });
+  };
+  const hideRailTip = () => setRailTip(null);
+  const railTipProps = (label: string) =>
+    collapsed
+      ? {
+          "aria-label": label,
+          onMouseEnter: (event: MouseEvent<HTMLElement>) => showRailTip(label, event.currentTarget),
+          onFocus: (event: FocusEvent<HTMLElement>) => showRailTip(label, event.currentTarget),
+          onMouseLeave: hideRailTip,
+          onBlur: hideRailTip,
+        }
+      : {};
+  const navItemClass = (isActive: boolean, nested = false) =>
+    `inline-flex w-full items-center gap-3 whitespace-nowrap rounded-xl border text-sm font-medium transition ${
+      collapsed ? "justify-center px-0 py-2.5" : `px-3 py-2.5 ${nested ? "pl-8" : ""}`
+    } ${isActive ? "app-nav-active" : "app-nav-idle border-transparent"}`;
+
   const handleToggleSidebar = () => {
+    setRailTip(null);
     setSidebarVisible((prev) => {
       const next = !prev;
       try {
@@ -115,131 +152,132 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen app-shell md:flex">
-      <aside className={`${isSidebarVisible ? "hidden md:flex" : "hidden"} app-sidebar md:w-[17rem] lg:w-72 md:flex-col md:sticky md:top-0 md:h-screen md:border-r`}>
-        <div className="px-6 pt-6 pb-5 border-b border-[var(--sidebar-border)]">
-          <button
-            type="button"
-            onClick={handleToggleSidebar}
-            className="app-logo-btn flex-col items-start! text-left"
-            title="Свернуть/развернуть меню"
-          >
-            <span className="app-wordmark text-[1.85rem] text-white">
-              RegStaer<span className="app-wordmark-suffix">-M</span>
+      {/* Collapsing used to remove the sidebar outright and float a
+          "RegStaer-M" pill over the top-left corner, right on top of the page
+          title. It now folds to an icon rail instead: navigation stays one
+          click away and nothing overlaps the content. */}
+      <aside
+        className={`app-sidebar hidden md:flex md:flex-col md:sticky md:top-0 md:h-screen md:border-r shrink-0 overflow-hidden transition-[width] duration-200 ease-out ${
+          collapsed ? "md:w-[4.5rem]" : "md:w-[17rem] lg:w-72"
+        }`}
+      >
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-3 px-2 pt-5 pb-4 border-b border-[var(--sidebar-border)]">
+            <span className="app-wordmark text-[1.6rem] text-white" aria-label="RegStaer-M">
+              R<span className="app-wordmark-suffix">M</span>
             </span>
-            <span className="app-wordmark-product mt-2">InfraScope</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              className="app-rail-toggle"
+              title="Развернуть меню"
+              aria-label="Развернуть меню"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-start justify-between gap-2 px-6 pt-6 pb-5 border-b border-[var(--sidebar-border)]">
+            <div className="flex flex-col items-start">
+              <span className="app-wordmark text-[1.85rem] text-white">
+                RegStaer<span className="app-wordmark-suffix">-M</span>
+              </span>
+              <span className="app-wordmark-product mt-2">InfraScope</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              className="app-rail-toggle -mr-2"
+              title="Свернуть меню"
+              aria-label="Свернуть меню"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          <NavLink
-            to="/"
-            end
-            className={({ isActive }) =>
-              `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
-                isActive
-                  ? "app-nav-active"
-                  : "app-nav-idle border-transparent"
-              }`
-            }
-          >
+        <nav
+          onScroll={hideRailTip}
+          className={`flex-1 space-y-2 overflow-y-auto overflow-x-hidden app-compact-scroll ${collapsed ? "px-3 py-4" : "p-4"}`}
+        >
+          <NavLink to="/" end className={({ isActive }) => navItemClass(isActive)} {...railTipProps("Обзор")}>
             <LayoutDashboard className="h-4 w-4 shrink-0" />
-            Обзор
+            {!collapsed && "Обзор"}
           </NavLink>
           <button
             type="button"
             onClick={() => setEquipmentOpen((prev) => !prev)}
-            className={`inline-flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
-              equipmentIsActive ? "app-nav-active" : "app-nav-idle border-transparent"
-            }`}
+            className={`${navItemClass(equipmentIsActive)} ${collapsed ? "" : "justify-between"}`}
+            aria-expanded={isEquipmentOpen}
+            {...railTipProps("Оборудование")}
           >
             <span className="inline-flex items-center gap-3">
               <Server className="h-4 w-4 shrink-0" />
-              Оборудование
+              {!collapsed && "Оборудование"}
             </span>
-            {isEquipmentOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {!collapsed && (isEquipmentOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
           </button>
-          {isEquipmentOpen &&
-            equipmentVisibleItems.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end
-                className={({ isActive }) =>
-                  `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 pl-8 text-sm font-medium transition ${
-                    isActive
-                      ? "app-nav-active"
-                      : "app-nav-idle border-transparent"
-                  }`
-                }
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-              </NavLink>
-            ))}
+          {isEquipmentOpen && (
+            // On the rail the indent is gone, so the group reads as a tray
+            <div className={collapsed ? "app-rail-group space-y-1 p-1" : "space-y-2"}>
+              {equipmentVisibleItems.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end
+                  className={({ isActive }) => navItemClass(isActive, true)}
+                  {...railTipProps(label)}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {!collapsed && label}
+                </NavLink>
+              ))}
+            </div>
+          )}
           {baseItems
             .filter((item) => item.visible)
             .map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end
-                className={({ isActive }) =>
-                  `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
-                    isActive
-                      ? "app-nav-active"
-                      : "app-nav-idle border-transparent"
-                  }`
-                }
-              >
+              <NavLink key={to} to={to} end className={({ isActive }) => navItemClass(isActive)} {...railTipProps(label)}>
                 <Icon className="h-4 w-4 shrink-0" />
-                {label}
+                {!collapsed && label}
               </NavLink>
             ))}
         </nav>
 
-        <div className="p-4 border-t border-[var(--sidebar-border)] space-y-2.5">
-          <div className="flex items-center gap-2">
+        <div className={`border-t border-[var(--sidebar-border)] ${collapsed ? "px-3 py-4" : "p-4"}`}>
+          <div className={`flex gap-2 ${collapsed ? "flex-col items-center" : "items-center"}`}>
             <button
               onClick={handleToggleTheme}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs transition app-btn-secondary"
+              className={`inline-flex items-center justify-center gap-1.5 rounded-lg border text-xs transition app-btn-secondary ${
+                collapsed ? "h-9 w-9" : "px-2 py-1.5"
+              }`}
               title={themeMode === "light" ? "Включить тёмную тему" : "Включить светлую тему"}
             >
               {themeMode === "light" ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
             </button>
             <button
               onClick={logout}
-              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs transition app-btn-secondary"
+              className={`inline-flex items-center justify-center gap-1.5 rounded-lg border text-xs transition app-btn-secondary ${
+                collapsed ? "h-9 w-9" : "flex-1 px-2 py-1.5"
+              }`}
               title="Выйти из аккаунта"
+              aria-label="Выход"
             >
               <LogOut className="h-3.5 w-3.5" />
-              Выход
+              {!collapsed && "Выход"}
             </button>
           </div>
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden relative">
-        {!isSidebarVisible && (
-          <div
-            // z-40: was z-10, sitting UNDER .app-topbar's z-20 in the same
-            // stacking context. They overlap in the top-left corner, so the
-            // topbar was silently eating every click meant for this button
-            // - the sidebar had no way back once hidden.
-            className="hidden md:flex px-3 sm:px-5 lg:px-8 pt-3 absolute z-40 slide-in-left"
-          >
-            <button
-              type="button"
-              onClick={handleToggleSidebar}
-              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs app-btn-secondary app-logo-live backdrop-blur-md bg-[var(--surface-1)]/85"
-              title="Показать меню"
-            >
-              <Server className="h-4 w-4" />
-              RegStaer-M
-            </button>
-          </div>
-        )}
+      {railTip && (
+        <div className="app-rail-tip" role="tooltip" style={{ top: railTip.top, left: railTip.left }}>
+          {railTip.label}
+        </div>
+      )}
 
-        <header className="app-header md:hidden sticky top-0 z-30 border-b backdrop-blur-xl">
+      <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden relative">
+        <header ref={mobileHeaderRef} className="app-header md:hidden sticky top-0 z-30 border-b backdrop-blur-xl">
           <div className="px-3 py-3 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -263,7 +301,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 </button>
               </div>
             </div>
-            <nav className="flex gap-2 overflow-x-auto pb-1">
+            <nav className="app-scroll-x-hidden flex gap-2 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setEquipmentOpen((prev) => !prev)}
@@ -296,7 +334,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 ))}
             </nav>
             {isEquipmentOpen && (
-              <nav className="flex gap-2 overflow-x-auto pb-1">
+              <nav className="app-scroll-x-hidden flex gap-2 overflow-x-auto">
                 {equipmentVisibleItems.map(({ to, label, icon: Icon }) => (
                   <NavLink
                     key={to}

@@ -80,7 +80,7 @@ export default function ScreensPage() {
 
   return (
     <div className="space-y-5">
-      <section className="grid gap-3 sm:grid-cols-3" aria-label="Статистика экранов">
+      <section className="grid grid-cols-3 gap-2 sm:gap-3" aria-label="Статистика экранов">
         <Stat label="Экранов" value={all.length} />
         <Stat label="Активных" value={active.length} detail={all.length ? `${all.length - active.length} не в сети` : undefined} />
         <Stat label="На связи в RustDesk" value={all.filter((s) => screenState(s) === "online").length} detail="к ним можно подключиться" />

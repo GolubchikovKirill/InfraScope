@@ -84,7 +84,7 @@ export default function LogsPage() {
 
       <div className="app-panel p-3 flex flex-col gap-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div className="relative w-full md:max-w-sm">
+          <div className="relative w-full md:max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               value={search}

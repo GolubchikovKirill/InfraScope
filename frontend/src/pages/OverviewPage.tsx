@@ -239,7 +239,7 @@ export default function OverviewPage() {
         </div>
       )}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Общая статистика">
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4" aria-label="Общая статистика">
         <Stat
           label="Доступность"
           value={healthBase ? `${healthPercent}%` : "—"}

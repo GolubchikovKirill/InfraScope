@@ -21,6 +21,8 @@ import { useCredentialIndex } from "../hooks/useCredentialIndex";
 import { describeOfflineReason } from "../lib/offlineReason";
 import { credentialsHref, normalizeHostKey, rowDomId } from "../lib/deviceLinks";
 import RemoteAccessButtons from "../components/RemoteAccessButtons";
+import { IconButton } from "../components/ui/IconButton";
+import { useConfirm } from "../components/ConfirmDialog";
 import StaleComputersModal from "../components/StaleComputersModal";
 
 type StatusFilter = "all" | "online" | "offline";
@@ -39,6 +41,7 @@ const emptyForm: ComputerForm = {
 export default function ComputersPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const isSuperuser = Boolean(user?.is_superuser);
   const [q, setQ] = useQueryParamState("q");
   const [focus] = useQueryParamState("focus");
@@ -194,7 +197,7 @@ export default function ComputersPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Stat label="Всего" value={rows.length} active={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
         <Stat
           label="Онлайн"
@@ -237,12 +240,16 @@ export default function ComputersPage() {
             const credCount = credIndex.get(normalizeHostKey(row.hostname)) ?? 0;
             return (
             <div key={row.id} id={rowDomId(row.hostname)} className="app-panel p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="text-base font-semibold text-slate-900">{row.hostname}</div>
+              {/* Fixed info column, remote access in the middle, icon actions on
+                  the right - the same shape as a cash register row. As one
+                  free-flowing flex row the ten buttons wrapped into two lines
+                  and squeezed the hostname and dates into a sliver. */}
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(15rem,20rem)_minmax(0,1fr)_auto] lg:gap-5">
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="min-w-0 break-all text-base font-semibold text-slate-900">{row.hostname}</div>
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
                         row.is_online === true
                           ? "bg-emerald-100 text-emerald-700"
                           : row.is_online === false
@@ -260,10 +267,10 @@ export default function ComputersPage() {
                       {row.is_online === true ? "online" : row.is_online === false ? "offline" : "не опрошен"}
                     </span>
                   </div>
-                  <div className="grid gap-1 text-xs text-gray-500 sm:grid-cols-2">
-                    <div>Локация/магазин: {row.location || "—"}</div>
-                    <div>Создано: {new Date(row.created_at).toLocaleString("ru-RU")}</div>
-                    <div>Проверка: {polledAt || "ещё не было"}</div>
+                  <div className="space-y-0.5 text-xs">
+                    <div><span className="text-slate-400">Локация: </span><span className="text-slate-700">{row.location || "—"}</span></div>
+                    <div><span className="text-slate-400">Проверка: </span><span className="text-slate-700">{polledAt || "ещё не было"}</span></div>
+                    <div><span className="text-slate-400">Создано: </span><span className="text-slate-700">{new Date(row.created_at).toLocaleString("ru-RU")}</span></div>
                   </div>
                   {row.is_online === false && (
                     <div className="text-xs text-[var(--danger-fg)]">
@@ -272,52 +279,50 @@ export default function ComputersPage() {
                   )}
                   {row.comment && <div className="text-sm text-slate-600">Комментарий: {row.comment}</div>}
                 </div>
-                <div className="flex gap-2 flex-wrap">
+                <div className="min-w-0">
                   <RemoteAccessButtons
                     hostname={row.hostname}
                     device={remoteMap.get(row.hostname)}
                     canManage={isSuperuser}
+                    compact
                   />
-                  <button
-                    onClick={() => copyHostname(row.hostname)}
-                    className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm"
-                    title="Скопировать hostname"
-                  >
+                </div>
+                <div className="flex flex-wrap content-start items-start gap-1.5 lg:justify-end">
+                  <IconButton label="Скопировать hostname" onClick={() => copyHostname(row.hostname)}>
                     <Copy className="h-4 w-4" />
-                    Копировать hostname
-                  </button>
-                  {isSuperuser && (
-                    <Link
-                      to={credentialsHref(row.hostname)}
-                      className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm"
-                      title="Пароли и учётные данные этого устройства"
-                    >
-                      <KeyRound className="h-4 w-4" />
-                      Пароли{credCount > 0 ? ` (${credCount})` : ""}
-                    </Link>
-                  )}
-                  <button
-                    onClick={() => pollMut.mutate(row.id)}
-                    disabled={pollingIds.has(row.id)}
-                    className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm"
-                    title="Проверить доступность по сети"
-                  >
+                  </IconButton>
+                  <IconButton label="Проверить доступность по сети" onClick={() => pollMut.mutate(row.id)} disabled={pollingIds.has(row.id)}>
                     <RefreshCw className={`h-4 w-4 ${pollingIds.has(row.id) ? "animate-spin" : ""}`} />
-                    Опросить
-                  </button>
+                  </IconButton>
                   {isSuperuser && (
                     <>
-                      <button onClick={() => openEdit(row)} className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm">
+                      <Link
+                        to={credentialsHref(row.hostname)}
+                        aria-label="Пароли этого компьютера"
+                        title={`Пароли и учётные данные этого устройства${credCount ? ` (${credCount})` : ""}`}
+                        className="app-btn-secondary relative inline-flex h-9 w-9 items-center justify-center"
+                      >
+                        <KeyRound className="h-4 w-4" />
+                        {credCount > 0 && (
+                          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--brand-fill)] px-1 text-[10px] font-semibold text-white">
+                            {credCount}
+                          </span>
+                        )}
+                      </Link>
+                      <IconButton label="Редактировать" onClick={() => openEdit(row)}>
                         <Pencil className="h-4 w-4" />
-                        Редактировать
-                      </button>
-                      <button
-                        onClick={() => deleteMut.mutate(row.id)}
-                        className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm"
+                      </IconButton>
+                      <IconButton
+                        label="Удалить"
+                        danger
+                        onClick={async () => {
+                          if (await confirm(`Удалить компьютер ${row.hostname}?`, { danger: true, confirmText: "Удалить" })) {
+                            deleteMut.mutate(row.id);
+                          }
+                        }}
                       >
                         <Trash2 className="h-4 w-4" />
-                        Удалить
-                      </button>
+                      </IconButton>
                     </>
                   )}
                 </div>

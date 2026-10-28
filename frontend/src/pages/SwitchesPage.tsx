@@ -144,7 +144,7 @@ export default function SwitchesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+      <div className="grid gap-2 grid-cols-3 sm:gap-4">
         <Stat label="Всего" value={switches.length} color="text-gray-900" bg="bg-gray-100" isActive={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
         <Stat label="Онлайн" value={onlineCount} color="text-emerald-700" bg="bg-emerald-50" isActive={statusFilter === "online"} onClick={() => setStatusFilter("online")} />
         <Stat label="Оффлайн" value={offlineCount} color="text-[var(--danger-fg)]" bg="bg-[var(--danger-bg)]" isActive={statusFilter === "offline"} onClick={() => setStatusFilter("offline")} />
@@ -172,7 +172,7 @@ export default function SwitchesPage() {
             const identity = switchIdentity(sw);
             const credCount = credIndex.get(normalizeHostKey(identity)) ?? 0;
             return (
-              <div key={sw.id} id={rowDomId(identity)} className="flex flex-col gap-1.5">
+              <div key={sw.id} id={rowDomId(identity)} className="h-full">
                 <SwitchCard
                   sw={sw}
                   onPoll={(id) => pollMut.mutate(id)}
@@ -181,17 +181,21 @@ export default function SwitchesPage() {
                   onOpenPorts={(s) => setPortsTarget(s)}
                   isPolling={pollingId === sw.id}
                   isSuperuser={isSuperuser}
+                  // In the footer, like the media players: below the card it
+                  // floated in the grid gap, apart from the switch it belongs to
+                  footerExtra={
+                    isSuperuser ? (
+                      <Link
+                        to={credentialsHref(identity)}
+                        className="app-btn-secondary mr-1 inline-flex items-center gap-1.5 px-2.5 py-1 text-xs"
+                        title="Пароли и учётные данные этого устройства"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        Пароли{credCount > 0 ? ` (${credCount})` : ""}
+                      </Link>
+                    ) : undefined
+                  }
                 />
-                {isSuperuser && (
-                  <Link
-                    to={credentialsHref(identity)}
-                    className="app-btn-secondary inline-flex w-fit items-center gap-1.5 self-end px-2.5 py-1 text-xs"
-                    title="Пароли и учётные данные этого устройства"
-                  >
-                    <KeyRound className="h-3.5 w-3.5" />
-                    Пароли{credCount > 0 ? ` (${credCount})` : ""}
-                  </Link>
-                )}
               </div>
             );
           })}
