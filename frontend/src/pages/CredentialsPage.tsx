@@ -141,7 +141,7 @@ function VaultSection() {
   return (
     <SectionCard className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+        <div className="flex items-center gap-2 text-slate-900">
           <KeyRound className="h-4 w-4" />
           <h2 className="text-base font-semibold">Хранилище</h2>
           {data ? <span className="text-xs text-slate-400">{data.count}</span> : null}
@@ -210,7 +210,7 @@ function VaultSection() {
                   className="border-b border-[var(--app-panel-border)]/60 align-top"
                 >
                   <td className="py-2 pr-3">
-                    <div className="font-medium text-slate-800 dark:text-slate-100">{c.title}</div>
+                    <div className="font-medium text-slate-800">{c.title}</div>
                     {c.tags ? (
                       <div className="mt-0.5 flex flex-wrap gap-1">
                         {c.tags.split(",").map((t) => (
@@ -231,7 +231,7 @@ function VaultSection() {
                   <td className="py-2 pr-3">
                     {c.username ? (
                       <button
-                        className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900 dark:text-slate-300"
+                        className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900"
                         onClick={() => copyText(c.username!, "Логин")}
                         title="Скопировать логин"
                       >
@@ -242,7 +242,7 @@ function VaultSection() {
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">
+                  <td className="py-2 pr-3 text-slate-600">
                     {c.url ? (
                       <a
                         href={c.url}
@@ -257,7 +257,7 @@ function VaultSection() {
                       c.host || <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="py-2 pr-3 text-slate-600 dark:text-slate-300">
+                  <td className="py-2 pr-3 text-slate-600">
                     {c.location || <span className="text-slate-400">—</span>}
                   </td>
                   <td className="py-2 pr-3 text-xs text-slate-400">
@@ -268,7 +268,7 @@ function VaultSection() {
                       {connectHref && (
                         <a
                           href={connectHref}
-                          className="rounded-lg p-1.5 text-[var(--brand)] hover:bg-slate-100 dark:hover:bg-slate-800"
+                          className="rounded-lg p-1.5 text-[var(--brand)] hover:bg-slate-100"
                           title="Подключиться через RustDesk"
                         >
                           <MonitorSmartphone className="h-4 w-4" />
@@ -277,14 +277,14 @@ function VaultSection() {
                       {deviceHref && (
                         <Link
                           to={deviceHref}
-                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                           title="Открыть карточку устройства"
                         >
                           <ExternalLink className="h-4 w-4" />
                         </Link>
                       )}
                       <button
-                        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40 dark:hover:bg-slate-800"
+                        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-40"
                         title="Показать пароль"
                         disabled={!c.has_secret || revealMut.isPending}
                         onClick={() => revealMut.mutate(c)}
@@ -292,7 +292,7 @@ function VaultSection() {
                         <Eye className="h-4 w-4" />
                       </button>
                       <button
-                        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+                        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                         title="Редактировать"
                         onClick={() => setEditing(c)}
                       >
@@ -369,7 +369,7 @@ function RevealDialog({
         <div>
           <div className="mb-1 text-xs text-slate-500">Пароль</div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 break-all rounded-lg bg-slate-100 px-3 py-2 font-mono text-sm dark:bg-slate-800">
+            <code className="flex-1 break-all rounded-lg bg-slate-100 px-3 py-2 font-mono text-sm">
               {shown ? secret : "•".repeat(Math.min(secret.length, 24))}
             </code>
             <button
@@ -387,7 +387,7 @@ function RevealDialog({
         {notes ? (
           <div>
             <div className="mb-1 text-xs text-slate-500">Заметки</div>
-            <pre className="whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm dark:bg-slate-800">{notes}</pre>
+            <pre className="whitespace-pre-wrap rounded-lg bg-slate-100 px-3 py-2 text-sm">{notes}</pre>
           </div>
         ) : null}
         {(connectHref || deviceHref) && (
@@ -562,7 +562,7 @@ function CredentialFormModal({
 function GeneratorSection() {
   return (
     <SectionCard className="space-y-4">
-      <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+      <div className="flex items-center gap-2 text-slate-900">
         <Wand2 className="h-4 w-4" />
         <h2 className="text-base font-semibold">Генератор паролей</h2>
       </div>
@@ -603,7 +603,7 @@ function InlineGenerator({ onUse }: { onUse?: (password: string) => void }) {
       <div className="flex flex-wrap items-center gap-2">
         <code
           data-testid="generated-password"
-          className="flex-1 min-w-[220px] break-all rounded-lg bg-slate-100 px-3 py-2.5 font-mono text-sm dark:bg-slate-800"
+          className="flex-1 min-w-[220px] break-all rounded-lg bg-slate-100 px-3 py-2.5 font-mono text-sm"
         >
           {result.error ? <span className="text-rose-500">{result.error}</span> : result.password}
         </code>
@@ -632,7 +632,7 @@ function InlineGenerator({ onUse }: { onUse?: (password: string) => void }) {
 
       <div className="space-y-3">
         <label className="block text-sm">
-          <span className="mb-1 block text-slate-600 dark:text-slate-300">Длина ({MIN_LENGTH}–{MAX_LENGTH})</span>
+          <span className="mb-1 block text-slate-600">Длина ({MIN_LENGTH}–{MAX_LENGTH})</span>
           <input
             type="number"
             inputMode="numeric"
@@ -662,7 +662,7 @@ function InlineGenerator({ onUse }: { onUse?: (password: string) => void }) {
         </div>
 
         <label className="block text-sm">
-          <span className="mb-1 block text-slate-600 dark:text-slate-300">Исключить символы</span>
+          <span className="mb-1 block text-slate-600">Исключить символы</span>
           <input
             className="app-input w-full py-2 px-3 font-mono text-sm"
             value={params.exclude_chars}
@@ -696,7 +696,7 @@ function Toggle({
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
-      <span className="text-slate-600 dark:text-slate-300">{label}</span>
+      <span className="text-slate-600">{label}</span>
     </label>
   );
 }
@@ -707,7 +707,7 @@ function Toggle({
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
     <label className={`block text-sm ${className}`}>
-      <span className="mb-1 block text-slate-600 dark:text-slate-300">{label}</span>
+      <span className="mb-1 block text-slate-600">{label}</span>
       {children}
     </label>
   );
@@ -751,8 +751,8 @@ function Modal({
         className={`app-panel w-full ${wide ? "max-w-2xl" : "max-w-md"} max-h-[90vh] overflow-y-auto p-5`}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
-          <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800" onClick={onClose}>
+          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+          <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={onClose}>
             <X className="h-4 w-4" />
           </button>
         </div>

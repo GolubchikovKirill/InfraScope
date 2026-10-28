@@ -1,0 +1,32 @@
+/* ============================================================================
+   2. BASE
+   ========================================================================== */
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--app-text);
+  background: var(--app-bg);
+  font-family: "Inter", system-ui, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::selection {
+  color: white;
+  background: var(--brand);
+}
+
+/* Every interactive element gets a visible keyboard focus ring. Previously
+   only .app-input had one, so tabbing through cards was invisible. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand-light);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}

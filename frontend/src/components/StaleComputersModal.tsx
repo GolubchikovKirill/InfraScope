@@ -85,12 +85,12 @@ export default function StaleComputersModal({ onClose }: { onClose: () => void }
       <div role="dialog" aria-label="Неактуальные компьютеры" className="app-panel flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden">
         <header className="flex items-start justify-between gap-3 border-b border-[var(--app-panel-border)] px-5 py-4">
           <div>
-            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Неактуальные компьютеры</h3>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+            <h3 className="text-base font-semibold text-slate-900">Неактуальные компьютеры</h3>
+            <p className="mt-0.5 text-sm text-slate-500">
               Их нет в консоли RustDesk и они не отвечают на пинг, скорее всего это остатки импорта из AD.
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Закрыть" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} aria-label="Закрыть" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
             <X className="h-5 w-5" />
           </button>
         </header>
@@ -99,17 +99,17 @@ export default function StaleComputersModal({ onClose }: { onClose: () => void }
           {isLoading ? (
             <p className="py-8 text-center text-sm text-slate-500">Сверяю с консолью…</p>
           ) : isError ? (
-            <p className="py-8 text-center text-sm text-slate-600 dark:text-slate-300">Не удалось получить список. Попробуйте позже.</p>
+            <p className="py-8 text-center text-sm text-slate-600">Не удалось получить список. Попробуйте позже.</p>
           ) : !data?.console_reachable ? (
-            <p className="py-8 text-center text-sm text-slate-600 dark:text-slate-300">
+            <p className="py-8 text-center text-sm text-slate-600">
               Консоль RustDesk сейчас недоступна, поэтому судить о неактуальности нельзя. Ничего не показываю, чтобы не предложить удалить живые машины.
             </p>
           ) : rows.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-600 dark:text-slate-300">Неактуальных компьютеров нет: все есть в консоли или отвечают.</p>
+            <p className="py-8 text-center text-sm text-slate-600">Неактуальных компьютеров нет: все есть в консоли или отвечают.</p>
           ) : (
             <>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="text-slate-600 dark:text-slate-300">Отмечено {selected.length} из {rows.length}</span>
+                <span className="text-slate-600">Отмечено {selected.length} из {rows.length}</span>
                 <span className="flex gap-3">
                   <button type="button" className="text-[var(--brand)] hover:underline" onClick={() => setPicked(new Set(rows.filter((r) => !r.laptop_like).map((r) => r.id)))}>
                     Все, кроме ноутбуков
@@ -126,15 +126,15 @@ export default function StaleComputersModal({ onClose }: { onClose: () => void }
                       <input type="checkbox" className="mt-1" checked={picked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Удалить ${row.hostname}`} />
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">{row.hostname}</span>
+                          <span className="font-mono text-sm font-medium text-slate-900">{row.hostname}</span>
                           {row.laptop_like && (
-                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300" title="Ноутбук может быть просто вне сети офиса">
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800" title="Ноутбук может быть просто вне сети офиса">
                               ноутбук
                             </span>
                           )}
-                          {row.in_remote_access && <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">в удалённом доступе</span>}
+                          {row.in_remote_access && <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">в удалённом доступе</span>}
                         </span>
-                        <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                        <span className="mt-0.5 block text-xs text-slate-500">
                           {[row.location && `магазин ${row.location}`, row.last_polled_at ? `опрос ${relTime(row.last_polled_at)}` : "не опрашивался", row.comment].filter(Boolean).join(" · ")}
                         </span>
                       </span>

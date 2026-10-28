@@ -1,0 +1,221 @@
+/* ============================================================================
+   1. TOKENS
+   ----------------------------------------------------------------------------
+   Three groups, deliberately separate:
+     - brand      : InfraScope's blue identity. Navigation, primary actions,
+                    entity accents. Carries no status meaning.
+     - status     : ok / warn / danger / info. These must NEVER be repainted to
+                    the brand colour - an amber "data is stale" hint rendered in
+                    crimson reads as an error, which is exactly the bug this
+                    file used to have.
+     - surface    : three stacked layers so depth survives in dark mode, where
+                    everything used to collapse into one flat colour.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* --- brand --- */
+  --brand-strong: #145a94;
+  --brand: #1d78c9;
+  --brand-bright: #2489dd;
+  --brand-light: #4ba0e8;
+  --brand-gradient: linear-gradient(135deg, #1d78c9, #2489dd);
+  /* Brand as a filled background carrying white text. Kept separate from
+     --brand, which is the text/accent value: in dark mode the accent has to
+     lighten to stay legible, and a lightened accent used as a fill would put
+     white text on a pale ground. */
+  --brand-fill: #1d78c9;
+  --brand-soft: rgba(29, 120, 201, 0.1);
+  --brand-border: rgba(29, 120, 201, 0.3);
+  --brand-ring: rgba(29, 120, 201, 0.22);
+
+  /* --- status: meaning, not decoration --- */
+  --ok-fg: #1f9d52;
+  --ok-bg: rgba(31, 157, 82, 0.12);
+  --ok-border: rgba(31, 157, 82, 0.32);
+  --ok-dot: #1f9d52;
+
+  --warn-fg: #a8650a;
+  --warn-bg: rgba(168, 101, 10, 0.12);
+  --warn-border: rgba(168, 101, 10, 0.3);
+
+  /* Kept clear of the brand blue: when danger and brand share a colour, an
+     ordinary primary button and a real failure look alike. */
+  --danger-fg: #c9432b;
+  --danger-bg: rgba(201, 67, 43, 0.11);
+  --danger-border: rgba(201, 67, 43, 0.3);
+
+  --info-fg: #1d78c9;
+  --info-bg: rgba(29, 120, 201, 0.11);
+  --info-border: rgba(29, 120, 201, 0.3);
+
+  /* --- surfaces ---
+     Neutrals now sit on the same blue-grey axis as the accent rather than
+     against it, and the page stays a step below the panels so cards lift
+     without needing heavy shadow. */
+  --surface-page: #f2f4f8;
+  --surface-1: #ffffff;
+  --surface-2: #f4f7fa;
+  --surface-3: #e8edf3;
+  --surface-input: #ffffff;
+
+  /* Borders as tinted ink rather than flat grey, so they stay related to the
+     text they sit beside at any opacity. */
+  --border-subtle: rgba(18, 32, 44, 0.12);
+  --border-strong: rgba(18, 32, 44, 0.22);
+  /* Row separators inside a table: present enough to guide the eye along a
+     line, faint enough that fifty of them don't read as a grid. */
+  --border-faint: rgba(18, 32, 44, 0.07);
+
+  /* --- text ---
+     Deep blue-black rather than true black: pure black on white is the
+     harshest pairing available and reads as glare over a long shift. */
+  --text-strong: #12202c;
+  --text-default: #223341;
+  --text-muted: #5b6b7a;
+  --text-faint: #7d8b99;
+
+  /* --- radius scale --- */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* --- elevation scale ---
+     Tinted with the same blue-grey ink as the borders, so shadows read as
+     part of the palette rather than as neutral dirt on it. */
+  --elev-1: 0 1px 3px rgba(30, 45, 60, 0.07);
+  --elev-2: 0 3px 10px rgba(30, 45, 60, 0.09);
+  --elev-3: 0 8px 22px rgba(30, 45, 60, 0.13);
+
+  /* --- smallest readable size. Never go below this. --- */
+  --text-micro: 0.6875rem; /* 11px */
+
+  /* ---------------------------------------------------------------
+     Legacy aliases. Layout.tsx and others reference these directly
+     via var(--app-panel-border), so they stay as a thin mapping onto
+     the tokens above rather than being a second source of truth.
+     --------------------------------------------------------------- */
+  --app-text: var(--text-default);
+  --app-bg: var(--surface-page);
+  --app-panel-bg: var(--surface-1);
+  --app-panel-border: var(--border-subtle);
+  --app-toolbar-bg: #ffffff;
+  --app-input-bg: var(--surface-input);
+  --app-input-border: var(--border-strong);
+  --app-secondary-text: var(--text-default);
+  --app-secondary-bg: #ffffff;
+  --app-secondary-border: var(--border-strong);
+  --app-header-bg: rgba(255, 255, 255, 0.9);
+  --app-header-border: var(--border-subtle);
+  --app-nav-active-bg: var(--brand-soft);
+  --app-nav-active-border: var(--brand-border);
+  --app-nav-active-text: var(--brand);
+  --app-sidebar-bg: var(--surface-1);
+  --app-sidebar-border: var(--border-subtle);
+  --app-primary-gradient: var(--brand-gradient);
+  --app-accent-soft: var(--brand-soft);
+  --app-accent-border: var(--brand-border);
+  --app-accent-text: var(--brand);
+
+  /* --- toner fills: the four inks, readable on either ground --- */
+  --toner-k: #1f2933;
+  --toner-c: #06b6d4;
+  --toner-m: #ec4899;
+  --toner-y: #facc15;
+
+  /* --- store grid tile for an unreachable till: neutral, not alarming --- */
+  --tile-offline-bg: #4a5668;
+  --tile-offline-hover: #3b4554;
+  --tile-offline-fg: #ffffff;
+
+  /* --- the store name heading a device card --- */
+  --store-fg: var(--text-strong);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Graphite, not navy. The previous dark theme tinted every layer the same
+     deep blue as the accent, so the brand had nothing to stand out against,
+     cards melted into the page and the blue nav, buttons and links all read
+     as one colour. Neutrals now carry only a whisper of cool tint; colour is
+     reserved for meaning (brand, status) and survives because the ground
+     around it is quiet.
+
+     Depth comes from four lightness steps (page < card < raised < control),
+     about 3% L apart - enough to read at a glance without borders doing all
+     the work - and from hairline borders drawn as translucent light, so they
+     sit at the depth of whatever surface they land on. Shadows are nearly
+     useless on a dark ground and stay faint. */
+
+  --brand: #5aa5ff;
+  --brand-bright: #78b6ff;
+  --brand-light: #8fc2ff;
+  --brand-gradient: linear-gradient(135deg, #2f74d0, #3b82e6);
+  /* White text sits on this, so it stays saturated and mid-dark */
+  --brand-fill: #2f6fca;
+  --brand-strong: #255aa6;
+  --brand-soft: rgba(90, 165, 255, 0.13);
+  --brand-border: rgba(90, 165, 255, 0.32);
+  --brand-ring: rgba(90, 165, 255, 0.32);
+
+  --ok-fg: #4ad295;
+  --ok-bg: rgba(74, 210, 149, 0.12);
+  --ok-border: rgba(74, 210, 149, 0.3);
+  --ok-dot: #4ad295;
+
+  --warn-fg: #f3bd55;
+  --warn-bg: rgba(243, 189, 85, 0.12);
+  --warn-border: rgba(243, 189, 85, 0.3);
+
+  --danger-fg: #ff7f73;
+  --danger-bg: rgba(255, 127, 115, 0.12);
+  --danger-border: rgba(255, 127, 115, 0.32);
+
+  --info-fg: #5aa5ff;
+  --info-bg: rgba(90, 165, 255, 0.12);
+  --info-border: rgba(90, 165, 255, 0.3);
+
+  --surface-page: #0f1115;
+  --surface-1: #15181e;
+  --surface-2: #1b1f26;
+  --surface-3: #222730;
+  --surface-input: #111419;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --border-faint: rgba(255, 255, 255, 0.05);
+
+  /* Ink stops short of #fff: full white on near-black halates over a shift */
+  --text-strong: #f1f3f6;
+  --text-default: #d5d9e0;
+  --text-muted: #a3abb8;
+  --text-faint: #7a8392;
+
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --elev-3: 0 10px 28px rgba(0, 0, 0, 0.5);
+
+  --app-toolbar-bg: var(--surface-1);
+  --app-secondary-text: var(--text-default);
+  --app-secondary-bg: var(--surface-2);
+  --app-secondary-border: var(--border-strong);
+  --app-header-bg: rgba(15, 17, 21, 0.86);
+  --app-nav-active-text: var(--brand-bright);
+  --app-sidebar-bg: #121419;
+  --app-primary-gradient: var(--brand-gradient);
+  --app-accent-text: var(--brand);
+
+  /* Black ink is drawn as light graphite: a near-black bar on a dark track
+     was simply invisible, so K looked empty on every printer. */
+  --toner-k: #c3cad5;
+  --toner-c: #22d3ee;
+  --toner-m: #f472b6;
+  --toner-y: #fde047;
+
+  --tile-offline-bg: #4b5361;
+  --tile-offline-hover: #5a6372;
+  --tile-offline-fg: #ffffff;
+}

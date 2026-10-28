@@ -115,10 +115,10 @@ export default function BoardingPassPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-[var(--app-panel-border)] bg-white/60 p-4 shadow-sm dark:bg-slate-900/30">
+      <div className="rounded-2xl border border-[var(--app-panel-border)] bg-white/60 p-4 shadow-sm">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <div className="text-sm font-semibold text-slate-900">
               Простой режим генерации
             </div>
             <div className="text-xs text-slate-500">
@@ -161,13 +161,13 @@ export default function BoardingPassPanel() {
           </label>
         </div>
 
-        <div className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+        <div className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
           Шаблон по умолчанию: John Doe, BA1234, место 35A, сегодняшняя дата.
         </div>
       </div>
 
       <details className="rounded-xl border border-[var(--app-panel-border)] px-4 py-3">
-        <summary className="cursor-pointer select-none text-sm font-medium text-slate-700 dark:text-slate-200">
+        <summary className="cursor-pointer select-none text-sm font-medium text-slate-700">
           Расширенный режим
         </summary>
         <div className="mt-3">

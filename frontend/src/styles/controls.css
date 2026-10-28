@@ -1,0 +1,68 @@
+/* ============================================================================
+   5. CONTROLS
+   ========================================================================== */
+
+.app-input {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-input);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.app-input:focus {
+  border-color: var(--brand-light);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+  outline: none;
+}
+
+.app-btn-primary {
+  border-radius: var(--radius-sm);
+  color: white;
+  font-weight: 600;
+  background: var(--app-primary-gradient);
+  /* A restrained lift, not a coloured glow - the old crimson halo read as a
+     neon rim once the surrounding neutrals stopped being cold. */
+  box-shadow: 0 2px 6px rgba(20, 90, 148, 0.24);
+  transition:
+    transform 0.18s ease,
+    filter 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.app-btn-primary:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(20, 90, 148, 0.3);
+}
+
+.app-btn-secondary {
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  color: var(--app-secondary-text);
+  border: 1px solid var(--app-secondary-border);
+  background: var(--app-secondary-bg);
+  transition:
+    transform 0.18s ease,
+    filter 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.app-btn-secondary:hover {
+  background: var(--surface-2);
+  transform: translateY(-1px);
+  box-shadow: var(--elev-1);
+}
+
+/* Icon-only buttons sit at p-1.5 with a 14px glyph - about a 26px target.
+   This floors them at 32px so they stay comfortably tappable, without
+   changing any of the call sites. */
+.app-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  border-radius: var(--radius-sm);
+}

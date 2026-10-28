@@ -75,7 +75,7 @@ export default function FleetMap({
       <div className="flex flex-col gap-3 border-b border-[var(--app-panel-border)] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-3">
-            <h3 id="fleet-map-title" className="font-semibold text-slate-900 dark:text-slate-100">По магазинам</h3>
+            <h3 id="fleet-map-title" className="font-semibold text-slate-900">По магазинам</h3>
             <div role="tablist" aria-label="Тип техники" className="inline-flex rounded-lg border border-[var(--app-panel-border)] p-0.5">
               {TABS.map((tab) => {
                 const active = tab.id === kind;
@@ -89,7 +89,7 @@ export default function FleetMap({
                     className={`rounded-md px-3 py-1 text-sm font-medium transition ${
                       active
                         ? "bg-[var(--brand)] text-white"
-                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                        : "text-slate-600 hover:bg-slate-100"
                     }`}
                   >
                     {tab.label}
@@ -101,7 +101,7 @@ export default function FleetMap({
               })}
             </div>
           </div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{summary}</p>
+          <p className="mt-1 text-sm text-slate-500">{summary}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative">
@@ -114,7 +114,7 @@ export default function FleetMap({
               className="app-input w-52 py-1.5 pl-8 pr-2 text-sm"
             />
           </label>
-          <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600">
             <input type="checkbox" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />
             Только проблемные
           </label>
@@ -129,7 +129,7 @@ export default function FleetMap({
             {Array.from({ length: 10 }).map((_, i) => <div key={i} className="app-skeleton h-24" />)}
           </div>
         ) : !zones.length ? (
-          <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+          <p className="py-8 text-center text-sm text-slate-500">
             {rows.length ? "По этому запросу ничего нет." : kind === "cash" ? "Кассы ещё не добавлены." : "Компьютеры ещё не добавлены."}
           </p>
         ) : (

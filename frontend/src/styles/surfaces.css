@@ -1,0 +1,171 @@
+/* ============================================================================
+   3. SURFACES & CONTAINERS
+   ========================================================================== */
+
+.app-shell {
+  background: transparent;
+}
+
+.app-panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-2);
+  /* No backdrop-filter: the panel is opaque, so the blur showed nothing, yet
+     every card on a page of sixty got its own compositing layer and a blur
+     pass on each scroll frame. Translucent chrome (header, sidebar) keeps it. */
+}
+
+/* Nested panel inside a card - one step down the surface stack so it reads as
+   contained rather than as another top-level card. Was used in PrinterCard
+   without ever being defined, so it rendered as an invisible box. */
+.app-soft-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+}
+
+.app-toolbar {
+  background: var(--app-toolbar-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Page-level toolbar (filters/actions above a list). Used by QrGeneratorPage
+   and others; previously undefined. */
+.app-page-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.app-toolbar-title {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.app-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-stat {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--elev-1);
+}
+
+.app-empty {
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-1) 78%, transparent 22%);
+}
+
+.app-card {
+  position: relative;
+  transition:
+    transform 180ms ease,
+    box-shadow 220ms ease,
+    border-color 180ms ease;
+}
+
+.app-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elev-3);
+}
+
+/* On a dark ground the shadow barely registers; the edge lighting up does. */
+:root[data-theme="dark"] .app-card:hover {
+  border-color: var(--border-strong);
+}
+
+.app-main-frame {
+  max-width: 1680px;
+}
+
+/* ============================================================================
+   3b. CARD INTERNALS
+   ----------------------------------------------------------------------------
+   Cards were built almost entirely out of text-xs and text-sm, so a device
+   name, its address and its footer note all carried the same weight and the
+   eye had nothing to land on first. These give the card a spine.
+   ========================================================================== */
+
+.app-card-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.011em;
+  color: var(--text-strong);
+}
+
+/* The store a device belongs to. On a page of sixty near-identical printers
+   the store is what people scan for - "which shop is out of toner" - so it is
+   the largest, heaviest line on the card, and the device model steps down to
+   a secondary line beneath it. Two lines allowed: store names like
+   "ДП Пулково Т1 гейт 5" are long and the tail is the distinguishing part. */
+.app-card-store {
+  font-size: 1.0625rem;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  color: var(--store-fg, var(--text-strong));
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.app-card-subtitle {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.app-card-meta {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+/* Addresses, MACs, ports and interface names. Monospace is not decoration
+   here - these are values people compare character by character. */
+.app-mono {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.app-card-foot {
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   4. ENTITY ACCENT
+   ----------------------------------------------------------------------------
+   The "icon in a tinted square" that heads every entity card. This used to be
+   written three different ways (bg-blue-50 / bg-sky-50 / bg-rose-50), which
+   rendered as three different colours depending on whether the colour happened
+   to appear in an override list. One class, one look.
+   ========================================================================== */
+
+.app-entity-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--brand-soft);
+  color: var(--brand);
+  padding: 0.5rem;
+  /* A fixed-size chip. Without this it is a shrinkable flex item, and a long
+     card title squashes it into an oval before the title itself gives way. */
+  flex-shrink: 0;
+}

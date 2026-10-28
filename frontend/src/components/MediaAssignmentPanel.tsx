@@ -146,7 +146,7 @@ export default function MediaAssignmentPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4 py-6">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-6">
       <form onSubmit={submit} className="app-panel w-full max-w-2xl max-h-[calc(100dvh-3rem)] overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-4 border-b border-gray-100 pb-4">
           <div>

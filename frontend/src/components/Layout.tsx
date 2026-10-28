@@ -25,7 +25,6 @@ import {
   KeyRound,
 } from "lucide-react";
 import { readThemeMode, setThemeMode, type ThemeMode } from "../theme";
-import { motion, AnimatePresence } from "framer-motion";
 
 function buildAccountSubtitle(email: string, displayName: string, isSuperuser: boolean): string {
   if (email && displayName !== email) {
@@ -193,7 +192,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
                     isActive
                       ? "app-nav-active"
-                      : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/60 hover:text-slate-700 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+                      : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/60 hover:text-slate-700"
                   }`
                 }
               >
@@ -225,30 +224,25 @@ export default function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden relative">
-        <AnimatePresence>
-          {!isSidebarVisible && (
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              // z-40: was z-10, sitting UNDER .app-topbar's z-20 in the same
-              // stacking context. They overlap in the top-left corner, so the
-              // topbar was silently eating every click meant for this button
-              // - the sidebar had no way back once hidden.
-              className="hidden md:flex px-3 sm:px-5 lg:px-8 pt-3 absolute z-40"
+        {!isSidebarVisible && (
+          <div
+            // z-40: was z-10, sitting UNDER .app-topbar's z-20 in the same
+            // stacking context. They overlap in the top-left corner, so the
+            // topbar was silently eating every click meant for this button
+            // - the sidebar had no way back once hidden.
+            className="hidden md:flex px-3 sm:px-5 lg:px-8 pt-3 absolute z-40 slide-in-left"
+          >
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs app-btn-secondary app-logo-live backdrop-blur-md bg-[var(--surface-1)]/85"
+              title="Показать меню"
             >
-              <button
-                type="button"
-                onClick={handleToggleSidebar}
-                className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs app-btn-secondary app-logo-live backdrop-blur-md bg-[var(--surface-1)]/85"
-                title="Показать меню"
-              >
-                <Server className="h-4 w-4" />
-                InfraScope
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <Server className="h-4 w-4" />
+              InfraScope
+            </button>
+          </div>
+        )}
 
         <header className="app-header md:hidden sticky top-0 z-30 border-b backdrop-blur-xl">
           <div className="px-3 py-3 space-y-3">
@@ -257,7 +251,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <div className="rounded-lg bg-linear-to-br from-[var(--brand-strong)] to-[var(--brand-bright)] p-1.5 shadow-sm">
                   <Server className="h-4 w-4 text-white" />
                 </div>
-                <span className="font-semibold text-slate-900 dark:text-slate-100">InfraScope</span>
+                <span className="font-semibold text-slate-900">InfraScope</span>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -297,7 +291,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                       `inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium whitespace-nowrap ${
                         isActive
                           ? "app-nav-active"
-                          : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/70 dark:hover:bg-slate-800/70"
+                          : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/70"
                       }`
                     }
                   >
@@ -342,7 +336,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   <span className="app-account-name text-sm font-semibold">{displayName}</span>
                   <span className="app-account-subtitle text-xs">{buildAccountSubtitle(accountEmail, displayName, isSuperuser)}</span>
                 </div>
-                <div className="app-session-pill inline-flex items-center gap-2 rounded-full border border-[var(--app-panel-border)] bg-white/70 px-3 py-1.5 text-xs font-semibold dark:bg-slate-900/70">
+                <div className="app-session-pill inline-flex items-center gap-2 rounded-full border border-[var(--app-panel-border)] bg-white/70 px-3 py-1.5 text-xs font-semibold">
                   <span className={`h-2 w-2 rounded-full ${isOnline ? "app-status-dot bg-emerald-500" : "bg-slate-400"}`} />
                   {isOnline ? "Сессия активна" : "Нет сессии"}
                 </div>

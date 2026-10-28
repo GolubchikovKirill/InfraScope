@@ -53,8 +53,8 @@ export default function ComputerDrawer({
     >
       <div>
         <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${STATE_CHIP[state]}`}>{STATE_TEXT[state]}</span>
-        {state === "offline" && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{describeOfflineReason(computer.reachability_reason)}</p>}
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Последний опрос: {relTime(computer.last_polled_at)}</p>
+        {state === "offline" && <p className="mt-2 text-sm text-slate-600">{describeOfflineReason(computer.reachability_reason)}</p>}
+        <p className="mt-2 text-xs text-slate-500">Последний опрос: {relTime(computer.last_polled_at)}</p>
       </div>
 
       <div>

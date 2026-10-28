@@ -3,17 +3,19 @@ import type { TileView, ZoneView } from "../../lib/storeView";
 
 const TILE_STYLE: Record<CashState, string> = {
   online:
-    "border-teal-200 bg-teal-100 text-teal-900 hover:bg-teal-200 dark:border-teal-800 dark:bg-teal-900/50 dark:text-teal-50 dark:hover:bg-teal-800/60",
+    "border-teal-200 bg-teal-100 text-teal-900 hover:bg-teal-200",
   offline:
-    "border-slate-600 bg-slate-600 text-white hover:bg-slate-700 dark:border-slate-500 dark:bg-slate-500 dark:hover:bg-slate-400",
+    // Tokens, not slate-600: the dark palette inverts the neutral scale, which
+    // would put this white label on a light tile.
+    "border-[var(--tile-offline-bg)] bg-[var(--tile-offline-bg)] text-[var(--tile-offline-fg)] hover:bg-[var(--tile-offline-hover)]",
   unknown:
-    "border-dashed border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800",
+    "border-dashed border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100",
 };
 
 export function Legend({ withRemarks }: { withRemarks: boolean }) {
   const dot = "inline-block h-3 w-3 rounded-[3px] border";
   return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400" aria-label="Обозначения">
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500" aria-label="Обозначения">
       <li className="inline-flex items-center gap-1.5"><span className={`${dot} ${TILE_STYLE.online}`} />на связи</li>
       <li className="inline-flex items-center gap-1.5"><span className={`${dot} ${TILE_STYLE.offline}`} />недоступно</li>
       <li className="inline-flex items-center gap-1.5"><span className={`${dot} ${TILE_STYLE.unknown}`} />нет данных</li>
@@ -45,8 +47,8 @@ export default function StoreGrid({ zones, onSelect, noun }: { zones: ZoneView[]
       {zones.map((zone) => (
         <div key={zone.key} data-testid={`zone-${zone.key}`}>
           <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{zone.label}</h4>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+            <h4 className="text-sm font-semibold text-slate-800">{zone.label}</h4>
+            <span className="text-xs text-slate-500">
               {zone.total} {noun} · {zone.online} на связи
               {zone.offline > 0 && ` · ${zone.offline} недоступны`}
               {zone.unknown > 0 && ` · ${zone.unknown} без данных`}
@@ -59,12 +61,12 @@ export default function StoreGrid({ zones, onSelect, noun }: { zones: ZoneView[]
               return (
                 <div key={store.key} data-testid={`store-${store.key}`} className="rounded-xl border border-[var(--app-panel-border)] bg-[var(--app-panel-bg)] p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100" title={store.title}>{store.title}</p>
+                    <p className="truncate text-sm font-medium text-slate-800" title={store.title}>{store.title}</p>
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
                         online === store.tiles.length
-                          ? "bg-teal-50 text-teal-800 dark:bg-teal-950/40 dark:text-teal-200"
-                          : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          ? "bg-teal-50 text-teal-800"
+                          : "bg-slate-100 text-slate-700"
                       }`}
                     >
                       {online}/{store.tiles.length}
