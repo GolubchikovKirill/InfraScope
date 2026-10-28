@@ -125,7 +125,7 @@ export default function ScreensPage() {
               <h3 className="text-sm font-semibold text-slate-800">{zone.label}</h3>
               <span className="text-xs text-slate-500">{zone.total} экранов · {zone.active} активны</span>
             </div>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-2 min-[1920px]:grid-cols-3">
               {zone.stores.map((store) => (
                 <div key={store.key} data-testid={`store-${store.key}`} className="app-panel p-4">
                   <div className="mb-1 flex items-center justify-between gap-2">

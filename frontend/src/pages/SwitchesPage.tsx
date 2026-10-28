@@ -152,7 +152,7 @@ export default function SwitchesPage() {
 
       {/* Grid */}
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="app-card-grid">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="app-panel p-5 space-y-4">
               <div className="flex items-center gap-3">
@@ -167,7 +167,7 @@ export default function SwitchesPage() {
           ))}
         </div>
       ) : visibleSwitches.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="app-card-grid">
           {visibleSwitches.map((sw) => {
             const identity = switchIdentity(sw);
             const credCount = credIndex.get(normalizeHostKey(identity)) ?? 0;
