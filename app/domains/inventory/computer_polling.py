@@ -13,11 +13,11 @@ from app.domains.inventory.reachability import (
     REASON_PROBE_ERROR,
     ReachabilityResult,
     build_dns_search_suffixes,
-    probe_host_ports,
+    probe_host_ports_async,
 )
 from app.domains.inventory.schemas import ComputersPublic
 from app.services.cache import invalidate_entity_cache
-from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,10 @@ async def invalidate_computer_cache() -> None:
     await invalidate_entity_cache("computers")
 
 
-def probe_computer(hostname: str) -> ReachabilityResult:
+async def probe_computer(hostname: str) -> ReachabilityResult:
     suffixes = build_dns_search_suffixes(settings.DNS_SEARCH_SUFFIXES, settings.DOMAIN)
-    poll_jitter_sync()
-    return probe_host_ports(
+    await poll_jitter_async()
+    return await probe_host_ports_async(
         hostname,
         ports=_COMPUTER_PROBE_PORTS,
         timeout=1.2,
@@ -49,7 +49,7 @@ async def probe_computers_bulk(rows: list[Computer]) -> dict:
 
     async def _run(row: Computer) -> tuple:
         async with semaphore:
-            return row.id, await asyncio.to_thread(probe_computer, row.hostname)
+            return row.id, await probe_computer(row.hostname)
 
     pairs = await asyncio.gather(*[_run(row) for row in rows]) if rows else []
     return dict(pairs)

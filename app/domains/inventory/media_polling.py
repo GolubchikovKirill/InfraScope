@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.redis import REDIS_ERRORS, get_redis
 from app.domains.inventory.models import MediaPlayer
-from app.domains.inventory.reachability import probe_tcp_endpoint
+from app.domains.inventory.reachability import probe_tcp_endpoint_async
 from app.domains.inventory.schemas import MediaPlayersPublic
 from app.observability.metrics import (
     media_player_ops_total,
@@ -22,11 +22,11 @@ from app.observability.metrics import (
     set_device_counts,
 )
 from app.services.cache import invalidate_entity_cache
-from app.services.device_poll import poll_device, poll_device_sync
+from app.services.device_poll import poll_device
 from app.services.event_log import write_event_log
 from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
 from app.services.ml_snapshots import write_media_player_snapshot
-from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +83,8 @@ def record_media_player_status_change(session: Session, player: MediaPlayer, was
     )
 
 
-def _probe_iconbit(ip_address: str) -> LightMediaPollResult:
-    probe = probe_tcp_endpoint(
+async def _probe_iconbit(ip_address: str) -> LightMediaPollResult:
+    probe = await probe_tcp_endpoint_async(
         ip_address,
         port=ICONBIT_PORT,
         timeout=ICONBIT_PROBE_TIMEOUT,
@@ -95,18 +95,6 @@ def _probe_iconbit(ip_address: str) -> LightMediaPollResult:
         open_ports=[ICONBIT_PORT] if probe.is_online else [],
         path_failure=probe.is_path_failure,
     )
-
-
-def poll_one_media_player(player: MediaPlayer) -> tuple[str, object | None]:
-    try:
-        poll_jitter_sync()
-        if player.device_type == "iconbit":
-            return player.ip_address, _probe_iconbit(player.ip_address)
-        result = poll_device_sync(player.ip_address)
-        return player.ip_address, result
-    except Exception as exc:
-        logger.warning("Poll failed for media player %s: %s", player.ip_address, exc)
-        return player.ip_address, None
 
 
 async def poll_one_media_player_async(
@@ -122,9 +110,10 @@ async def poll_one_media_player_async(
     caused by event-loop-bound asyncio primitives.
     """
     try:
-        await asyncio.to_thread(poll_jitter_sync)
+        # Was asyncio.to_thread(poll_jitter_sync): a pool thread held just to sleep
+        await poll_jitter_async()
         if player.device_type == "iconbit":
-            return player.ip_address, await asyncio.to_thread(_probe_iconbit, player.ip_address)
+            return player.ip_address, await _probe_iconbit(player.ip_address)
         result = await poll_device(player.ip_address, port_scan_semaphore=port_scan_semaphore)
         return player.ip_address, result
     except Exception as exc:

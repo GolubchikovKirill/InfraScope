@@ -18,6 +18,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.db import engine
+from app.core.io_pool import install_io_executor
 from app.core.redis import close_redis
 from app.domains.inventory.ap_auto_reboot import (
     get_eligible_switches_for_auto_reboot,
@@ -144,6 +145,7 @@ def _run_async(coro):
     """
 
     async def _runner():
+        install_io_executor()
         try:
             return await coro
         finally:

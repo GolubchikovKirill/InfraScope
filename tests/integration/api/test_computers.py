@@ -67,14 +67,13 @@ def test_update_delete_and_poll_computer(client, admin_token: str, monkeypatch):
         return None
 
     monkeypatch.setattr(computer_routes, "invalidate_computer_cache", _noop_invalidate)
-    monkeypatch.setattr(
-        computer_routes,
-        "probe_computer",
-        lambda hostname: ReachabilityResult(
+    async def _probe(hostname):
+        return ReachabilityResult(
             is_online=hostname == "VNK-MGR-ONLINE",
             reason=None if hostname == "VNK-MGR-ONLINE" else "port_closed",
-        ),
-    )
+        )
+
+    monkeypatch.setattr(computer_routes, "probe_computer", _probe)
 
     created = client.post(
         "/api/v1/computers/",
@@ -132,7 +131,10 @@ def test_poll_all_computers_updates_rows(client, admin_token: str, monkeypatch):
         "VNK-MGR-01": ReachabilityResult(is_online=True),
         "VNK-MGR-02": ReachabilityResult(is_online=False, reason="dns_unresolved"),
     }
-    monkeypatch.setattr(computer_polling, "probe_computer", lambda hostname: probe_map[hostname])
+    async def _probe(hostname):
+        return probe_map[hostname]
+
+    monkeypatch.setattr(computer_polling, "probe_computer", _probe)
 
     for hostname in probe_map:
         response = client.post(

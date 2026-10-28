@@ -6,7 +6,7 @@ from app.domains.inventory.media_polling import (
     LightMediaPollResult,
     apply_media_poll_result,
     poll_media_player_batch,
-    poll_one_media_player,
+    poll_one_media_player_async,
 )
 from app.domains.inventory.models import MediaPlayer
 from app.domains.inventory.reachability import ReachabilityResult
@@ -59,18 +59,21 @@ def test_poll_one_iconbit_uses_8081_healthcheck(monkeypatch) -> None:
         ip_address="10.10.10.88",
     )
 
-    monkeypatch.setattr("app.domains.inventory.media_polling.poll_jitter_sync", lambda: None)
-    monkeypatch.setattr(
-        "app.domains.inventory.media_polling.probe_tcp_endpoint",
-        lambda _ip, *, port, timeout, probe_scope: ReachabilityResult(is_online=port == 8081),
-    )
+    async def _no_jitter():
+        return None
 
-    def should_not_call_generic_poll(_address: str):
+    async def _probe(_ip, *, port, timeout, probe_scope):
+        return ReachabilityResult(is_online=port == 8081)
+
+    monkeypatch.setattr("app.domains.inventory.media_polling.poll_jitter_async", _no_jitter)
+    monkeypatch.setattr("app.domains.inventory.media_polling.probe_tcp_endpoint_async", _probe)
+
+    async def should_not_call_generic_poll(_address: str, **_kwargs):
         raise AssertionError("generic poll should not be used for iconbit")
 
-    monkeypatch.setattr("app.domains.inventory.media_polling.poll_device_sync", should_not_call_generic_poll)
+    monkeypatch.setattr("app.domains.inventory.media_polling.poll_device", should_not_call_generic_poll)
 
-    ip, result = poll_one_media_player(player)
+    ip, result = asyncio.run(poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(1)))
 
     assert ip == "10.10.10.88"
     assert isinstance(result, LightMediaPollResult)

@@ -60,6 +60,15 @@ snmp_operations_total = Counter(
     ["operation", "result", "reason"],
 )
 
+# Per printer, so "the cycle got faster" can be read as "dead printers stopped
+# costing 15 s each" rather than inferred from the cycle total alone.
+snmp_poll_duration_seconds = Histogram(
+    "infrascope_snmp_poll_duration_seconds",
+    "Wall time of one printer poll (SNMP plus its TCP/HTTP fallbacks).",
+    ["operation", "result"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32),
+)
+
 ssh_operations_total = Counter(
     "infrascope_ssh_operations_total",
     "SSH operation outcomes.",
