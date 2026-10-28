@@ -136,6 +136,7 @@ known-first-party = ["app"]
 
 [tool.pyright]
 include = ["app", "tests"]
+pythonVersion = "3.13"
 venvPath = "."
 venv = ".venv"
 extraPaths = ["."]
