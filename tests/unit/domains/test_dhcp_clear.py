@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
+from sqlmodel import Session
 
 from app.domains.inventory import dhcp_clear
 from app.domains.inventory.dhcp_clear import (
@@ -62,16 +65,16 @@ def test_get_eligible_is_sorted_filtered_and_respects_the_global_switch(monkeypa
     monkeypatch.setattr(dhcp_clear.settings, "DHCP_CLEAR_ENABLED", True)
     monkeypatch.setattr(dhcp_clear.settings, "DHCP_CLEAR_ALLOWED_STORES", "A1,A2")
     session = _FakeSession([_switch("A2"), _switch("A1"), _switch("A3")])
-    assert [s.name for s in get_eligible_switches_for_dhcp_clear(session)] == ["A1", "A2"]
+    assert [s.name for s in get_eligible_switches_for_dhcp_clear(cast(Session, session))] == ["A1", "A2"]
 
     monkeypatch.setattr(dhcp_clear.settings, "DHCP_CLEAR_ENABLED", False)
-    assert get_eligible_switches_for_dhcp_clear(session) == []
+    assert get_eligible_switches_for_dhcp_clear(cast(Session, session)) == []
 
 
 def test_empty_allowlist_disables_everything(monkeypatch) -> None:
     monkeypatch.setattr(dhcp_clear.settings, "DHCP_CLEAR_ENABLED", True)
     monkeypatch.setattr(dhcp_clear.settings, "DHCP_CLEAR_ALLOWED_STORES", "")
-    assert get_eligible_switches_for_dhcp_clear(_FakeSession([_switch("A1")])) == []
+    assert get_eligible_switches_for_dhcp_clear(cast(Session, _FakeSession([_switch("A1")]))) == []
 
 
 def _patch_run(monkeypatch, result: DhcpClearResult | None, captured_kwargs: dict | None = None):
@@ -89,7 +92,7 @@ def _patch_run(monkeypatch, result: DhcpClearResult | None, captured_kwargs: dic
 @pytest.mark.asyncio
 async def test_unreachable_switch_is_logged_not_treated_as_clean(monkeypatch) -> None:
     events = _patch_run(monkeypatch, None)
-    out = await run_dhcp_clear_for_switch(_FakeSession(), _switch("A30"))
+    out = await run_dhcp_clear_for_switch(cast(Session, _FakeSession()), _switch("A30"))
     assert out["skipped"] == "switch_unreachable"
     assert [e["event_type"] for e in events] == ["dhcp_clear_skipped"]
     assert events[0]["severity"] == "warning"
@@ -103,7 +106,7 @@ async def test_mode_decides_dry_run_and_actions_come_from_settings(monkeypatch) 
     kwargs: dict = {}
     events = _patch_run(monkeypatch, result, kwargs)
 
-    out = await run_dhcp_clear_for_switch(_FakeSession(), _switch("A30", mode="dry_run"))
+    out = await run_dhcp_clear_for_switch(cast(Session, _FakeSession()), _switch("A30", mode="dry_run"))
 
     assert kwargs["dry_run"] is True
     assert kwargs["actions"] == {"conflict", "binding"}  # junk dropped, case-folded
@@ -127,7 +130,7 @@ async def test_live_success_logs_before_and_after(monkeypatch) -> None:
     kwargs: dict = {}
     events = _patch_run(monkeypatch, result, kwargs)
 
-    out = await run_dhcp_clear_for_switch(_FakeSession(), _switch("A30", mode="live"))
+    out = await run_dhcp_clear_for_switch(cast(Session, _FakeSession()), _switch("A30", mode="live"))
 
     assert kwargs["dry_run"] is False
     assert events[0]["event_type"] == "dhcp_clear"
@@ -142,7 +145,7 @@ async def test_live_partial_failure_is_an_error_event(monkeypatch) -> None:
         dry_run=False, role=ROLE_LOCAL_SERVER, plan=plan, bindings_cleared=1, errors=["b: % Invalid input"]
     )
     events = _patch_run(monkeypatch, result)
-    out = await run_dhcp_clear_for_switch(_FakeSession(), _switch("A30"))
+    out = await run_dhcp_clear_for_switch(cast(Session, _FakeSession()), _switch("A30"))
     assert events[0]["event_type"] == "dhcp_clear_failed"
     assert events[0]["severity"] == "error"
     assert out["errors"] == ["b: % Invalid input"]
@@ -153,6 +156,6 @@ async def test_nothing_to_do_explains_why(monkeypatch) -> None:
     plan = DhcpClearPlan(skipped=["switch is not the DHCP server for VLAN 20 (role=external); ..."])
     result = DhcpClearResult(dry_run=False, role=ROLE_EXTERNAL, plan=plan)
     events = _patch_run(monkeypatch, result)
-    await run_dhcp_clear_for_switch(_FakeSession(), _switch("A30"))
+    await run_dhcp_clear_for_switch(cast(Session, _FakeSession()), _switch("A30"))
     assert events[0]["event_type"] == "dhcp_clear_skipped"
     assert "not the DHCP server" in events[0]["message"]

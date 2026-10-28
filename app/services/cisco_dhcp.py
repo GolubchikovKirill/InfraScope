@@ -350,7 +350,7 @@ def run_dhcp_diagnostics(
         diag = collect_diagnostics(ssh, vlan)
         switch_ops_total.labels(operation="dhcp_diagnostics", result="success").inc()
         return diag
-    except Exception as e:  # noqa: BLE001 - a dead session must read as "unreachable", never as an empty snapshot
+    except Exception as e:  # a dead session must read as "unreachable", never as an empty snapshot
         logger.warning("DHCP diagnostics failed on %s: %s", ip, e)
         switch_ops_total.labels(operation="dhcp_diagnostics", result="error").inc()
         return None
@@ -399,7 +399,7 @@ def run_dhcp_clear(
         for cmd in plan.commands:
             try:
                 output = ssh.execute(cmd)
-            except Exception as e:  # noqa: BLE001 - commands already sent can't be undone; report a partial result instead of hiding it
+            except Exception as e:  # commands already sent can't be undone; report a partial result instead of hiding it
                 logger.warning("DHCP clear command %r failed on %s: %s", cmd, ip, e)
                 result.errors.append(f"{cmd}: {e}")
                 break
@@ -416,11 +416,11 @@ def run_dhcp_clear(
             after = collect_diagnostics(ssh, vlan)
             result.bindings_after = len(after.ap_bindings)
             result.conflicts_after = len(after.conflicts)
-        except Exception as e:  # noqa: BLE001 - the verification read is best effort; the clear itself already ran
+        except Exception as e:  # the verification read is best effort; the clear itself already ran
             logger.warning("DHCP post-clear verification failed on %s: %s", ip, e)
         switch_ops_total.labels(operation="dhcp_clear", result="error" if result.errors else "success").inc()
         return result
-    except Exception as e:  # noqa: BLE001 - report as unreachable/failed to the caller, which logs it as an event
+    except Exception as e:  # report as unreachable/failed to the caller, which logs it as an event
         logger.warning("DHCP clear failed on %s: %s", ip, e)
         switch_ops_total.labels(operation="dhcp_clear", result="error").inc()
         return None

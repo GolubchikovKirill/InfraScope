@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from app.services import cisco_dhcp
@@ -22,6 +24,7 @@ from app.services.cisco_dhcp import (
     run_dhcp_diagnostics,
     select_ap_bindings,
 )
+from app.services.cisco_ssh import CiscoSSH
 
 POOL_OUTPUT = """sw#show ip dhcp pool
 
@@ -239,7 +242,7 @@ def _args() -> tuple:
 
 def test_diagnostics_reports_unsupported_commands_instead_of_zeroes() -> None:
     ssh = _FakeSSH({})  # every show command is rejected
-    diag = run_dhcp_diagnostics(*_args(), session=ssh)
+    diag = run_dhcp_diagnostics(*_args(), session=cast(CiscoSSH, ssh))
     assert diag is not None
     assert diag.role == ROLE_EXTERNAL
     assert "show ip dhcp pool" in diag.unsupported
@@ -248,14 +251,14 @@ def test_diagnostics_reports_unsupported_commands_instead_of_zeroes() -> None:
 
 def test_diagnostics_never_sends_a_write_command() -> None:
     ssh = _local_server_ssh()
-    diag = run_dhcp_diagnostics(*_args(), session=ssh)
+    diag = run_dhcp_diagnostics(*_args(), session=cast(CiscoSSH, ssh))
     assert diag is not None and diag.role == ROLE_LOCAL_SERVER
     assert all(c.startswith("show ") for c in ssh.calls)
 
 
 def test_dry_run_plans_but_sends_nothing() -> None:
     ssh = _local_server_ssh()
-    result = run_dhcp_clear(*_args(), actions={"conflict", "binding"}, max_bindings=300, dry_run=True, session=ssh)
+    result = run_dhcp_clear(*_args(), actions={"conflict", "binding"}, max_bindings=300, dry_run=True, session=cast(CiscoSSH, ssh))
     assert result is not None
     assert len(result.plan.commands) == 3
     assert not any(c.startswith("clear") for c in ssh.calls)
@@ -265,7 +268,7 @@ def test_live_run_sends_planned_commands_and_reports_after_state() -> None:
     ssh = _local_server_ssh(
         cleared_state={"show ip dhcp binding": "sw#\n", "show ip dhcp conflict": "sw#\n"},
     )
-    result = run_dhcp_clear(*_args(), actions={"conflict", "binding"}, max_bindings=300, dry_run=False, session=ssh)
+    result = run_dhcp_clear(*_args(), actions={"conflict", "binding"}, max_bindings=300, dry_run=False, session=cast(CiscoSSH, ssh))
     assert result is not None
     assert [c for c in ssh.calls if c.startswith("clear")] == [
         "clear ip dhcp conflict *",
@@ -281,7 +284,7 @@ def test_live_run_sends_planned_commands_and_reports_after_state() -> None:
 def test_live_run_on_a_relay_switch_sends_no_clear_command() -> None:
     ssh = _local_server_ssh()
     ssh.responses["show ip dhcp pool"] = "sw#\n"  # no local pool -> relay
-    result = run_dhcp_clear(*_args(), actions={"conflict", "binding"}, max_bindings=300, dry_run=False, session=ssh)
+    result = run_dhcp_clear(*_args(), actions={"conflict", "binding"}, max_bindings=300, dry_run=False, session=cast(CiscoSSH, ssh))
     assert result is not None and result.role == ROLE_RELAY
     assert not any(c.startswith("clear") for c in ssh.calls)
 
@@ -296,7 +299,7 @@ def test_rejected_clear_command_is_reported_as_an_error() -> None:
         return original(cmd)
 
     ssh.execute = _execute  # type: ignore[method-assign]
-    result = run_dhcp_clear(*_args(), actions={"binding"}, max_bindings=300, dry_run=False, session=ssh)
+    result = run_dhcp_clear(*_args(), actions={"binding"}, max_bindings=300, dry_run=False, session=cast(CiscoSSH, ssh))
     assert result is not None
     assert result.bindings_cleared == 1
     assert len(result.errors) == 1 and "10.20.0.5" in result.errors[0]
