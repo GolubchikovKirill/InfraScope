@@ -105,13 +105,12 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
             logger.debug("%s: standard MIB empty, trying Brother proprietary OIDs", ip_address)
             toners = await _get_brother_toners(engine, target, comm)
 
-    # Strategy 4: HTTP scraping (HP EWS XML, works even with restricted SNMP)
+    # Strategy 4: HTTP scraping (HP EWS XML, works even with restricted SNMP).
+    # Exactly once: a second identical attempt used to follow here, which for a
+    # printer without a web panel doubled the HTTP timeouts (2 URLs x http/https
+    # x 8 s) on every full cycle and never found anything the first one didn't.
     if not toners:
         logger.debug("%s: no SNMP toner data, trying HTTP scraping", ip_address)
-        toners = await asyncio.to_thread(_get_toners_via_http, ip_address)
-
-    # Strategy 5: HTTP fallback even when SNMP gives data but no toners found
-    if not toners:
         toners = await asyncio.to_thread(_get_toners_via_http, ip_address)
 
     if not toners:

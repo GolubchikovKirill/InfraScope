@@ -3,7 +3,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func
 from sqlmodel import select
@@ -27,7 +27,7 @@ from app.domains.inventory.schemas import (
 )
 from app.domains.remote_access import service as remote_access_service
 from app.domains.shared.schemas import Message
-from app.services.cache import get_cached_model, set_cached_model
+from app.services.cache import EntityCache
 from app.services.smart_search import build_ilike_filter
 
 router = APIRouter(tags=["computers"])
@@ -35,6 +35,7 @@ router = APIRouter(tags=["computers"])
 logger = logging.getLogger(__name__)
 
 CACHE_TTL = 30
+_COMPUTERS_CACHE = EntityCache("computers", ttl=CACHE_TTL)
 
 
 def _get_computer_or_404(session: SessionDep, computer_id: uuid.UUID) -> Computer:
@@ -86,18 +87,16 @@ async def read_computers(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=500),
     q: str | None = Query(default=None),
-) -> ComputersPublic:
+) -> Response:
     del current_user
-    cache_key = f"computers:{q or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, ComputersPublic):
+    cache_variant = f"{q or ''}:{skip}:{limit}"
+    if cached := await _COMPUTERS_CACHE.get_response(cache_variant):
         return cached
 
     rows, count = await run_in_threadpool(_query_computers_page, session, q, skip, limit)
     result = ComputersPublic(data=rows, count=count)
 
-    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
-
-    return result
+    return await _COMPUTERS_CACHE.respond(cache_variant, result)
 
 
 @router.post("/", response_model=ComputerPublic, dependencies=[Depends(get_current_active_superuser)])

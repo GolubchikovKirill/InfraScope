@@ -6,6 +6,7 @@ from typing import Annotated
 
 import jwt
 from fastapi import BackgroundTasks, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
@@ -72,7 +73,9 @@ async def get_current_user(session: SessionDep, token: TokenDep, background_task
         user_id = uuid.UUID(token_data.sub) if token_data.sub else None
     except ValueError:
         user_id = None
-    user = session.get(User, user_id) if user_id else None
+    # A primary-key lookup, but a blocking one: off the event loop, so a slow
+    # database stalls this request and not every other one in flight.
+    user = await run_in_threadpool(session.get, User, user_id) if user_id else None
     if not user:
         auth_events_total.labels(result="failure", reason="user_not_found").inc()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")

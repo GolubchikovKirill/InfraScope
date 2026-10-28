@@ -3,7 +3,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import func, select
 
@@ -28,7 +28,7 @@ from app.domains.shared.schemas import Message
 from app.observability.metrics import (
     media_player_ops_total,
 )
-from app.services.cache import get_cached_model, set_cached_model
+from app.services.cache import EntityCache
 from app.services.iconbit import (
     delete_all_files as iconbit_delete_all,
 )
@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["media-players"])
 
 CACHE_TTL = 30
+_MEDIA_PLAYERS_CACHE = EntityCache("media_players", ttl=CACHE_TTL)
 
 
 def _get_media_player_or_404(session: SessionDep, player_id: uuid.UUID) -> MediaPlayer:
@@ -133,9 +134,9 @@ async def read_media_players(
     limit: int = Query(default=200, le=500),
     name: str | None = None,
     device_type: str | None = None,
-) -> MediaPlayersPublic:
-    cache_key = f"media_players:{device_type or ''}:{name or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, MediaPlayersPublic):
+) -> Response:
+    cache_variant = f"{device_type or ''}:{name or ''}:{skip}:{limit}"
+    if cached := await _MEDIA_PLAYERS_CACHE.get_response(cache_variant):
         return cached
 
     players, count = await run_in_threadpool(
@@ -143,9 +144,7 @@ async def read_media_players(
     )
     result = MediaPlayersPublic(data=players, count=count)
 
-    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
-
-    return result
+    return await _MEDIA_PLAYERS_CACHE.respond(cache_variant, result)
 
 
 @router.post("/", response_model=MediaPlayerPublic, dependencies=[Depends(get_current_active_superuser)])

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep
@@ -21,7 +21,7 @@ from app.domains.inventory.schemas import (
 )
 from app.domains.shared.schemas import Message
 from app.observability.metrics import switch_port_op_duration_seconds, switch_port_ops_total
-from app.services.cache import get_cached_model, set_cached_model
+from app.services.cache import EntityCache
 from app.services.smart_search import text_matches_query
 from app.services.switches import resolve_switch_provider
 
@@ -46,9 +46,10 @@ async def get_switch_ports(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     q: str | None = Query(default=None),
-) -> SwitchPortsPublic:
-    cache_key = f"switch_ports:{switch_id}:{q or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, SwitchPortsPublic):
+) -> Response:
+    cache = EntityCache(f"switch_ports:{switch_id}", ttl=20)
+    cache_variant = f"{q or ''}:{skip}:{limit}"
+    if cached := await cache.get_response(cache_variant):
         return cached
 
     switch = _get_switch_or_404(session, switch_id)
@@ -104,8 +105,7 @@ async def get_switch_ports(
         for p in window
     ]
     result = SwitchPortsPublic(data=data, count=len(ports))
-    await set_cached_model(cache_key, result, ttl=20)
-    return result
+    return await cache.respond(cache_variant, result)
 
 
 @router.get("/{switch_id}/port-config-history", response_model=SwitchPortSnapshotHistory)

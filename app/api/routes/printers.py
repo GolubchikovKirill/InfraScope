@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import Session, func, select
 
@@ -31,7 +31,7 @@ from app.domains.inventory.schemas import (
 )
 from app.domains.operations.models import EventLog
 from app.domains.shared.schemas import Message
-from app.services.cache import get_cached_model, set_cached_model
+from app.services.cache import EntityCache
 from app.services.cartridge_stock import (
     CartridgeStockDuplicateError,
     CartridgeStockMissingError,
@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["printers"])
 
 CACHE_TTL = 30
+_PRINTERS_CACHE = EntityCache("printers", ttl=CACHE_TTL)
 
 
 def _query_printers_page(
@@ -143,13 +144,21 @@ async def _fill_mac_in_background(printer_id: uuid.UUID, ip_address: str) -> Non
     # in the UI would spin for that long. Look the MAC up after the response
     # and write it only if the printer still sits on the same IP and nobody
     # has set a MAC in the meantime.
+    #
+    # The lookup runs with no session open: holding one across ~20 s of SNMP and
+    # ping timeouts kept a pooled DB connection checked out the whole time, and a
+    # handful of edits in a row was enough to drain the pool for every request.
     with Session(engine) as session:
         printer = session.get(Printer, printer_id)
         if printer is None:
             return
-        resolved_mac = await _resolve_mac_for_printer(printer)
-        session.refresh(printer)
-        if not resolved_mac or printer.ip_address != ip_address or printer.mac_address:
+        session.expunge(printer)
+    resolved_mac = await _resolve_mac_for_printer(printer)
+    if not resolved_mac:
+        return
+    with Session(engine) as session:
+        printer = session.get(Printer, printer_id)
+        if printer is None or printer.ip_address != ip_address or printer.mac_address:
             return
         printer.mac_address = resolved_mac
         printer.mac_status = "verified"
@@ -279,17 +288,15 @@ async def read_printers(
     limit: int = Query(default=200, le=500),
     store_name: str | None = None,
     printer_type: str = Query(default="laser"),
-) -> PrintersPublic:
-    cache_key = f"printers:{printer_type}:{store_name or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, PrintersPublic):
+) -> Response:
+    cache_variant = f"{printer_type}:{store_name or ''}:{skip}:{limit}"
+    if cached := await _PRINTERS_CACHE.get_response(cache_variant):
         return cached
 
     printers, count = await run_in_threadpool(_query_printers_page, session, printer_type, store_name, skip, limit)
     result = PrintersPublic(data=printers, count=count)
 
-    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
-
-    return result
+    return await _PRINTERS_CACHE.respond(cache_variant, result)
 
 
 @router.post("/", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])

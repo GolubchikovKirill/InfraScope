@@ -24,10 +24,11 @@ from app.domains.operations.schemas import (
 )
 from app.domains.remote_access import service as remote_access_service
 from app.domains.shared.schemas import Message
-from app.services.cache import get_cached_model, invalidate_entity_cache, set_cached_model
+from app.services.cache import EntityCache, invalidate_entity_cache
 from app.services.smart_search import build_ilike_filter
 
 CACHE_TTL = 30
+_CASH_REGISTERS_CACHE = EntityCache("cash_registers", ttl=CACHE_TTL)
 
 
 async def _invalidate_cache() -> None:
@@ -90,18 +91,16 @@ async def read_cash_registers(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=500),
     q: str | None = Query(default=None),
-) -> CashRegistersPublic:
-    cache_key = f"cash_registers:{q or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, CashRegistersPublic):
+) -> Response:
+    cache_variant = f"{q or ''}:{skip}:{limit}"
+    if cached := await _CASH_REGISTERS_CACHE.get_response(cache_variant):
         return cached
 
     del current_user
     rows, count = await run_in_threadpool(_query_cash_registers_page, session, q, skip, limit)
     result = CashRegistersPublic(data=rows, count=count)
 
-    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
-
-    return result
+    return await _CASH_REGISTERS_CACHE.respond(cache_variant, result)
 
 
 @router.post("/", response_model=CashRegisterPublic, dependencies=[Depends(get_current_active_superuser)])

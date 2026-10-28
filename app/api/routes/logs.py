@@ -1,15 +1,16 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.domains.operations.models import EventLog
 from app.domains.operations.schemas import EventLogsPublic
-from app.services.cache import get_cached_model, set_cached_model
+from app.services.cache import EntityCache
 from app.services.smart_search import build_ilike_filter
 
 router = APIRouter(tags=["logs"])
 CACHE_TTL = 10
+_LOGS_CACHE = EntityCache("logs", ttl=CACHE_TTL)
 
 
 def _query_logs_page(
@@ -70,15 +71,14 @@ async def read_logs(
     device_kind: str | None = Query(default=None),
     event_type_prefix: str | None = Query(default=None),
     q: str | None = Query(default=None),
-) -> EventLogsPublic:
+) -> Response:
     del current_user
-    cache_key = f"logs:{severity or ''}:{device_kind or ''}:{event_type_prefix or ''}:{q or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, EventLogsPublic):
+    cache_variant = f"{severity or ''}:{device_kind or ''}:{event_type_prefix or ''}:{q or ''}:{skip}:{limit}"
+    if cached := await _LOGS_CACHE.get_response(cache_variant):
         return cached
 
     logs, count = await run_in_threadpool(
         _query_logs_page, session, severity, device_kind, event_type_prefix, q, skip, limit
     )
     result = EventLogsPublic(data=logs, count=count)
-    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
-    return result
+    return await _LOGS_CACHE.respond(cache_variant, result)

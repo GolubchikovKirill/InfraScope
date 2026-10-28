@@ -6,6 +6,7 @@ import uuid
 
 import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlmodel import Session
@@ -23,6 +24,7 @@ router = APIRouter()
 
 REALTIME_CHANNEL = "infrascope:realtime"
 WS_UNAUTHORIZED_CLOSE_CODE = 4401
+WS_SEND_TIMEOUT_SECONDS = 5.0
 
 
 class ConnectionManager:
@@ -50,12 +52,20 @@ class ConnectionManager:
         text_data = json.dumps(message)
         async with self.lock:
             subs = list(self.active_connections)
-        for connection in subs:
-            try:
-                await connection.send_text(text_data)
-            except Exception as e:
-                logger.debug("WebSocket send error: %s", e)
-                await self.disconnect(connection)
+        if not subs:
+            return
+        # Concurrently and with a deadline per client. Sending one by one let a
+        # single stalled browser (laptop asleep on Wi-Fi, a full TCP window) hold
+        # every other tab's update - and the Redis relay loop behind it - until
+        # its socket finally gave up.
+        await asyncio.gather(*(self._send(connection, text_data) for connection in subs))
+
+    async def _send(self, connection: WebSocket, text_data: str) -> None:
+        try:
+            await asyncio.wait_for(connection.send_text(text_data), timeout=WS_SEND_TIMEOUT_SECONDS)
+        except Exception as e:
+            logger.debug("WebSocket send error: %s", e)
+            await self.disconnect(connection)
 
 
 manager = ConnectionManager()
@@ -111,6 +121,11 @@ class RedisRelay:
 relay = RedisRelay()
 
 
+def _load_user(user_id: uuid.UUID) -> User | None:
+    with Session(engine) as session:
+        return session.get(User, user_id)
+
+
 async def _authenticate_ws_token(token: str | None) -> User | None:
     """Same validation as get_current_user (app.api.deps), adapted for a
     WebSocket handshake: no request-scoped session/Depends chain available,
@@ -135,8 +150,7 @@ async def _authenticate_ws_token(token: str | None) -> User | None:
         return None
     if user_id is None:
         return None
-    with Session(engine) as session:
-        user = session.get(User, user_id)
+    user = await run_in_threadpool(_load_user, user_id)
     if not user or not user.is_active:
         return None
     return user
