@@ -7,6 +7,8 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.14",
     "argon2-cffi>=25.1.0",
+    # alembic/env.py runs migrations through an async engine on ASYNC_DATABASE_URI
+    "asyncpg>=0.30",
     "bcrypt>=4.2",
     "fastapi>=0.129.0",
     "httpx>=0.28",
