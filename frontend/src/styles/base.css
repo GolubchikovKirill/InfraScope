@@ -7,7 +7,7 @@ body {
   min-height: 100vh;
   color: var(--app-text);
   background: var(--app-bg);
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Inter Variable", "Inter", system-ui, sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

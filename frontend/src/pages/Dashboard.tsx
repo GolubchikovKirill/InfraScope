@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Plus, Search, Printer as PrinterIcon, Tag, Check, Archive } from "lucide-react";
 import {
@@ -41,6 +41,12 @@ const TABS: { key: TabKey; label: string; icon: typeof PrinterIcon }[] = [
   { key: "label", label: "Этикеточные", icon: Tag },
   { key: "cartridges", label: "Склад картриджей", icon: Archive },
 ];
+
+function hasLowToner(printer: Printer): boolean {
+  return [printer.toner_black, printer.toner_cyan, printer.toner_magenta, printer.toner_yellow].some(
+    (level) => level !== null && level >= 0 && level <= 15,
+  );
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -185,11 +191,7 @@ export default function Dashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["printers"] }),
   });
 
-  const handleDelete = async (id: string) => {
-    if (await confirm("Удалить принтер?", { danger: true, confirmText: "Удалить" })) deleteMut.mutate(id);
-  };
-
-  const printers = data?.data ?? [];
+  const printers = useMemo(() => data?.data ?? [], [data]);
   const cartridgeStocks = cartridgeStockData?.data ?? [];
   const tonerPredictions = useMemo(
     () => (tonerPredictionsData?.data ?? []) as MLTonerPrediction[],
@@ -225,35 +227,51 @@ export default function Dashboard() {
       }, {}),
     [riskPredictions],
   );
-  const sortedPrinters = [...printers].sort((a, b) => {
+  // Memoised so a keystroke in the search box or one printer's spinner does
+  // not re-sort, re-filter and re-count the whole fleet on every render.
+  const visiblePrinters = useMemo(() => {
     const rank = (value: boolean | null) => (value === true ? 0 : value === null ? 1 : 2);
-    return rank(a.is_online) - rank(b.is_online);
-  });
-  const visiblePrinters = sortedPrinters.filter((printer) => {
-    if (statusFilter === "online") return printer.is_online === true;
-    if (statusFilter === "offline") return printer.is_online === false;
-    if (statusFilter === "low_toner") {
-      const levels = [printer.toner_black, printer.toner_cyan, printer.toner_magenta, printer.toner_yellow].filter(
-        (l): l is number => l !== null && l >= 0,
-      );
-      return levels.some((l) => l <= 15);
-    }
-    return true;
-  });
+    return [...printers]
+      .sort((a, b) => rank(a.is_online) - rank(b.is_online))
+      .filter((printer) => {
+        if (statusFilter === "online") return printer.is_online === true;
+        if (statusFilter === "offline") return printer.is_online === false;
+        if (statusFilter === "low_toner") return hasLowToner(printer);
+        return true;
+      });
+  }, [printers, statusFilter]);
 
-  const total = printers.length;
-  const online = printers.filter((p) => p.is_online === true).length;
-  const offline = printers.filter((p) => p.is_online === false).length;
-  const lowToner = printerTab === "laser"
-    ? printers.filter((p) => {
-        const levels = [p.toner_black, p.toner_cyan, p.toner_magenta, p.toner_yellow].filter((l): l is number => l !== null && l >= 0);
-        return levels.some((l) => l <= 15);
-      }).length
-    : 0;
+  const { total, online, offline, lowToner } = useMemo(
+    () => ({
+      total: printers.length,
+      online: printers.filter((p) => p.is_online === true).length,
+      offline: printers.filter((p) => p.is_online === false).length,
+      lowToner: printerTab === "laser" ? printers.filter(hasLowToner).length : 0,
+    }),
+    [printers, printerTab],
+  );
   const showCopyMessage = (message: string) => {
     setCopyMessage(message);
     window.setTimeout(() => setCopyMessage((current) => (current === message ? null : current)), 1800);
   };
+
+  // Stable identities for the card callbacks: the cards are memoised, and a
+  // fresh arrow per render would defeat that for every card at once.
+  const { mutate: pollOne } = pollOneMut;
+  const { mutate: deleteOne } = deleteMut;
+  const handlePoll = useCallback((id: string) => pollOne(id), [pollOne]);
+  const handleEdit = useCallback((p: Printer) => {
+    setEditingPrinter(p);
+    setFormError(null);
+    setShowForm(true);
+  }, []);
+  const handleDeleteCard = useCallback(
+    async (id: string) => {
+      if (await confirm("Удалить принтер?", { danger: true, confirmText: "Удалить" })) deleteOne(id);
+    },
+    [confirm, deleteOne],
+  );
+  const handleCopyToner = useCallback(() => showCopyMessage("Картридж скопирован"), []);
 
   return (
     <div className="space-y-6">
@@ -397,23 +415,23 @@ export default function Dashboard() {
               <PrinterCard
                 key={printer.id}
                 printer={printer}
-                onPoll={(id) => pollOneMut.mutate(id)}
-                onEdit={(p) => { setEditingPrinter(p); setFormError(null); setShowForm(true); }}
-                onDelete={handleDelete}
+                onPoll={handlePoll}
+                onEdit={handleEdit}
+                onDelete={handleDeleteCard}
                 isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
                 isSuperuser={isSuperuser}
                 showLowTonerDetails={statusFilter === "low_toner"}
                 tonerPredictionDays={tonerDaysByPrinter[printer.id]}
                 offlineRiskLevel={riskByDeviceId[printer.id]}
-                onCopyToner={() => showCopyMessage("Картридж скопирован")}
+                onCopyToner={handleCopyToner}
               />
             ) : (
               <ZebraCard
                 key={printer.id}
                 printer={printer}
-                onPoll={(id) => pollOneMut.mutate(id)}
-                onEdit={(p) => { setEditingPrinter(p); setFormError(null); setShowForm(true); }}
-                onDelete={handleDelete}
+                onPoll={handlePoll}
+                onEdit={handleEdit}
+                onDelete={handleDeleteCard}
                 isPolling={pollingIds.has(printer.id) || pollAllMut.isPending}
                 isSuperuser={isSuperuser}
               />

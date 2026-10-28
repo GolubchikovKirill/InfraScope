@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from time import perf_counter
 
-from app.observability.metrics import snmp_operations_total
+from app.observability.metrics import snmp_operations_total, snmp_poll_duration_seconds
 
 from ._pysnmp_compat import CommunityData, SnmpEngine, UdpTransportTarget
 from .helpers import _detect_vendor
@@ -142,16 +143,16 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
 
 
 async def _measured(operation: str, coro) -> PrinterStatus:
+    started = perf_counter()
     try:
         result = await coro
     except Exception:
         snmp_operations_total.labels(operation=operation, result="error", reason="exception").inc()
+        snmp_poll_duration_seconds.labels(operation=operation, result="error").observe(perf_counter() - started)
         raise
-    snmp_operations_total.labels(
-        operation=operation,
-        result="success" if result.is_online else "offline",
-        reason="none",
-    ).inc()
+    outcome = "success" if result.is_online else "offline"
+    snmp_operations_total.labels(operation=operation, result=outcome, reason="none").inc()
+    snmp_poll_duration_seconds.labels(operation=operation, result=outcome).observe(perf_counter() - started)
     return result
 
 

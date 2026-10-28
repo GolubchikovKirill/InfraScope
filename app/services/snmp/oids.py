@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.core.config import settings
+
 # ── MIB-2 System OIDs ──────────────────────────────────────────────────────
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 OID_SYS_NAME = "1.3.6.1.2.1.1.5.0"
@@ -119,8 +121,9 @@ NON_TONER_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-SNMP_TIMEOUT = 5
-SNMP_RETRIES = 2
+# See PRINTER_SNMP_TIMEOUT_SECONDS in app.core.config for why these are short
+SNMP_TIMEOUT = settings.PRINTER_SNMP_TIMEOUT_SECONDS
+SNMP_RETRIES = settings.PRINTER_SNMP_RETRIES
 
 
 @dataclass

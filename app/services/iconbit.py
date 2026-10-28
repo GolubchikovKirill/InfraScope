@@ -17,7 +17,9 @@ Common endpoints:
 from __future__ import annotations
 
 import logging
+import os
 import re
+import threading
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -36,6 +38,31 @@ AUTH_CREDS = ("admin", "admin")
 _FIRMWARE_HINTS: dict[str, str] = {}
 _WARN_COOLDOWN_SECONDS = 600.0
 _WARN_LAST_SEEN: dict[str, float] = {}
+
+# One pooled client per process instead of httpx.get(), which opens a fresh
+# TCP connection for every request: a status read is two or three requests to
+# the same player, and the cards ask every 15 s. httpx.Client is thread-safe,
+# so the to_thread callers share it. Keyed by pid because the Celery worker
+# forks - a client inherited across fork would share its sockets.
+_CLIENT: httpx.Client | None = None
+_CLIENT_PID: int | None = None
+_CLIENT_LOCK = threading.Lock()
+
+
+def _client() -> httpx.Client:
+    global _CLIENT, _CLIENT_PID
+    pid = os.getpid()
+    if _CLIENT is None or _CLIENT_PID != pid:
+        with _CLIENT_LOCK:
+            if _CLIENT is None or _CLIENT_PID != pid:
+                _CLIENT = httpx.Client(
+                    auth=AUTH_CREDS,
+                    timeout=TIMEOUT,
+                    follow_redirects=True,
+                    limits=httpx.Limits(max_connections=64, max_keepalive_connections=32, keepalive_expiry=30.0),
+                )
+                _CLIENT_PID = pid
+    return _CLIENT
 
 
 def _log_warning_with_cooldown(key: str, message: str, *args) -> None:
@@ -63,7 +90,7 @@ def _base_url(ip: str) -> str:
 
 def _get(url: str, **kwargs) -> httpx.Response | None:
     try:
-        resp = httpx.get(url, auth=AUTH_CREDS, timeout=TIMEOUT, follow_redirects=True, **kwargs)
+        resp = _client().get(url, **kwargs)
         media_player_ops_total.labels(
             operation="iconbit_http_get",
             result="success" if resp.status_code < 500 else "error",
@@ -81,7 +108,7 @@ def _get(url: str, **kwargs) -> httpx.Response | None:
 
 def _post(url: str, **kwargs) -> httpx.Response | None:
     try:
-        resp = httpx.post(url, auth=AUTH_CREDS, follow_redirects=True, **kwargs)
+        resp = _client().post(url, **kwargs)
         media_player_ops_total.labels(
             operation="iconbit_http_post",
             result="success" if resp.status_code < 500 else "error",

@@ -18,6 +18,7 @@ from app.api.websockets import relay as realtime_relay
 from app.core.config import settings
 from app.core.db import engine, init_db
 from app.core.http import request_context_headers_middleware, security_headers_middleware
+from app.core.io_pool import install_io_executor
 from app.core.limiter import limiter
 from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import close_redis, get_redis
@@ -34,6 +35,8 @@ _recent_unhandled_exceptions: dict[str, float] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    install_io_executor()
+
     def _init_db_sync():
         with Session(engine) as session:
             init_db(session)

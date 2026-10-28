@@ -81,11 +81,10 @@ def test_poll_all_iconbit_uses_8081_healthcheck(client: TestClient, admin_token:
     )
     assert created.status_code == 200
 
-    monkeypatch.setattr(
-        media_polling,
-        "probe_tcp_endpoint",
-        lambda _ip, *, port, timeout, probe_scope: ReachabilityResult(is_online=port == 8081),
-    )
+    async def _probe(_ip, *, port, timeout, probe_scope):
+        return ReachabilityResult(is_online=port == 8081)
+
+    monkeypatch.setattr(media_polling, "probe_tcp_endpoint_async", _probe)
 
     async def _should_not_be_called(_address: str, **_kwargs):
         raise RuntimeError("generic poll should not be used for iconbit in bulk")

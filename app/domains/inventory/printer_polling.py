@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.redis import REDIS_ERRORS, get_redis
 from app.domains.inventory.models import Printer
-from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint
+from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint_async
 from app.domains.inventory.schemas import PrintersPublic
 from app.observability.metrics import printer_polls_total, set_device_counts
 from app.services.cache import invalidate_entity_cache
@@ -138,9 +138,7 @@ async def poll_one_printer(
         if printer.printer_type == "label":
             # Label printers speak no SNMP - an open raw-print port is the
             # only signal there is.
-            probe = await asyncio.to_thread(
-                probe_tcp_endpoint, ip, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers"
-            )
+            probe = await probe_tcp_endpoint_async(ip, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers")
             return ip, probe, None
         if full:
             result = await poll_printer_async(engine, ip, printer.snmp_community)
@@ -241,17 +239,13 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
         raise UnsupportedPrinterPollError("USB printers cannot be polled")
 
     if printer.printer_type == "label":
-        probe = await asyncio.to_thread(
-            probe_tcp_endpoint, printer.ip_address, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers"
-        )
+        probe = await probe_tcp_endpoint_async(printer.ip_address, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers")
         if not probe.is_online:
             # A manual poll is someone standing there asking. The probe's own
             # retries are milliseconds apart; this second look is seconds
             # later, which is what catches a printer mid-reboot.
             await asyncio.sleep(settings.PRINTER_MANUAL_POLL_RETRY_DELAY_SECONDS)
-            probe = await asyncio.to_thread(
-                probe_tcp_endpoint, printer.ip_address, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers"
-            )
+            probe = await probe_tcp_endpoint_async(printer.ip_address, port=LABEL_PRINTER_PORT, timeout=2.0, probe_scope="printers")
         online = probe.is_online
         printer.is_online = online
         printer.status = "online" if online else "offline"

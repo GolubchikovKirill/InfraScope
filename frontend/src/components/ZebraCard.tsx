@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { RefreshCw, Pencil, Trash2, Tag, ExternalLink, Usb } from "lucide-react";
 import type { Printer } from "../client";
 import OnlineStatusBadge from "./OnlineStatusBadge";
@@ -23,7 +24,7 @@ function statusBadge(printer: Printer) {
   return <OnlineStatusBadge isOnline={printer.is_online} />;
 }
 
-export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
+function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
   const isUsb = printer.connection_type === "usb";
 
   const polledAt = printer.last_polled_at
@@ -122,3 +123,7 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
     </div>
   );
 }
+
+// Memoised: a fleet page renders dozens of these, and only the card whose
+// printer or polling state changed needs to re-render.
+export default memo(ZebraCard);

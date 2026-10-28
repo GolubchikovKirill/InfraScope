@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -163,7 +162,7 @@ async def delete_computer(session: SessionDep, computer_id: uuid.UUID) -> Messag
 async def poll_computer(computer_id: uuid.UUID, session: SessionDep, current_user: CurrentUser) -> Computer:
     del current_user
     row = _get_computer_or_404(session, computer_id)
-    probe = await asyncio.to_thread(probe_computer, row.hostname)
+    probe = await probe_computer(row.hostname)
     row.is_online = probe.is_online
     row.reachability_reason = probe.reason
     row.last_polled_at = datetime.now(UTC)
