@@ -88,7 +88,7 @@ export default function FleetMap({
                     onClick={() => setKind(tab.id)}
                     className={`rounded-md px-3 py-1 text-sm font-medium transition ${
                       active
-                        ? "bg-[var(--brand)] text-white"
+                        ? "bg-[var(--brand-fill)] text-white"
                         : "text-slate-600 hover:bg-slate-100"
                     }`}
                   >

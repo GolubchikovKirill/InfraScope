@@ -20,7 +20,7 @@ body {
 
 ::selection {
   color: white;
-  background: var(--brand);
+  background: var(--brand-fill);
 }
 
 /* Every interactive element gets a visible keyboard focus ring. Previously

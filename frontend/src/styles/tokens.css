@@ -2,7 +2,8 @@
    1. TOKENS
    ----------------------------------------------------------------------------
    Three groups, deliberately separate:
-     - brand      : InfraScope's blue identity. Navigation, primary actions,
+     - brand      : RegStaer-M blue identity (regstaer.ru: navy #011A32,
+                    blue #0053A1, sky #2EB1FC). Navigation, primary actions,
                     entity accents. Carries no status meaning.
      - status     : ok / warn / danger / info. These must NEVER be repainted to
                     the brand colour - an amber "data is stale" hint rendered in
@@ -15,20 +16,35 @@
 :root {
   color-scheme: light;
 
-  /* --- brand --- */
-  --brand-strong: #145a94;
-  --brand: #1d78c9;
-  --brand-bright: #2489dd;
-  --brand-light: #4ba0e8;
-  --brand-gradient: linear-gradient(135deg, #1d78c9, #2489dd);
+  /* --- brand: RegStaer-M --- */
+  --brand-navy: #011a32;
+  --brand-strong: #003f7d;
+  --brand: #0053a1;
+  --brand-bright: #0a66bf;
+  --brand-light: #2eb1fc;
+  /* RegStaer fills are flat; kept as a "gradient" so every consumer of the
+     old two-stop blend still resolves. */
+  --brand-gradient: linear-gradient(#0053a1, #0053a1);
   /* Brand as a filled background carrying white text. Kept separate from
      --brand, which is the text/accent value: in dark mode the accent has to
      lighten to stay legible, and a lightened accent used as a fill would put
      white text on a pale ground. */
-  --brand-fill: #1d78c9;
-  --brand-soft: rgba(29, 120, 201, 0.1);
-  --brand-border: rgba(29, 120, 201, 0.3);
-  --brand-ring: rgba(29, 120, 201, 0.22);
+  --brand-fill: #0053a1;
+  --brand-soft: rgba(0, 83, 161, 0.08);
+  --brand-border: rgba(0, 83, 161, 0.28);
+  --brand-ring: rgba(46, 177, 252, 0.3);
+
+  /* Display serif for the wordmark, page titles and headline numbers */
+  --font-display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+
+  /* --- sidebar: always the brand navy, in both themes --- */
+  --sidebar-bg: #011a32;
+  --sidebar-text: rgba(255, 255, 255, 0.72);
+  --sidebar-text-strong: #ffffff;
+  --sidebar-hover: rgba(255, 255, 255, 0.07);
+  --sidebar-active-bg: rgba(46, 177, 252, 0.14);
+  --sidebar-accent: #2eb1fc;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
 
   /* --- status: meaning, not decoration --- */
   --ok-fg: #1f9d52;
@@ -46,48 +62,50 @@
   --danger-bg: rgba(201, 67, 43, 0.11);
   --danger-border: rgba(201, 67, 43, 0.3);
 
-  --info-fg: #1d78c9;
-  --info-bg: rgba(29, 120, 201, 0.11);
-  --info-border: rgba(29, 120, 201, 0.3);
+  --info-fg: #0053a1;
+  --info-bg: rgba(0, 83, 161, 0.09);
+  --info-border: rgba(0, 83, 161, 0.28);
 
   /* --- surfaces ---
      Neutrals now sit on the same blue-grey axis as the accent rather than
      against it, and the page stays a step below the panels so cards lift
      without needing heavy shadow. */
-  --surface-page: #f2f4f8;
+  --surface-page: #f4f7fa;
   --surface-1: #ffffff;
-  --surface-2: #f4f7fa;
-  --surface-3: #e8edf3;
+  --surface-2: #f2f6fa;
+  --surface-3: #e6edf4;
   --surface-input: #ffffff;
 
   /* Borders as tinted ink rather than flat grey, so they stay related to the
      text they sit beside at any opacity. */
-  --border-subtle: rgba(18, 32, 44, 0.12);
-  --border-strong: rgba(18, 32, 44, 0.22);
+  --border-subtle: rgba(1, 26, 50, 0.11);
+  --border-strong: rgba(1, 26, 50, 0.22);
   /* Row separators inside a table: present enough to guide the eye along a
      line, faint enough that fifty of them don't read as a grid. */
-  --border-faint: rgba(18, 32, 44, 0.07);
+  --border-faint: rgba(1, 26, 50, 0.07);
 
   /* --- text ---
      Deep blue-black rather than true black: pure black on white is the
      harshest pairing available and reads as glare over a long shift. */
-  --text-strong: #12202c;
-  --text-default: #223341;
-  --text-muted: #5b6b7a;
-  --text-faint: #7d8b99;
+  --text-strong: #011a32;
+  --text-default: #1b3550;
+  --text-muted: #4a7094;
+  --text-faint: #7891aa;
 
-  /* --- radius scale --- */
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  /* --- radius scale ---
+     RegStaer: near-square cards, pill-shaped buttons and fields. */
+  --radius-sm: 4px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-field: 20px;
   --radius-full: 999px;
 
   /* --- elevation scale ---
      Tinted with the same blue-grey ink as the borders, so shadows read as
      part of the palette rather than as neutral dirt on it. */
-  --elev-1: 0 1px 3px rgba(30, 45, 60, 0.07);
-  --elev-2: 0 3px 10px rgba(30, 45, 60, 0.09);
-  --elev-3: 0 8px 22px rgba(30, 45, 60, 0.13);
+  --elev-1: 0 1px 2px rgba(1, 26, 50, 0.05);
+  --elev-2: 0 1px 3px rgba(1, 26, 50, 0.06);
+  --elev-3: 0 8px 22px rgba(1, 26, 50, 0.12);
 
   /* --- smallest readable size. Never go below this. --- */
   --text-micro: 0.6875rem; /* 11px */
@@ -112,8 +130,8 @@
   --app-nav-active-bg: var(--brand-soft);
   --app-nav-active-border: var(--brand-border);
   --app-nav-active-text: var(--brand);
-  --app-sidebar-bg: var(--surface-1);
-  --app-sidebar-border: var(--border-subtle);
+  --app-sidebar-bg: var(--sidebar-bg);
+  --app-sidebar-border: var(--sidebar-border);
   --app-primary-gradient: var(--brand-gradient);
   --app-accent-soft: var(--brand-soft);
   --app-accent-border: var(--brand-border);
@@ -148,18 +166,23 @@
      about 3% L apart - enough to read at a glance without borders doing all
      the work - and from hairline borders drawn as translucent light, so they
      sit at the depth of whatever surface they land on. Shadows are nearly
-     useless on a dark ground and stay faint. */
+     useless on a dark ground and stay faint.
 
-  --brand: #5aa5ff;
-  --brand-bright: #78b6ff;
-  --brand-light: #8fc2ff;
-  --brand-gradient: linear-gradient(135deg, #2f74d0, #3b82e6);
+     RegStaer-M: only the sidebar keeps the brand navy here; the accent moves
+     to the brand sky blue, which stays clear of the graphite ground. */
+
+  --brand: #5cc0fd;
+  --brand-bright: #7fcdfd;
+  --brand-light: #2eb1fc;
+  --brand-gradient: linear-gradient(#0a62b8, #0a62b8);
   /* White text sits on this, so it stays saturated and mid-dark */
-  --brand-fill: #2f6fca;
-  --brand-strong: #255aa6;
-  --brand-soft: rgba(90, 165, 255, 0.13);
-  --brand-border: rgba(90, 165, 255, 0.32);
-  --brand-ring: rgba(90, 165, 255, 0.32);
+  --brand-fill: #0a62b8;
+  --brand-strong: #0053a1;
+  --brand-soft: rgba(46, 177, 252, 0.12);
+  --brand-border: rgba(46, 177, 252, 0.3);
+  --brand-ring: rgba(46, 177, 252, 0.32);
+
+  --sidebar-bg: #01121f;
 
   --ok-fg: #4ad295;
   --ok-bg: rgba(74, 210, 149, 0.12);
@@ -174,9 +197,9 @@
   --danger-bg: rgba(255, 127, 115, 0.12);
   --danger-border: rgba(255, 127, 115, 0.32);
 
-  --info-fg: #5aa5ff;
-  --info-bg: rgba(90, 165, 255, 0.12);
-  --info-border: rgba(90, 165, 255, 0.3);
+  --info-fg: #5cc0fd;
+  --info-bg: rgba(46, 177, 252, 0.12);
+  --info-border: rgba(46, 177, 252, 0.3);
 
   --surface-page: #0f1115;
   --surface-1: #15181e;
@@ -204,7 +227,7 @@
   --app-secondary-border: var(--border-strong);
   --app-header-bg: rgba(15, 17, 21, 0.86);
   --app-nav-active-text: var(--brand-bright);
-  --app-sidebar-bg: #121419;
+  --app-sidebar-bg: var(--sidebar-bg);
   --app-primary-gradient: var(--brand-gradient);
   --app-accent-text: var(--brand);
 

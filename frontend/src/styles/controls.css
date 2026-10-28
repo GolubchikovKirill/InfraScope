@@ -3,12 +3,17 @@
    ========================================================================== */
 
 .app-input {
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-field);
   border: 1px solid var(--border-strong);
   background: var(--surface-input);
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
+}
+
+/* A 20px radius on a multi-line box reads as a speech bubble */
+textarea.app-input {
+  border-radius: var(--radius-md);
 }
 
 .app-input:focus {
@@ -18,27 +23,20 @@
 }
 
 .app-btn-primary {
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   color: white;
   font-weight: 600;
   background: var(--app-primary-gradient);
-  /* A restrained lift, not a coloured glow - the old crimson halo read as a
-     neon rim once the surrounding neutrals stopped being cold. */
-  box-shadow: 0 2px 6px rgba(20, 90, 148, 0.24);
-  transition:
-    transform 0.18s ease,
-    filter 0.2s ease,
-    box-shadow 0.2s ease;
+  /* RegStaer buttons are flat pills: hover darkens, nothing lifts */
+  transition: background 0.2s ease;
 }
 
 .app-btn-primary:hover {
-  filter: brightness(1.05);
-  transform: translateY(-1px);
-  box-shadow: 0 5px 14px rgba(20, 90, 148, 0.3);
+  background: var(--brand-strong);
 }
 
 .app-btn-secondary {
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   font-weight: 600;
   color: var(--app-secondary-text);
   border: 1px solid var(--app-secondary-border);
@@ -51,8 +49,7 @@
 
 .app-btn-secondary:hover {
   background: var(--surface-2);
-  transform: translateY(-1px);
-  box-shadow: var(--elev-1);
+  border-color: var(--brand-border);
 }
 
 /* Icon-only buttons sit at p-1.5 with a 14px glyph - about a 26px target.

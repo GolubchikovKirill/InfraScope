@@ -218,7 +218,7 @@ export default function OverviewPage() {
       <section className="overflow-hidden rounded-2xl border border-[var(--app-panel-border)] bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.14),_transparent_40%),linear-gradient(135deg,var(--app-panel-bg),color-mix(in_srgb,var(--app-panel-bg)_90%,var(--brand-soft)))] p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Здоровье инфраструктуры</h2>
+            <h2 className="font-display text-3xl text-slate-900 sm:text-4xl">Здоровье инфраструктуры</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Сводка по всей технике и доступность касс по магазинам. Данные из последних опросов, дополнительных запросов к устройствам обзор не делает.
             </p>
@@ -262,7 +262,7 @@ export default function OverviewPage() {
 
       <section>
         <div className="mb-3">
-          <h3 className="font-semibold text-slate-900">По категориям</h3>
+          <h3 className="font-display text-xl text-slate-900">По категориям</h3>
           <p className="mt-0.5 text-sm text-slate-500">Откройте нужный раздел: устройства, которые не отвечают, в нём уже стоят первыми.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{otherFleets.map((fleet) => <FleetCard key={fleet.id} fleet={fleet} />)}</div>
@@ -271,7 +271,7 @@ export default function OverviewPage() {
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
         <div className="app-panel overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--app-panel-border)] px-5 py-4">
-            <div><h3 className="font-semibold text-slate-900">Приоритеты сейчас</h3><p className="mt-0.5 text-xs text-slate-500">Только то, что требует действия или проверки.</p></div>
+            <div><h3 className="font-display text-xl text-slate-900">Приоритеты сейчас</h3><p className="mt-0.5 text-xs text-slate-500">Только то, что требует действия или проверки.</p></div>
             {priorities.length > 0 && <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${TONE.neutral.badge}`}>{priorities.length}</span>}
           </div>
           {isLoading ? <PrioritySkeleton /> : priorities.length ? (
@@ -287,7 +287,7 @@ export default function OverviewPage() {
 
         <div className="app-panel overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--app-panel-border)] px-5 py-4">
-            <div><h3 className="font-semibold text-slate-900">Последние сигналы</h3><p className="mt-0.5 text-xs text-slate-500">Ошибки и предупреждения из журнала.</p></div>
+            <div><h3 className="font-display text-xl text-slate-900">Последние сигналы</h3><p className="mt-0.5 text-xs text-slate-500">Ошибки и предупреждения из журнала.</p></div>
             <Link to="/logs" className="text-xs font-semibold text-[var(--brand)] hover:text-[var(--brand-strong)]">Все логи</Link>
           </div>
           {recentIncidents.length ? (
@@ -328,7 +328,7 @@ function Stat({ label, value, detail, tone, icon: Icon, to }: { label: string; v
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-slate-500">{label}</p>
-          <p className={`mt-1 text-2xl font-semibold tracking-tight ${TONE[tone].count}`}>{value}</p>
+          <p className={`mt-1 font-display text-3xl leading-none ${TONE[tone].count}`}>{value}</p>
         </div>
         <div className={`rounded-xl p-2 ${TONE[tone].icon}`}><Icon className="h-4 w-4" /></div>
       </div>
@@ -392,7 +392,7 @@ function FleetCard({ fleet, extra }: { fleet: FleetSection; extra?: ReactNode })
       </div>
       <p className="mt-4 font-semibold text-slate-800">{fleet.label}</p>
       <div className="mt-2 flex items-baseline gap-1">
-        <span className={`text-2xl font-semibold ${TONE[tone].count}`}>{fleet.online}</span>
+        <span className={`font-display text-3xl leading-none ${TONE[tone].count}`}>{fleet.online}</span>
         <span className="text-xs text-slate-500">из {fleet.total} на связи</span>
       </div>
       <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">

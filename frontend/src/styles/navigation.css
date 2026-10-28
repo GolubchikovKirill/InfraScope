@@ -11,8 +11,65 @@
 .app-sidebar {
   background: var(--app-sidebar-bg);
   border-color: var(--app-sidebar-border);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  color: var(--sidebar-text);
+}
+
+/* Nav on the navy sidebar: light ink, a sky bar marks the active page */
+.app-sidebar .app-nav-idle {
+  color: var(--sidebar-text);
+}
+
+.app-sidebar .app-nav-idle:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text-strong);
+}
+
+.app-sidebar .app-nav-active {
+  background: var(--sidebar-active-bg) !important;
+  border-color: transparent !important;
+  color: var(--sidebar-text-strong) !important;
+  box-shadow: inset 2px 0 0 var(--sidebar-accent);
+}
+
+.app-sidebar .app-btn-secondary {
+  color: var(--sidebar-text);
+  background: transparent;
+  border-color: var(--sidebar-border);
+}
+
+.app-sidebar .app-btn-secondary:hover {
+  color: var(--sidebar-text-strong);
+  background: var(--sidebar-hover);
+}
+
+/* The RegStaer-M wordmark: italic display serif, sky "-M", tracked caps
+   product line underneath */
+.app-wordmark {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.app-wordmark-suffix {
+  color: var(--brand-light);
+}
+
+.app-wordmark-product {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-light);
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  /* Cormorant defaults to old-style figures, where 1 reads as I and 0 as o -
+     wrong for a dashboard of counts */
+  font-variant-numeric: lining-nums;
 }
 
 .app-nav-active {
@@ -41,8 +98,7 @@
 }
 
 .app-logo-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(20, 90, 148, 0.32);
+  opacity: 0.85;
 }
 
 .app-logo-live {
@@ -74,6 +130,12 @@
 .app-brand-title {
   color: var(--text-strong);
   letter-spacing: 0;
+}
+
+.app-page-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-variant-numeric: lining-nums;
 }
 
 .app-page-subtitle {

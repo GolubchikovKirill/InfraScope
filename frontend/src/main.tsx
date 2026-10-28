@@ -14,6 +14,10 @@ import { ConfirmProvider } from "./components/ConfirmDialog";
 // that stylesheet blocked the first paint for as long as the corporate gateway
 // took to answer (or time out) on every cold load.
 import "@fontsource-variable/inter";
+// RegStaer-M display face: a free stand-in for the brand's licensed Sang Bleu.
+// Headings and the wordmark only - tables and labels stay in Inter.
+import "@fontsource/cormorant-garamond/500.css";
+import "@fontsource/cormorant-garamond/500-italic.css";
 import "./index.css";
 
 initThemeMode();

@@ -59,7 +59,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { match: (path) => path.startsWith("/users"), title: "Пользователи", subtitle: "Доступы и роли" },
   ];
   const currentPage = pageTitles.find((item) => item.match(location.pathname)) ?? {
-    title: "InfraScope",
+    title: "RegStaer-M InfraScope",
     subtitle: "Панель управления инфраструктурой",
   };
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => readThemeMode());
@@ -116,23 +116,18 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen app-shell md:flex">
       <aside className={`${isSidebarVisible ? "hidden md:flex" : "hidden"} app-sidebar md:w-[17rem] lg:w-72 md:flex-col md:sticky md:top-0 md:h-screen md:border-r`}>
-        <div className="px-5 py-5 border-b border-[var(--app-panel-border)]">
-          <div className="flex items-center gap-3 justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleToggleSidebar}
-                className="app-logo-btn app-logo-live rounded-xl bg-linear-to-br from-[var(--brand-strong)] to-[var(--brand-bright)] p-2 shadow-md"
-                title="Свернуть/развернуть меню"
-              >
-                <Server className="h-5 w-5 text-white" />
-              </button>
-              <div className="min-w-0">
-                <div className="app-brand-title text-lg font-semibold">InfraScope</div>
-                <div className="app-brand-subtitle text-xs">Панель инфраструктуры</div>
-              </div>
-            </div>
-          </div>
+        <div className="px-6 pt-6 pb-5 border-b border-[var(--sidebar-border)]">
+          <button
+            type="button"
+            onClick={handleToggleSidebar}
+            className="app-logo-btn flex-col items-start! text-left"
+            title="Свернуть/развернуть меню"
+          >
+            <span className="app-wordmark text-[1.85rem] text-white">
+              RegStaer<span className="app-wordmark-suffix">-M</span>
+            </span>
+            <span className="app-wordmark-product mt-2">InfraScope</span>
+          </button>
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
@@ -143,7 +138,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
                 isActive
                   ? "app-nav-active"
-                  : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-700"
+                  : "app-nav-idle border-transparent"
               }`
             }
           >
@@ -154,7 +149,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             type="button"
             onClick={() => setEquipmentOpen((prev) => !prev)}
             className={`inline-flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
-              equipmentIsActive ? "app-nav-active" : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-700"
+              equipmentIsActive ? "app-nav-active" : "app-nav-idle border-transparent"
             }`}
           >
             <span className="inline-flex items-center gap-3">
@@ -173,7 +168,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 pl-8 text-sm font-medium transition ${
                     isActive
                       ? "app-nav-active"
-                      : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-700"
+                      : "app-nav-idle border-transparent"
                   }`
                 }
               >
@@ -192,7 +187,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   `inline-flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
                     isActive
                       ? "app-nav-active"
-                      : "app-nav-idle border-transparent text-slate-500 hover:border-slate-200 hover:bg-white/60 hover:text-slate-700"
+                      : "app-nav-idle border-transparent"
                   }`
                 }
               >
@@ -202,7 +197,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             ))}
         </nav>
 
-        <div className="p-4 border-t border-[var(--app-panel-border)] space-y-2.5">
+        <div className="p-4 border-t border-[var(--sidebar-border)] space-y-2.5">
           <div className="flex items-center gap-2">
             <button
               onClick={handleToggleTheme}
@@ -239,7 +234,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               title="Показать меню"
             >
               <Server className="h-4 w-4" />
-              InfraScope
+              RegStaer-M
             </button>
           </div>
         )}
@@ -248,10 +243,10 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div className="px-3 py-3 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-linear-to-br from-[var(--brand-strong)] to-[var(--brand-bright)] p-1.5 shadow-sm">
-                  <Server className="h-4 w-4 text-white" />
-                </div>
-                <span className="font-semibold text-slate-900">InfraScope</span>
+                <span className="app-wordmark text-2xl text-[var(--brand)]">
+                  RegStaer<span className="app-wordmark-suffix">-M</span>
+                </span>
+                <span className="app-wordmark-product">InfraScope</span>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -328,7 +323,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div className="app-topbar hidden md:block sticky top-0 z-20 border-b backdrop-blur-xl">
             <div className="app-main-frame mx-auto flex items-center justify-between gap-4 px-5 lg:px-7 py-4">
               <div className="min-w-0">
-                <h1 className="app-page-title truncate text-xl font-semibold">{currentPage.title}</h1>
+                <h1 className="app-page-title truncate text-[1.75rem] leading-tight">{currentPage.title}</h1>
                 <p className="app-page-subtitle truncate text-xs mt-0.5">{currentPage.subtitle}</p>
               </div>
               <div className="flex items-center gap-3">
