@@ -15,6 +15,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { showToast } from "../lib/toastBus";
 import { describeOfflineReason } from "../lib/offlineReason";
 import OnlineStatusBadge from "./OnlineStatusBadge";
+import SwitchDhcpPanel from "./SwitchDhcpPanel";
 
 interface Props {
   sw: NetworkSwitch;
@@ -326,6 +327,11 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             </div>
           </div>
         )}
+
+        {/* Scheduled DHCP cleanup + read-only DHCP diagnostics. Same VLAN-20 /
+            superuser scope as the auto-reboot above; the store allowlist is
+            server-side (DHCP_CLEAR_ALLOWED_STORES). */}
+        {isSuperuser && sw.vendor === "cisco" && sw.ap_vlan === 20 && <SwitchDhcpPanel sw={sw} />}
 
         {/* AP List */}
         {expanded && (

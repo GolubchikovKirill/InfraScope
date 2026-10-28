@@ -27,6 +27,11 @@ from app.domains.inventory.ap_auto_reboot import (
     run_ap_reboot_for_switch,
     switch_eligible_for_auto_reboot,
 )
+from app.domains.inventory.dhcp_clear import (
+    get_eligible_switches_for_dhcp_clear,
+    run_dhcp_clear_for_switch,
+    switch_eligible_for_dhcp_clear,
+)
 from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
 from app.domains.inventory.port_snapshot import capture_switch_port_snapshot, get_switches_for_snapshot
 from app.domains.operations.models import CashRegister
@@ -64,6 +69,9 @@ class _AutoRebootLease:
     lock_key: str
     done_key: str
     token: str
+    # Defaults to the AP-reboot window; other live-switch tasks (DHCP cleanup)
+    # share this lease with their own.
+    dedup_seconds: int | None = None
 
     def mark_attempted(self) -> None:
         # Compare-and-delete prevents one expired/replaced lease holder from
@@ -83,7 +91,7 @@ class _AutoRebootLease:
             self.lock_key,
             self.done_key,
             self.token,
-            settings.AUTO_REBOOT_AP_CYCLE_DEDUP_SECONDS,
+            self.dedup_seconds or settings.AUTO_REBOOT_AP_CYCLE_DEDUP_SECONDS,
         )
 
     def close(self) -> None:
@@ -93,8 +101,30 @@ class _AutoRebootLease:
 
 def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoRebootLease | None, str | None]:
     """Acquire a fail-closed distributed lease for live switch operations."""
-    lock_key = f"lock:ap-auto-reboot:switch:{switch_id}"
-    done_key = f"done:ap-auto-reboot:{switch_id}:{cycle_id}"
+    return _acquire_switch_lease(
+        scope="ap-auto-reboot",
+        switch_id=switch_id,
+        cycle_id=cycle_id,
+        lock_seconds=settings.AUTO_REBOOT_AP_TASK_LOCK_SECONDS,
+        dedup_seconds=settings.AUTO_REBOOT_AP_CYCLE_DEDUP_SECONDS,
+    )
+
+
+def _acquire_dhcp_clear_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoRebootLease | None, str | None]:
+    return _acquire_switch_lease(
+        scope="dhcp-clear",
+        switch_id=switch_id,
+        cycle_id=cycle_id,
+        lock_seconds=settings.DHCP_CLEAR_TASK_LOCK_SECONDS,
+        dedup_seconds=settings.DHCP_CLEAR_CYCLE_DEDUP_SECONDS,
+    )
+
+
+def _acquire_switch_lease(
+    *, scope: str, switch_id: str, cycle_id: str, lock_seconds: int, dedup_seconds: int
+) -> tuple[_AutoRebootLease | None, str | None]:
+    lock_key = f"lock:{scope}:switch:{switch_id}"
+    done_key = f"done:{scope}:{switch_id}:{cycle_id}"
     token = secrets.token_urlsafe(24)
     client = redis.Redis.from_url(
         settings.REDIS_URL,
@@ -120,7 +150,7 @@ def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoR
             lock_key,
             done_key,
             token,
-            settings.AUTO_REBOOT_AP_TASK_LOCK_SECONDS,
+            lock_seconds,
         )
     except RedisError:
         client.close()
@@ -129,7 +159,12 @@ def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoR
         return None, "lock_unavailable"
 
     if claimed == 1:
-        return _AutoRebootLease(client=client, lock_key=lock_key, done_key=done_key, token=token), None
+        return (
+            _AutoRebootLease(
+                client=client, lock_key=lock_key, done_key=done_key, token=token, dedup_seconds=dedup_seconds
+            ),
+            None,
+        )
 
     client.close()
     return None, "already_attempted" if claimed == 0 else "already_running"
@@ -363,6 +398,61 @@ def ap_auto_reboot_switch_task(self, switch_id: str, cycle_id: str | None = None
         # Mark even an exception as attempted.  A task can fail after a PoE
         # command has already reached the switch, so automatic redelivery is
         # less safe than requiring an explicit operator decision.
+        try:
+            lease.mark_attempted()
+        except RedisError:
+            pass
+        finally:
+            lease.close()
+
+
+@_task("dhcp_clear_cycle", soft_time_limit=120, time_limit=300)
+def dhcp_clear_cycle_task(self) -> dict:
+    """Dispatcher: one independent, staggered task per eligible switch - same
+    reasoning as the AP-reboot dispatcher (no all-at-once burst, one switch's
+    failure can't block the rest)."""
+    with Session(engine) as session:
+        switches = get_eligible_switches_for_dhcp_clear(session)
+        stagger = max(settings.DHCP_CLEAR_STAGGER_SECONDS, 0)
+        cycle_id = self.request.id or str(uuid.uuid4())
+        for index, switch in enumerate(switches):
+            dhcp_clear_switch_task.apply_async(args=[str(switch.id), cycle_id], countdown=index * stagger)
+            worker_tasks_enqueued_total.labels(operation="dhcp_clear_switch").inc()
+    return {
+        "status": "dispatched",
+        "switches_scheduled": len(switches),
+        "stagger_seconds": stagger,
+        "cycle_id": cycle_id,
+    }
+
+
+# No retries, for the same reason as the AP reboot: this writes to a live
+# switch, and a retry after a partial failure is an operator's call.
+@_task("dhcp_clear_switch", soft_time_limit=240, time_limit=300)
+def dhcp_clear_switch_task(self, switch_id: str, cycle_id: str | None = None) -> dict:
+    cycle_id = cycle_id or self.request.id or f"manual:{uuid.uuid4()}"
+    lease, skipped_reason = _acquire_dhcp_clear_lease(switch_id=switch_id, cycle_id=cycle_id)
+    if lease is None:
+        return _Skipped({"switch_id": switch_id, "cycle_id": cycle_id, "status": skipped_reason})
+    try:
+        with Session(engine) as session:
+            switch = session.get(NetworkSwitch, uuid.UUID(switch_id))
+            if switch is None:
+                return _Failed({"status": "switch_not_found", "switch_id": switch_id})
+
+            # Re-check at execution time, not just at dispatch (see the
+            # AP-reboot task): the toggle or allowlist may flip in between.
+            if not switch.dhcp_clear_enabled:
+                return _Skipped({"status": "disabled_since_dispatch", "switch": switch.name})
+
+            allowed_stores = parse_allowed_stores(settings.DHCP_CLEAR_ALLOWED_STORES)
+            eligible, reason = switch_eligible_for_dhcp_clear(switch, allowed_stores)
+            if not eligible:
+                return _Skipped({"status": "no_longer_eligible", "switch": switch.name, "reason": reason})
+
+            result = _run_async(run_dhcp_clear_for_switch(session, switch))
+        return {"cycle_id": cycle_id, **result}
+    finally:
         try:
             lease.mark_attempted()
         except RedisError:

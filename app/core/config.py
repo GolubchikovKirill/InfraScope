@@ -111,6 +111,21 @@ class Settings(BaseSettings):
     # AP is auto-excluded from further cycles and a critical event is logged;
     # re-including it (after checking on site) resets the streak.
     AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES: int = 2
+    # Scheduled DHCP cleanup (conflict list + AP-VLAN bindings) on switches that
+    # are themselves the DHCP server for the AP VLAN. Same two gates as the AP
+    # reboot - global switch plus store allowlist - and a switch additionally
+    # starts in dry_run. DHCP_CLEAR_ACTIONS picks what is cleared: "conflict"
+    # (harmless) and/or "binding" (AP-VLAN automatic leases only; the AP then
+    # re-leases on its next renewal or reboot).
+    DHCP_CLEAR_ENABLED: bool = True
+    DHCP_CLEAR_ALLOWED_STORES: str = "A30"
+    DHCP_CLEAR_ACTIONS: str = "conflict,binding"
+    # More leased AP-VLAN addresses than this means the VLAN is not what we
+    # think it is; refuse to clear rather than wipe a large lease table.
+    DHCP_CLEAR_MAX_BINDINGS: int = 300
+    DHCP_CLEAR_STAGGER_SECONDS: int = 30
+    DHCP_CLEAR_TASK_LOCK_SECONDS: int = 1_800
+    DHCP_CLEAR_CYCLE_DEDUP_SECONDS: int = 86_400
     # Periodic switch port-config snapshot, purely for history/drift
     # detection - read-only, no writes to any switch. Runs every N days;
     # a new row is only stored when the config actually changed since the

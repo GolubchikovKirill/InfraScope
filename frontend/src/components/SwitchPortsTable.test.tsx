@@ -72,6 +72,8 @@ describe("SwitchPortsTable", () => {
             mac_status: null,
             auto_reboot_aps_enabled: false,
             auto_reboot_mode: "dry_run",
+            dhcp_clear_enabled: false,
+            dhcp_clear_mode: "dry_run",
             switch_needs_attention_since: null,
             created_at: new Date().toISOString(),
           }}

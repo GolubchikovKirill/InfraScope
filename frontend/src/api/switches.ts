@@ -23,6 +23,8 @@ export interface NetworkSwitch {
   mac_status: string | null;
   auto_reboot_aps_enabled: boolean;
   auto_reboot_mode: "dry_run" | "live";
+  dhcp_clear_enabled: boolean;
+  dhcp_clear_mode: "dry_run" | "live";
   switch_needs_attention_since: string | null;
   created_at: string;
 }
@@ -202,6 +204,67 @@ export async function getAutoRebootHistory(switchId: string, limit = 50) {
   const { data } = await api.get<AutoRebootHistoryEntry[]>(`/switches/${switchId}/auto-reboot/history`, {
     params: { limit },
   });
+  return data;
+}
+
+export type DhcpRole = "local_server" | "relay" | "external";
+
+export interface DhcpBinding {
+  ip_address: string;
+  client_id: string;
+  lease_expiration: string;
+  binding_type: string;
+  state: string | null;
+  interface: string | null;
+}
+
+export interface DhcpPool {
+  name: string;
+  total_addresses: number | null;
+  leased_addresses: number | null;
+  ranges: [string, string][];
+}
+
+export interface DhcpDiagnostics {
+  vlan: number;
+  role: DhcpRole;
+  pools: DhcpPool[];
+  bindings_total: number;
+  ap_bindings: DhcpBinding[];
+  conflicts: string[];
+  helper_addresses: string[];
+  svi_ip: string | null;
+  snooping_enabled: boolean | null;
+  snooping_vlans: number[];
+  arp_inspection_vlans: number[];
+  ip_source_guard: boolean;
+  unsupported: string[];
+  planned_commands: string[];
+  skipped_reasons: string[];
+}
+
+export async function getSwitchDhcp(switchId: string) {
+  const { data } = await api.get<DhcpDiagnostics>(`/switches/${switchId}/dhcp`);
+  return data;
+}
+
+export interface DhcpClearResult {
+  switch: string;
+  mode: "dry_run" | "live";
+  role: DhcpRole | null;
+  skipped: string[] | string | null;
+  commands_planned: number;
+  bindings_before: number;
+  conflicts_before: number;
+  bindings_cleared: number | null;
+  conflicts_cleared: number | null;
+  bindings_after: number | null;
+  conflicts_after: number | null;
+  errors: string[];
+}
+
+export async function runDhcpClearNow(switchId: string) {
+  const { data } = await api.post<DhcpClearResult>(`/switches/${switchId}/dhcp/clear`);
   return data;
 }
 

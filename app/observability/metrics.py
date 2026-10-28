@@ -41,6 +41,12 @@ ap_auto_reboot_total = Counter(
     ["switch", "result"],
 )
 
+dhcp_clear_total = Counter(
+    "infrascope_dhcp_clear_total",
+    "Scheduled DHCP cleanup outcomes.",
+    ["switch", "result"],
+)
+
 switch_port_ops_total = Counter(
     "infrascope_switch_port_ops_total",
     "Switch port operation outcomes.",

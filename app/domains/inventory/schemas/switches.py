@@ -12,6 +12,10 @@ __all__ = [
     "AccessPointInfo",
     "AutoRebootSummary",
     "CameraPortInfo",
+    "DhcpBindingInfo",
+    "DhcpClearResponse",
+    "DhcpDiagnosticsInfo",
+    "DhcpPoolInfo",
     "NetworkSwitchCreate",
     "NetworkSwitchPublic",
     "NetworkSwitchUpdate",
@@ -45,6 +49,8 @@ class NetworkSwitchCreate(BaseModel):
     mac_address: str | None = None
     auto_reboot_aps_enabled: bool = False
     auto_reboot_mode: str = "dry_run"
+    dhcp_clear_enabled: bool = False
+    dhcp_clear_mode: str = "dry_run"
 
     @field_validator("name")
     @classmethod
@@ -65,6 +71,14 @@ class NetworkSwitchCreate(BaseModel):
         normalized = v.strip().lower()
         if normalized not in {"dry_run", "live"}:
             raise ValueError("auto_reboot_mode must be 'dry_run' or 'live'")
+        return normalized
+
+    @field_validator("dhcp_clear_mode")
+    @classmethod
+    def validate_dhcp_clear_mode(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"dry_run", "live"}:
+            raise ValueError("dhcp_clear_mode must be 'dry_run' or 'live'")
         return normalized
 
     @field_validator("ip_address")
@@ -147,6 +161,8 @@ class NetworkSwitchUpdate(BaseModel):
     mac_address: str | None = None
     auto_reboot_aps_enabled: bool | None = None
     auto_reboot_mode: str | None = None
+    dhcp_clear_enabled: bool | None = None
+    dhcp_clear_mode: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -170,6 +186,16 @@ class NetworkSwitchUpdate(BaseModel):
         normalized = v.strip().lower()
         if normalized not in {"dry_run", "live"}:
             raise ValueError("auto_reboot_mode must be 'dry_run' or 'live'")
+        return normalized
+
+    @field_validator("dhcp_clear_mode")
+    @classmethod
+    def validate_dhcp_clear_mode(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if normalized not in {"dry_run", "live"}:
+            raise ValueError("dhcp_clear_mode must be 'dry_run' or 'live'")
         return normalized
 
     @field_validator("ip_address")
@@ -245,6 +271,8 @@ class NetworkSwitchPublic(BaseModel):
     mac_status: str | None = None
     auto_reboot_aps_enabled: bool = False
     auto_reboot_mode: str = "dry_run"
+    dhcp_clear_enabled: bool = False
+    dhcp_clear_mode: str = "dry_run"
     switch_needs_attention_since: datetime | None = None
     created_at: datetime
 
@@ -281,6 +309,60 @@ class CameraPortInfo(BaseModel):
     description: str | None = None
     poe_power: str | None = None
     poe_status: str | None = None
+
+
+class DhcpPoolInfo(BaseModel):
+    name: str
+    total_addresses: int | None = None
+    leased_addresses: int | None = None
+    ranges: list[tuple[str, str]] = []
+
+
+class DhcpBindingInfo(BaseModel):
+    ip_address: str
+    client_id: str
+    lease_expiration: str
+    binding_type: str
+    state: str | None = None
+    interface: str | None = None
+
+
+class DhcpDiagnosticsInfo(BaseModel):
+    """Read-only DHCP snapshot of one switch. `role` says whether clearing
+    anything on this switch can affect the APs at all."""
+
+    vlan: int
+    role: str
+    pools: list[DhcpPoolInfo] = []
+    bindings_total: int = 0
+    ap_bindings: list[DhcpBindingInfo] = []
+    conflicts: list[str] = []
+    helper_addresses: list[str] = []
+    svi_ip: str | None = None
+    snooping_enabled: bool | None = None
+    snooping_vlans: list[int] = []
+    arp_inspection_vlans: list[int] = []
+    ip_source_guard: bool = False
+    unsupported: list[str] = []
+    # What a cleanup run would send right now, so the operator can see it
+    # before enabling the schedule.
+    planned_commands: list[str] = []
+    skipped_reasons: list[str] = []
+
+
+class DhcpClearResponse(BaseModel):
+    switch: str
+    mode: str
+    skipped: list[str] | str | None = None
+    role: str | None = None
+    commands_planned: int = 0
+    bindings_before: int = 0
+    conflicts_before: int = 0
+    bindings_cleared: int | None = None
+    conflicts_cleared: int | None = None
+    bindings_after: int | None = None
+    conflicts_after: int | None = None
+    errors: list[str] = []
 
 
 class AutoRebootSummary(BaseModel):

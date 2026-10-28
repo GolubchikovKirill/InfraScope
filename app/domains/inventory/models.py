@@ -145,6 +145,11 @@ class NetworkSwitch(SQLModel, table=True):
     # enabling this toggle on the wrong switch can't reboot APs it shouldn't.
     auto_reboot_aps_enabled: bool = Field(default=False)
     auto_reboot_mode: str = Field(default="dry_run", max_length=10)
+    # Scheduled DHCP cleanup on this switch (see app.domains.inventory.dhcp_clear).
+    # Same opt-in + dry_run-first shape as the AP reboot above, and likewise
+    # still gated by a global store allowlist.
+    dhcp_clear_enabled: bool = Field(default=False)
+    dhcp_clear_mode: str = Field(default="dry_run", max_length=10)
     # Consecutive-cycle streaks for switch-level auto-reboot problems that
     # aren't about any one AP: SSH unreachable, or genuinely zero known APs
     # on ap_vlan (likely bad credentials or a VLAN misconfiguration). Unlike

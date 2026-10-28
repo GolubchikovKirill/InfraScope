@@ -22,6 +22,7 @@ const SEVERITIES: Array<{ key: EventSeverity | "all"; label: string }> = [
 const EVENT_FAMILIES: Array<{ key: string; label: string }> = [
   { key: "all", label: "Все события" },
   { key: "ap_auto_reboot", label: "Автоматизация ТД" },
+  { key: "dhcp_clear", label: "Очистка DHCP" },
 ];
 
 const DEVICE_KINDS: Array<{ key: DeviceKindFilter; label: string }> = [
