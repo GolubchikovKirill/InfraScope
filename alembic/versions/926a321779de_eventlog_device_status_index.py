@@ -1,6 +1,6 @@
 """eventlog: composite index for per-device status history
 
-Revision ID: d4e5f6a7b8c9
+Revision ID: 926a321779de
 Revises: c1d2e3f4a5b6
 Create Date: 2026-10-28 12:00:00.000000
 
@@ -16,7 +16,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "d4e5f6a7b8c9"
+revision: str = "926a321779de"
 down_revision: str | Sequence[str] | None = "c1d2e3f4a5b6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
