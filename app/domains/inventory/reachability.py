@@ -146,7 +146,7 @@ def probe_host_ports(
             started = perf_counter()
             try:
                 failure = probe(resolved_address, port, attempt_timeout)
-            except Exception as exc:  # noqa: BLE001 - a probe bug must not read as a host outage; it is tagged probe_error
+            except Exception as exc:
                 logger.debug("Probe %s:%s raised %r", resolved_address, port, exc)
                 _observe(probe_scope, REASON_PROBE_ERROR, started)
                 last_reason = REASON_PROBE_ERROR
@@ -304,7 +304,7 @@ async def _async_port_probe(address: str, port: int, timeout: float, probe_scope
         failure = _classify_os_error(exc)
         _observe(probe_scope, failure, started)
         return failure
-    except Exception as exc:  # noqa: BLE001 - a probe bug must not read as a host outage; it is tagged probe_error
+    except Exception as exc:
         logger.debug("Probe %s:%s raised %r", address, port, exc)
         _observe(probe_scope, REASON_PROBE_ERROR, started)
         return REASON_PROBE_ERROR

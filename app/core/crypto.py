@@ -34,7 +34,7 @@ def _build_fernet() -> MultiFernet | None:
     try:
         return MultiFernet([Fernet(k.encode()) for k in keys])
     except (ValueError, TypeError):
-        logger.error("CREDENTIALS_ENCRYPTION_KEYS is set but invalid; storing secrets as plaintext")
+        logger.exception("CREDENTIALS_ENCRYPTION_KEYS is set but invalid; storing secrets as plaintext")
         return None
 
 
@@ -62,7 +62,7 @@ def decrypt_secret(value: str) -> str:
     try:
         return _fernet.decrypt(token.encode()).decode()
     except InvalidToken:
-        logger.error("Failed to decrypt stored secret (wrong/rotated key?); returning raw value")
+        logger.exception("Failed to decrypt stored secret (wrong/rotated key?); returning raw value")
         return value
 
 

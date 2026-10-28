@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
 from app.core.config import settings
 from app.services.contracts import IntegrationServiceResult
+
+OneCTarget = Literal["duty_free", "duty_paid"]
 
 
 class OneCExchangeService:
@@ -33,7 +35,7 @@ class OneCExchangeService:
             raise last_exc
         raise RuntimeError("unreachable")
 
-    def _resolve_target_settings(self, target: str) -> tuple[str, str]:
+    def _resolve_target_settings(self, target: OneCTarget) -> tuple[str, str]:
         target_to_url = {
             "duty_free": settings.ONEC_DUTY_FREE_API_URL or settings.ONEC_EXCHANGE_API_URL,
             "duty_paid": settings.ONEC_DUTY_PAID_API_URL or settings.ONEC_EXCHANGE_API_URL,
@@ -44,7 +46,7 @@ class OneCExchangeService:
         }
         return target_to_url.get(target, ""), target_to_token.get(target, "")
 
-    def _build_missing_url_message(self, *, target: str) -> str:
+    def _build_missing_url_message(self, *, target: OneCTarget) -> str:
         target_human = "Duty Free" if target == "duty_free" else "Duty Paid"
         ib_connection = (
             settings.ONEC_DUTY_FREE_IB_CONNECTION if target == "duty_free" else settings.ONEC_DUTY_PAID_IB_CONNECTION
@@ -67,7 +69,7 @@ class OneCExchangeService:
     async def exchange_product_docs_by_barcode(
         self,
         *,
-        target: str = "duty_free",
+        target: OneCTarget = "duty_free",
         barcode: str,
         cash_register_hostnames: list[str] | None = None,
         cash_register_targets: list[dict[str, str | None]] | None = None,
@@ -90,7 +92,7 @@ class OneCExchangeService:
         if api_token:
             headers["Authorization"] = f"Bearer {api_token}"
 
-        base_body = {
+        base_body: dict[str, Any] = {
             "barcode": barcode,
             "source": source,
             "target": target,
@@ -219,7 +221,7 @@ _default_service = OneCExchangeService()
 
 async def exchange_product_docs_by_barcode(
     *,
-    target: str = "duty_free",
+    target: OneCTarget = "duty_free",
     barcode: str,
     cash_register_hostnames: list[str] | None = None,
     cash_register_targets: list[dict[str, str | None]] | None = None,

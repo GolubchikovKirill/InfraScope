@@ -8,6 +8,7 @@ Supports NetBIOS name resolution for Windows hosts.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import logging
 import os
@@ -18,7 +19,7 @@ import struct
 import weakref
 from dataclasses import dataclass, field
 
-from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
+from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
     ObjectIdentity,
@@ -29,8 +30,8 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
     walk_cmd,
 )
 
-from app.core.bounded_cache import BoundedTTLCache  # noqa: E402
-from app.observability.metrics import media_player_ops_total  # noqa: E402
+from app.core.bounded_cache import BoundedTTLCache
+from app.observability.metrics import media_player_ops_total
 
 logger = logging.getLogger(__name__)
 _RESOLVE_WARN_COOLDOWN_SECONDS = 300.0
@@ -148,7 +149,7 @@ async def _get_snmp_info(ip: str, community: str = "public") -> dict:
 async def _get_snmp_info_inner(engine: SnmpEngine, ip: str, community: str) -> dict:
     try:
         target = await UdpTransportTarget.create((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP target %s not usable: %s", ip, exc)
         return {}
 
@@ -200,7 +201,7 @@ async def _get_snmp_mac(ip: str, community: str = "public") -> str | None:
 async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> str | None:
     try:
         target = await UdpTransportTarget.create((ip, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP target %s not usable: %s", ip, exc)
         return None
 
@@ -221,7 +222,7 @@ async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> st
                     octets = val.asOctets()
                     if len(octets) == 6 and any(b != 0 for b in octets):
                         return ":".join(f"{b:02x}" for b in octets)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP MAC walk on %s failed: %s", ip, exc)
     return None
 
@@ -229,14 +230,13 @@ async def _get_snmp_mac_inner(engine: SnmpEngine, ip: str, community: str) -> st
 def _get_mac_from_arp(ip: str) -> str | None:
     import subprocess
 
-    try:
+    with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired):
         subprocess.run(
             _ping_command(ip),
             capture_output=True,
+            check=False,
             timeout=3,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
 
     try:
         with open("/proc/net/arp") as f:
@@ -253,6 +253,7 @@ def _get_mac_from_arp(ip: str) -> str | None:
         out = subprocess.run(
             ["ip", "neigh", "show", ip],
             capture_output=True,
+            check=False,
             text=True,
             timeout=3,
         ).stdout.strip()
@@ -368,10 +369,8 @@ def _netbios_resolve(name: str, subnets: list[str] | None = None) -> str | None:
 
     try:
         for ip in targets:
-            try:
+            with contextlib.suppress(OSError):
                 sock.sendto(packet, (ip, 137))
-            except OSError:
-                pass
 
         logger.debug("NetBIOS: sent query for '%s' to %d hosts", name, len(targets))
 
@@ -512,6 +511,7 @@ def _check_arp_for_mac(target_mac: str) -> str | None:
         out = subprocess.run(
             ["ip", "neigh"],
             capture_output=True,
+            check=False,
             text=True,
             timeout=5,
         ).stdout
@@ -577,6 +577,7 @@ def _arp_table_mac_to_ip() -> dict[str, str]:
         neigh = subprocess.run(
             ["ip", "neigh"],
             capture_output=True,
+            check=False,
             text=True,
             timeout=5,
         ).stdout

@@ -23,9 +23,14 @@ def _declared_revisions() -> list[str]:
     revisions = []
     for path in (ROOT / "alembic" / "versions").glob("*.py"):
         for node in ast.parse(path.read_text(encoding="utf-8")).body:
-            target = getattr(node, "target", None) or (node.targets[0] if isinstance(node, ast.Assign) else None)
+            if isinstance(node, ast.AnnAssign) and node.value is not None:
+                target, value = node.target, node.value
+            elif isinstance(node, ast.Assign):
+                target, value = node.targets[0], node.value
+            else:
+                continue
             if isinstance(target, ast.Name) and target.id == "revision":
-                revisions.append(ast.literal_eval(node.value))
+                revisions.append(ast.literal_eval(value))
     return revisions
 
 

@@ -219,7 +219,7 @@ class CiscoSSH:
 
             self.client = paramiko.SSHClient()
             self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self.client._transport = transport
+            self.client._transport = transport  # type: ignore[attr-defined]  # attach an already-authenticated Transport to a bare SSHClient wrapper; no public API for this
             self.shell = transport.open_session()
             self.shell.get_pty()
             self.shell.invoke_shell()
@@ -269,7 +269,7 @@ class CiscoSSH:
             if self.shell:
                 # Graceful session teardown on Cisco side before channel close.
                 with suppress(Exception):
-                    self.shell.send("exit\n")
+                    self.shell.send(b"exit\n")
                 with suppress(Exception):
                     self.shell.close()
             if self.client:
@@ -279,14 +279,14 @@ class CiscoSSH:
                         transport.close()
                 with suppress(Exception):
                     self.client.close()
-        except Exception as exc:  # noqa: BLE001 - closing a dead connection: nothing left to undo
+        except Exception as exc:
             logger.debug("Error while closing SSH session: %s", exc)
         self.shell = None
         self.client = None
 
     def _send(self, cmd: str) -> None:
         if self.shell:
-            self.shell.send(cmd + "\n")
+            self.shell.send((cmd + "\n").encode())
 
     def _recv_until_prompt(self, timeout: float = CMD_TIMEOUT) -> str:
         if not self.shell:

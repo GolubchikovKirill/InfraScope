@@ -5,11 +5,12 @@ import functools
 import logging
 import secrets
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
+from typing import Any, Protocol, cast
 
 import redis
 from celery import shared_task
@@ -86,10 +87,8 @@ class _AutoRebootLease:
         )
 
     def close(self) -> None:
-        try:
+        with suppress(RedisError):
             self.client.close()
-        except RedisError:
-            pass
 
 
 def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoRebootLease | None, str | None]:
@@ -178,7 +177,29 @@ class _Failed(dict):
     (recorded as result="error", and not retried)."""
 
 
-def _task(name: str, *, retries: int | None = None, **celery_options):
+class CeleryTask(Protocol):
+    """The slice of a Celery task object callers here actually use.
+
+    celery.local.Proxy - what @_task(...) and @shared_task actually hand back -
+    has an untyped __getattr__ whose inferred return type (list[str] | Any, from
+    one of its own early-return branches) poisons every attribute access on a
+    task object. Routing task objects through this Protocol instead of the raw
+    Proxy type fixes that at the one place it is produced.
+    """
+
+    name: str
+    autoretry_for: tuple[type[BaseException], ...]
+    retry_kwargs: dict[str, Any]
+
+    def run(self, *args: Any, **kwargs: Any) -> dict: ...
+    def delay(self, *args: Any, **kwargs: Any) -> Any: ...
+    def apply_async(self, *args: Any, **kwargs: Any) -> Any: ...
+    def apply(self, *args: Any, **kwargs: Any) -> Any: ...
+
+
+def _task(
+    name: str, *, retries: int | None = None, **celery_options: Any
+) -> Callable[[Callable[..., Any]], CeleryTask]:
     """Declare a Celery task with its metrics and result envelope.
 
     The decorated function is the task body only: it returns the task-specific
@@ -198,7 +219,7 @@ def _task(name: str, *, retries: int | None = None, **celery_options):
         else {}
     )
 
-    def decorate(body):
+    def decorate(body: Callable[..., Any]) -> CeleryTask:
         @functools.wraps(body)
         def run(self, *args, **kwargs) -> dict:
             started_at = _task_started(name)
@@ -215,7 +236,7 @@ def _task(name: str, *, retries: int | None = None, **celery_options):
             payload.setdefault("finished_at", datetime.now(UTC).isoformat())
             return payload
 
-        return shared_task(bind=True, name=f"tasks.{name}", **retry, **celery_options)(run)
+        return cast(CeleryTask, shared_task(bind=True, name=f"tasks.{name}", **retry, **celery_options)(run))
 
     return decorate
 
@@ -296,7 +317,9 @@ def ap_auto_reboot_cycle_task(self) -> dict:
         stagger = max(settings.AUTO_REBOOT_AP_STAGGER_SECONDS, 0)
         cycle_id = self.request.id or str(uuid.uuid4())
         for index, switch in enumerate(switches):
-            ap_auto_reboot_switch_task.apply_async(args=[str(switch.id), cycle_id], countdown=index * stagger)
+            ap_auto_reboot_switch_task.apply_async(
+                args=[str(switch.id), cycle_id], countdown=index * stagger
+            )
             worker_tasks_enqueued_total.labels(operation="ap_auto_reboot_switch").inc()
     return {
         "status": "dispatched",
@@ -360,7 +383,9 @@ def switch_port_snapshot_cycle_task(self) -> dict:
         switches = get_switches_for_snapshot(session)
         stagger = max(settings.SWITCH_PORT_SNAPSHOT_STAGGER_SECONDS, 0)
         for index, switch in enumerate(switches):
-            switch_port_snapshot_task.apply_async(args=[str(switch.id)], countdown=index * stagger)
+            switch_port_snapshot_task.apply_async(
+                args=[str(switch.id)], countdown=index * stagger
+            )
             worker_tasks_enqueued_total.labels(operation="switch_port_snapshot").inc()
     return {"status": "dispatched", "switches_scheduled": len(switches), "stagger_seconds": stagger}
 
@@ -484,7 +509,7 @@ def remote_access_sync_task(self) -> dict:
                 accounts_seen = _run_async(_remote_access_service.sync_accounts(session)).get("accounts_seen", 0)
                 # only rows the console is missing or whose password went stale
                 book_pushed = _run_async(_remote_access_service.sync_stale_address_book(session)).get("pushed", 0)
-            except Exception as exc:  # noqa: BLE001 - reported through console_error, not raised
+            except Exception as exc:
                 logger.warning("RustDesk console sync failed: %s", exc)
                 console_error = str(exc)
         statuses = _remote_access_service.refresh_status_from_inventory(session)

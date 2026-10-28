@@ -77,14 +77,14 @@ def train_toner_model(session: Session, min_train_rows: int = 50) -> MLModelRegi
             select(MLFeatureSnapshot)
             .where(
                 MLFeatureSnapshot.device_kind == "printer",
-                MLFeatureSnapshot.toner_color.is_not(None),
-                MLFeatureSnapshot.toner_level.is_not(None),
+                col(MLFeatureSnapshot.toner_color).is_not(None),
+                col(MLFeatureSnapshot.toner_level).is_not(None),
                 MLFeatureSnapshot.captured_at >= since,
             )
             .order_by(
-                MLFeatureSnapshot.device_id,
-                MLFeatureSnapshot.toner_color,
-                MLFeatureSnapshot.captured_at,
+                col(MLFeatureSnapshot.device_id),
+                col(MLFeatureSnapshot.toner_color),
+                col(MLFeatureSnapshot.captured_at),
             )
         ).all()
 
@@ -163,8 +163,10 @@ def train_offline_risk_model(session: Session, min_train_rows: int = 50) -> MLMo
         since = datetime.now(UTC) - timedelta(days=max(settings.ML_FEATURE_SNAPSHOT_RETENTION_DAYS, 1))
         rows = session.exec(
             select(MLFeatureSnapshot)
-            .where(MLFeatureSnapshot.is_online.is_not(None), MLFeatureSnapshot.captured_at >= since)
-            .order_by(MLFeatureSnapshot.device_kind, MLFeatureSnapshot.device_id, MLFeatureSnapshot.captured_at)
+            .where(col(MLFeatureSnapshot.is_online).is_not(None), MLFeatureSnapshot.captured_at >= since)
+            .order_by(
+                col(MLFeatureSnapshot.device_kind), col(MLFeatureSnapshot.device_id), col(MLFeatureSnapshot.captured_at)
+            )
         ).all()
 
         grouped: dict[tuple[str, str], list[MLFeatureSnapshot]] = defaultdict(list)
@@ -174,7 +176,7 @@ def train_offline_risk_model(session: Session, min_train_rows: int = 50) -> MLMo
             grouped[(row.device_kind, str(row.device_id))].append(row)
 
         device_features: list[tuple[float, float, float]] = []
-        for _key, items in grouped.items():
+        for items in grouped.values():
             if len(items) < 2:
                 continue
             offline_count = sum(1 for item in items if item.is_online is False)
@@ -300,10 +302,12 @@ def score_offline_risk(session: Session) -> int:
         rows = session.exec(
             select(MLFeatureSnapshot)
             .where(
-                MLFeatureSnapshot.is_online.is_not(None),
+                col(MLFeatureSnapshot.is_online).is_not(None),
                 MLFeatureSnapshot.captured_at >= since,
             )
-            .order_by(MLFeatureSnapshot.device_kind, MLFeatureSnapshot.device_id, MLFeatureSnapshot.captured_at)
+            .order_by(
+                col(MLFeatureSnapshot.device_kind), col(MLFeatureSnapshot.device_id), col(MLFeatureSnapshot.captured_at)
+            )
         ).all()
         grouped: dict[tuple[str, str], list[MLFeatureSnapshot]] = defaultdict(list)
         for row in rows:
@@ -313,7 +317,7 @@ def score_offline_risk(session: Session) -> int:
 
         created = 0
         risk_counts: dict[str, int] = {"low": 0, "medium": 0, "high": 0}
-        for (_kind, _id), items in grouped.items():
+        for items in grouped.values():
             if len(items) < 2:
                 continue
             offline_ratio = sum(1 for i in items if i.is_online is False) / len(items)

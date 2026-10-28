@@ -140,7 +140,7 @@ async def _verify_camera_ports_back_online(
     max_wait = settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS
     interval = max(settings.AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS, 1)
     remaining = set(ports)
-    back_online: dict[str, bool] = {p: False for p in ports}
+    back_online: dict[str, bool] = dict.fromkeys(ports, False)
     elapsed = 0
     while elapsed < max_wait and remaining:
         await asyncio.sleep(interval)

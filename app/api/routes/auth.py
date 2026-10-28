@@ -104,8 +104,8 @@ async def refresh_access_token(
         raise HTTPException(status_code=401, detail="Refresh token missing")
     try:
         payload, token_data = _decode_token_payload(refresh_token, "refresh")
-    except (jwt.InvalidTokenError, ValidationError):
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    except (jwt.InvalidTokenError, ValidationError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid refresh token") from exc
     jti = payload.get("jti")
     if jti and await is_token_blacklisted(str(jti)):
         raise HTTPException(status_code=401, detail="Refresh token has been revoked")

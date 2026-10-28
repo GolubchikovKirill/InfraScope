@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from time import perf_counter
 
@@ -84,10 +85,8 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
     status_text = "unknown"
     status_rows = await _snmp_walk(engine, target, comm, OID_PRINTER_STATUS_BASE)
     if status_rows:
-        try:
+        with contextlib.suppress(ValueError, TypeError):
             status_text = PRINTER_STATUS_MAP.get(int(status_rows[0][1]), "unknown")
-        except (ValueError, TypeError):
-            pass
 
     # Strategy 1: standard Printer MIB (RFC 3805)
     toners = await _get_standard_toners(engine, target, comm)
@@ -101,10 +100,9 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
             toners = await _get_ricoh_toners(engine, target, comm, toners)
 
     # Strategy 3: vendor-specific SNMP fallback
-    if not toners:
-        if vendor == "brother":
-            logger.debug("%s: standard MIB empty, trying Brother proprietary OIDs", ip_address)
-            toners = await _get_brother_toners(engine, target, comm)
+    if not toners and vendor == "brother":
+        logger.debug("%s: standard MIB empty, trying Brother proprietary OIDs", ip_address)
+        toners = await _get_brother_toners(engine, target, comm)
 
     # Strategy 4: HTTP scraping (HP EWS XML, works even with restricted SNMP).
     # Exactly once: a second identical attempt used to follow here, which for a

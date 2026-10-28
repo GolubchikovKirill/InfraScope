@@ -9,23 +9,23 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from .common import _normalize_mac, _validate_ip
 
 __all__ = [
-    "NetworkSwitchCreate",
-    "NetworkSwitchUpdate",
-    "NetworkSwitchPublic",
-    "NetworkSwitchesPublic",
     "AccessPointInfo",
-    "CameraPortInfo",
     "AutoRebootSummary",
+    "CameraPortInfo",
+    "NetworkSwitchCreate",
+    "NetworkSwitchPublic",
+    "NetworkSwitchUpdate",
+    "NetworkSwitchesPublic",
     "SetApExcludedRequest",
-    "SwitchPortInfo",
-    "SwitchPortsPublic",
     "SwitchPortAdminStateUpdate",
     "SwitchPortDescriptionUpdate",
-    "SwitchPortVlanUpdate",
-    "SwitchPortPoeUpdate",
+    "SwitchPortInfo",
     "SwitchPortModeUpdate",
+    "SwitchPortPoeUpdate",
     "SwitchPortSnapshotEntry",
     "SwitchPortSnapshotHistory",
+    "SwitchPortVlanUpdate",
+    "SwitchPortsPublic",
 ]
 
 

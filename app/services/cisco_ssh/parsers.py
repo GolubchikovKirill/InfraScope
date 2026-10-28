@@ -24,8 +24,8 @@ def parse_interface_status_table(output: str) -> list[InterfaceStatusRow]:
     is most of them.
     """
     rows: list[InterfaceStatusRow] = []
-    for line in output.splitlines():
-        line = line.rstrip()
+    for raw_line in output.splitlines():
+        line = raw_line.rstrip()
         if not line or line.lower().startswith("port ") or line.startswith("---"):
             continue
         m = _INTERFACE_STATUS_RE.match(line)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -39,15 +40,15 @@ router = APIRouter(tags=["media-center"])
 @router.get("/assignments", response_model=MediaAssignmentsPublic)
 def list_assignments(session: SessionDep, current_user: CurrentUser) -> MediaAssignmentsPublic:
     del current_user
-    rows = session.exec(select(MediaAssignment).order_by(MediaAssignment.updated_at.desc())).all()
-    return MediaAssignmentsPublic(data=rows, count=len(rows))
+    rows = session.exec(select(MediaAssignment).order_by(col(MediaAssignment.updated_at).desc())).all()
+    return MediaAssignmentsPublic(data=cast(list[MediaAssignmentPublic], list(rows)), count=len(rows))
 
 
 @router.get("/assets", response_model=MediaAssetsPublic)
 def read_assets(session: SessionDep, current_user: CurrentUser) -> MediaAssetsPublic:
     del current_user
     rows = list_assets(session)
-    return MediaAssetsPublic(data=rows, count=len(rows))
+    return MediaAssetsPublic(data=cast(list[MediaAssetPublic], list(rows)), count=len(rows))
 
 
 @router.post(
@@ -85,7 +86,7 @@ def read_asset_file(asset_id: uuid.UUID, session: SessionDep, current_user: Curr
 def list_client_heartbeats(session: SessionDep, current_user: CurrentUser) -> MediaClientHeartbeatsPublic:
     del current_user
     rows = session.exec(select(MediaClientHeartbeat).order_by(col(MediaClientHeartbeat.last_seen_at).desc())).all()
-    return MediaClientHeartbeatsPublic(data=rows, count=len(rows))
+    return MediaClientHeartbeatsPublic(data=cast(list[MediaClientHeartbeatPublic], list(rows)), count=len(rows))
 
 
 @router.get("/heartbeats/{player_id}", response_model=MediaClientHeartbeatPublic)

@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import cast
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import func, select
 
@@ -98,7 +100,7 @@ def _query_media_players_page(
     name: str | None,
     skip: int,
     limit: int,
-) -> tuple[list[MediaPlayer], int]:
+) -> tuple[Sequence[MediaPlayer], int]:
     statement = select(MediaPlayer)
     count_stmt = select(func.count()).select_from(MediaPlayer)
 
@@ -142,7 +144,7 @@ async def read_media_players(
     players, count = await run_in_threadpool(
         _query_media_players_page, session, device_type, name, skip, limit
     )
-    result = MediaPlayersPublic(data=players, count=count)
+    result = MediaPlayersPublic(data=cast(list[MediaPlayerPublic], list(players)), count=count)
 
     return await _MEDIA_PLAYERS_CACHE.respond(cache_variant, result)
 
@@ -316,7 +318,7 @@ async def iconbit_upload_action(
     player_id: uuid.UUID,
     session: SessionDep,
     current_user: CurrentUser,
-    file: UploadFile = ...,
+    file: UploadFile = File(...),
 ) -> dict:
     player = _get_media_player_or_404(session, player_id)
     _require_iconbit(player)
@@ -376,7 +378,7 @@ async def iconbit_bulk_stop(session: SessionDep, current_user: CurrentUser) -> d
 async def iconbit_bulk_upload(
     session: SessionDep,
     current_user: CurrentUser,
-    file: UploadFile = ...,
+    file: UploadFile = File(...),
 ) -> dict:
     """Upload a media file to all Iconbit devices."""
     players = _get_all_iconbits(session)
@@ -444,7 +446,7 @@ async def iconbit_bulk_play_file(
 async def iconbit_bulk_replace(
     session: SessionDep,
     current_user: CurrentUser,
-    file: UploadFile = ...,
+    file: UploadFile = File(...),
 ) -> dict:
     """Replace playlist on all Iconbit: delete old files, upload new, start playback."""
     players = _get_all_iconbits(session)
@@ -464,7 +466,7 @@ async def iconbit_bulk_replace(
                 success += 1
             else:
                 failed += 1
-        except Exception as exc:  # noqa: BLE001 - one player failing must not stop the bulk run; counted as failed
+        except Exception as exc:
             logger.warning("Iconbit bulk replace failed for %s: %s", p.ip_address, exc)
             failed += 1
     media_player_ops_total.labels(operation="iconbit_bulk_replace", result="success").inc(success)

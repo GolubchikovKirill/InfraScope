@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlmodel import Session, col, select
@@ -156,7 +157,7 @@ def list_cartridge_stock(
     search: str | None = None,
     *,
     include_inactive: bool = False,
-) -> list[CartridgeStock]:
+) -> Sequence[CartridgeStock]:
     statement = select(CartridgeStock)
     if not include_inactive:
         statement = statement.where(CartridgeStock.is_active == True)  # noqa: E712
@@ -165,7 +166,7 @@ def list_cartridge_stock(
         statement = statement.where(
             col(CartridgeStock.cartridge_name).ilike(pattern)
             | col(CartridgeStock.compatible_printer_models).ilike(pattern)
-            | CartridgeStock.toner_color.ilike(pattern)
+            | col(CartridgeStock.toner_color).ilike(pattern)
         )
     return session.exec(statement.order_by(CartridgeStock.cartridge_name)).all()
 
@@ -177,7 +178,9 @@ def get_cartridge_stock_or_raise(session: Session, stock_id: uuid.UUID) -> Cartr
     return row
 
 
-def list_cartridge_movements(session: Session, stock_id: uuid.UUID, limit: int = 50) -> list[CartridgeStockMovement]:
+def list_cartridge_movements(
+    session: Session, stock_id: uuid.UUID, limit: int = 50
+) -> Sequence[CartridgeStockMovement]:
     get_cartridge_stock_or_raise(session, stock_id)
     return session.exec(
         select(CartridgeStockMovement)

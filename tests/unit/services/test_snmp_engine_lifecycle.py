@@ -14,11 +14,13 @@ exception.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 
 class _FakeEngine:
-    instances: list[_FakeEngine] = []
+    instances: ClassVar[list[_FakeEngine]] = []
 
     def __init__(self):
         self.close_calls = 0

@@ -28,6 +28,7 @@ def parse_arp_table() -> dict[str, str]:
                     output = subprocess.run(
                         ["ip", "neigh"],
                         capture_output=True,
+                        check=False,
                         text=True,
                         timeout=5,
                     ).stdout
@@ -41,6 +42,7 @@ def parse_arp_table() -> dict[str, str]:
             output = subprocess.run(
                 ["arp", "-a"],
                 capture_output=True,
+                check=False,
                 text=True,
                 timeout=10,
             ).stdout
@@ -52,6 +54,7 @@ def parse_arp_table() -> dict[str, str]:
             output = subprocess.run(
                 ["arp", "-a"],
                 capture_output=True,
+                check=False,
                 text=True,
                 timeout=10,
             ).stdout

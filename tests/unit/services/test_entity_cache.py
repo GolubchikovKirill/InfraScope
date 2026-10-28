@@ -4,6 +4,7 @@ import socket
 import time
 
 import pytest
+from fastapi import Response
 from pydantic import BaseModel
 
 from app.core.redis import get_redis
@@ -44,7 +45,7 @@ async def test_the_namespace_ttl_is_set_once_and_never_extended() -> None:
 
 @pytest.mark.asyncio
 async def test_invalidation_drops_every_variant_but_only_of_its_namespace(monkeypatch) -> None:
-    events: list[str] = []
+    events: list[tuple[str, Response | None]] = []
 
     async def _record(_event, item_id, payload=None):
         # The cache must already be empty when clients are told to refetch.

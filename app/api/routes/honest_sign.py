@@ -30,8 +30,8 @@ router = APIRouter(tags=["honest-sign"])
 def _target_or_404(session: SessionDep, host: str):
     try:
         return get_configured_target(session, host)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Honest Sign target not found")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Honest Sign target not found") from exc
 
 
 def _configuration_error(exc: HonestSignConfigurationError) -> HTTPException:
@@ -61,7 +61,7 @@ async def check_all_targets(session: SessionDep, current_user: CurrentUser) -> H
     try:
         rows = await check_all_honest_sign_targets(session=session)
     except HonestSignConfigurationError as exc:
-        raise _configuration_error(exc)
+        raise _configuration_error(exc) from exc
     return HonestSignStatusesPublic(data=rows, count=len(rows))
 
 
@@ -71,7 +71,7 @@ async def check_target(host: str, session: SessionDep, current_user: CurrentUser
     try:
         return await check_honest_sign_target(_target_or_404(session, host))
     except HonestSignConfigurationError as exc:
-        raise _configuration_error(exc)
+        raise _configuration_error(exc) from exc
 
 
 @router.post(
@@ -88,7 +88,7 @@ async def initialize_target(
     try:
         result = await initialize_honest_sign_target(target)
     except HonestSignConfigurationError as exc:
-        raise _configuration_error(exc)
+        raise _configuration_error(exc) from exc
     severity = "info" if result.result in {"READY", "ALREADY_READY", "INITIALIZING", "REQUEST_ACCEPTED"} else "error"
     write_event_log(
         session,
@@ -117,10 +117,10 @@ def update_target_ip(
 ) -> HonestSignTargetPublic:
     try:
         target = set_target_ip_override(session, original_host, body.new_ip)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Honest Sign target not found")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Honest Sign target not found") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     write_event_log(
         session,
         event_type="honest_sign_ip_changed",

@@ -25,7 +25,7 @@ from .inventory import _inventory_maps, _link_inventory, ensure_device
 
 def _peer_online(peer: dict[str, Any], now: datetime) -> bool:
     """The admin peer list has no boolean - derive it from `last_online_time`."""
-    last = peer.get("last_online_time")
+    last = peer.get("last_online_time", 0)
     try:
         last_ts = int(last)
     except (TypeError, ValueError):
@@ -39,7 +39,7 @@ def _peer_last_online(peer: dict[str, Any]) -> int:
     """`last_online_time` as an int, 0 when missing/unparseable - lets us pick the
     freshest of several console peers that all map to one device."""
     try:
-        return max(int(peer.get("last_online_time")), 0)
+        return max(int(peer.get("last_online_time", 0)), 0)
     except (TypeError, ValueError):
         return 0
 

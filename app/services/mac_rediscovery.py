@@ -72,7 +72,7 @@ async def resolve_devices_by_mac(
 
         try:
             switch_map = await build_switch_mac_map(session)
-        except Exception as exc:  # noqa: BLE001 - the switch MAC table is an optional enrichment
+        except Exception as exc:
             logger.warning("Switch MAC map unavailable, continuing without it: %s", exc)
             switch_map = {}
         for mac in list(remaining):

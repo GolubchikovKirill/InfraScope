@@ -102,10 +102,14 @@ def get_auto_reboot_summary(
     # event count - an AP stays "needing attention" for as long as it's
     # excluded, however many days that spans, not just the last N hours.
     aps_needing_attention = session.exec(
-        select(func.count()).select_from(SwitchAccessPoint).where(SwitchAccessPoint.needs_attention_since.is_not(None))
+        select(func.count())
+        .select_from(SwitchAccessPoint)
+        .where(col(SwitchAccessPoint.needs_attention_since).is_not(None))
     ).one()
     switches_needing_attention = session.exec(
-        select(func.count()).select_from(NetworkSwitch).where(NetworkSwitch.switch_needs_attention_since.is_not(None))
+        select(func.count())
+        .select_from(NetworkSwitch)
+        .where(col(NetworkSwitch.switch_needs_attention_since).is_not(None))
     ).one()
 
     if not rows:

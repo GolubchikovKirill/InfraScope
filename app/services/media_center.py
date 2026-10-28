@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -62,9 +63,11 @@ def get_assignment(session: Session, player_id: uuid.UUID) -> MediaAssignment | 
     return session.exec(select(MediaAssignment).where(MediaAssignment.player_id == player_id)).first()
 
 
-def list_assets(session: Session) -> list[MediaAsset]:
+def list_assets(session: Session) -> Sequence[MediaAsset]:
     return session.exec(
-        select(MediaAsset).where(MediaAsset.is_active == True).order_by(col(MediaAsset.created_at).desc())  # noqa: E712
+        select(MediaAsset)
+        .where(MediaAsset.is_active == True)  # noqa: E712
+        .order_by(col(MediaAsset.created_at).desc())
     ).all()
 
 
@@ -219,7 +222,7 @@ def record_client_heartbeat(
     dialect_name = session.get_bind().dialect.name
     insert_factory = sqlite_insert if dialect_name == "sqlite" else postgresql_insert
     stmt = insert_factory(MediaClientHeartbeat).values(**values).on_conflict_do_update(
-        index_elements=[MediaClientHeartbeat.player_id],
+        index_elements=[col(MediaClientHeartbeat.player_id)],
         set_=update_values,
     )
     session.exec(stmt)

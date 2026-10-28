@@ -50,17 +50,17 @@ from .session import (
 )
 
 __all__ = [
-    "APInfo",
     "CMD_TIMEOUT",
+    "SSH_TIMEOUT",
+    "_AUTH_METHOD_CACHE",
+    "APInfo",
     "CameraPortInfo",
     "CiscoSSH",
     "CiscoSwitchClient",
     "InterfaceStatusRow",
-    "SSH_TIMEOUT",
     "SwitchInfo",
-    "_AUTH_METHOD_CACHE",
-    "_KexGroup14SHA1",
     "_KexGroup1SHA1",
+    "_KexGroup14SHA1",
     "_QuietIncompatiblePeer",
     "_classify_ssh_error",
     "_enrich_arp",

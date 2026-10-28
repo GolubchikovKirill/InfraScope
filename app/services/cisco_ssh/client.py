@@ -314,14 +314,13 @@ class CiscoSwitchClient:
             self._configure(ssh, interfaces, command)
             ssh.execute("end")
             logger.info("Recovered %s on %s %s %s after error", state, self.ip, noun, target)
-        except Exception as recovery_exc:
-            logger.error(
-                "CRITICAL: %s %s %s may be stuck %s - recovery attempt also failed: %s",
+        except Exception:
+            logger.exception(
+                "CRITICAL: %s %s %s may be stuck %s - recovery attempt also failed",
                 self.ip,
                 noun,
                 target,
                 stuck,
-                recovery_exc,
             )
 
 

@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.db import engine
 from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import close_redis, get_redis
+from app.domains.media_center.models import MediaClientHeartbeat
 from app.domains.media_center.schemas import (
     MediaClientHeartbeatPayload,
     MediaClientHeartbeatPublic,
@@ -95,7 +96,7 @@ def asset_file(asset_id: uuid.UUID) -> FileResponse:
     response_model=MediaClientHeartbeatPublic,
     dependencies=[Depends(_verify_media_client_token)],
 )
-def client_heartbeat(player_id: uuid.UUID, payload: MediaClientHeartbeatPayload) -> MediaClientHeartbeatPublic:
+def client_heartbeat(player_id: uuid.UUID, payload: MediaClientHeartbeatPayload) -> MediaClientHeartbeat:
     with Session(engine) as session:
         try:
             return record_client_heartbeat(session, player_id, payload)

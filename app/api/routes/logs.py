@@ -1,10 +1,13 @@
+from collections.abc import Sequence
+from typing import cast
+
 from fastapi import APIRouter, Query, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep
 from app.domains.operations.models import EventLog
-from app.domains.operations.schemas import EventLogsPublic
+from app.domains.operations.schemas import EventLogPublic, EventLogsPublic
 from app.services.cache import EntityCache
 from app.services.smart_search import build_ilike_filter
 
@@ -21,7 +24,7 @@ def _query_logs_page(
     q: str | None,
     skip: int,
     limit: int,
-) -> tuple[list[EventLog], int]:
+) -> tuple[Sequence[EventLog], int]:
     statement = select(EventLog)
     count_stmt = select(func.count()).select_from(EventLog)
 
@@ -80,5 +83,5 @@ async def read_logs(
     logs, count = await run_in_threadpool(
         _query_logs_page, session, severity, device_kind, event_type_prefix, q, skip, limit
     )
-    result = EventLogsPublic(data=logs, count=count)
+    result = EventLogsPublic(data=cast(list[EventLogPublic], list(logs)), count=count)
     return await _LOGS_CACHE.respond(cache_variant, result)

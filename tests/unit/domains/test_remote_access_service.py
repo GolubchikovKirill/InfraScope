@@ -527,6 +527,7 @@ def test_sync_from_console_clears_an_old_failure_once_the_client_runs_under_our_
 
     d = _dev(db_session, "VNA-SKD-14")
     assert d.deploy_state == "configured"
+    assert d.deploy_detail is not None
     assert "Ошибка снята автоматически" in d.deploy_detail and "Отказано в доступе" in d.deploy_detail
 
 
@@ -705,12 +706,14 @@ def test_apply_deploy_report_records_what_the_endpoint_said(db_session) -> None:
         rustdesk_id="VNA_MGR_301",
         version="1.4.9",
     )
+    assert dev is not None
     assert dev.deploy_state == "configured" and dev.installed_version == "1.4.9"
     assert dev.deploy_reported_at is not None
 
     dev = service.apply_deploy_report(
         db_session, hostname="VNA-MGR-301", state="failed", detail="msiexec exit 1603"
     )
+    assert dev is not None
     assert dev.deploy_state == "failed" and dev.deploy_detail == "msiexec exit 1603"
 
 
@@ -897,6 +900,7 @@ def test_apply_deploy_report_records_edition_and_derives_applocker_support(db_se
         os_edition="Core",
         os_caption="Windows 10 Домашняя для одного языка",
     )
+    assert dev is not None
     assert dev.os_edition == "Core"
     assert dev.os_caption == "Windows 10 Домашняя для одного языка"
     assert dev.applocker_supported is False
@@ -904,6 +908,7 @@ def test_apply_deploy_report_records_edition_and_derives_applocker_support(db_se
     # a later report with no edition (e.g. a retry that failed before reading
     # it) must not erase what we already learned
     dev = service.apply_deploy_report(db_session, hostname="VNA-MGR-305", state="configured")
+    assert dev is not None
     assert dev.os_edition == "Core" and dev.applocker_supported is False
 
 
@@ -912,6 +917,7 @@ def test_apply_deploy_report_with_a_capable_edition(db_session) -> None:
     dev = service.apply_deploy_report(
         db_session, hostname="VNA-MGR-306", state="configured", os_edition="Professional"
     )
+    assert dev is not None
     assert dev.applocker_supported is True
 
 
@@ -966,6 +972,7 @@ def test_deploy_report_reaching_configured_clears_staleness(db_session) -> None:
     # the operator reruns the rollout; the script reapplies everything and
     # reports success again, which clears the staleness naturally
     dev = service.apply_deploy_report(db_session, hostname="VNA-MGR-311", state="configured")
+    assert dev is not None
     assert dev.deploy_state == "configured"
     assert service.readiness(dev) in ("ready", "installed_offline")
 

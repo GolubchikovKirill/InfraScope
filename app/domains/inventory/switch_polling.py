@@ -148,7 +148,7 @@ async def poll_one_switch(
         # only bother asking (extra SNMP round trip) when it is.
         mac = await asyncio.to_thread(_fetch_switch_mac, switch) if info.is_online else None
         return switch, info, mac, None
-    except Exception as exc:  # noqa: BLE001 - handed back to the caller, which records it per switch
+    except Exception as exc:
         logger.debug("Poll of %s raised %r", switch.name, exc)
         return switch, None, None, exc
 

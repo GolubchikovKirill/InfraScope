@@ -1,12 +1,14 @@
 import csv
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from io import StringIO
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
-from sqlmodel import func, select
+from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.domains.operations.cash_register_polling import (
@@ -43,7 +45,7 @@ def _query_cash_registers_page(
     q: str | None,
     skip: int,
     limit: int,
-) -> tuple[list[CashRegister], int]:
+) -> tuple[Sequence[CashRegister], int]:
     statement = select(CashRegister)
     count_stmt = select(func.count()).select_from(CashRegister)
     if q:
@@ -73,10 +75,10 @@ def _query_cash_registers_page(
     count = session.exec(count_stmt).one()
     rows = session.exec(
         statement.order_by(
-            CashRegister.location_zone,
-            CashRegister.store_number,
-            CashRegister.source_order,
-            CashRegister.kkm_number,
+            col(CashRegister.location_zone),
+            col(CashRegister.store_number),
+            col(CashRegister.source_order),
+            col(CashRegister.kkm_number),
         )
         .offset(skip)
         .limit(limit)
@@ -98,7 +100,7 @@ async def read_cash_registers(
 
     del current_user
     rows, count = await run_in_threadpool(_query_cash_registers_page, session, q, skip, limit)
-    result = CashRegistersPublic(data=rows, count=count)
+    result = CashRegistersPublic(data=cast(list[CashRegisterPublic], list(rows)), count=count)
 
     return await _CASH_REGISTERS_CACHE.respond(cache_variant, result)
 
@@ -146,8 +148,8 @@ async def poll_cash_register(
     del current_user
     try:
         return await poll_single_cash_register_local(session=session, cash_id=cash_id)
-    except CashRegisterNotFoundError:
-        raise HTTPException(status_code=404, detail="Cash register not found")
+    except CashRegisterNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Cash register not found") from exc
 
 
 @router.post("/poll-all", response_model=CashRegistersPublic)
@@ -164,10 +166,10 @@ def export_cash_registers_csv(
 ) -> Response:
     del current_user
     statement = select(CashRegister).order_by(
-        CashRegister.location_zone,
-        CashRegister.store_number,
-        CashRegister.source_order,
-        CashRegister.kkm_number,
+        col(CashRegister.location_zone),
+        col(CashRegister.store_number),
+        col(CashRegister.source_order),
+        col(CashRegister.kkm_number),
     )
     if q:
         flt = build_ilike_filter(

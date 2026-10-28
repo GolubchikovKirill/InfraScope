@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import yaml
@@ -50,10 +51,10 @@ def _load_service_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
     return nodes, edges
 
 
-def _cached_query(cache_key: tuple[str, str], loader):
+def _cached_query[T](cache_key: tuple[str, str], loader: Callable[[], T]) -> T:
     found, value = _query_cache.lookup(cache_key)
     if found:
-        return value
+        return cast(T, value)
     value = loader()
     _query_cache.set(cache_key, value)
     return value
@@ -90,7 +91,7 @@ def _query_vector(query: str) -> list[dict[str, Any]]:
             )
             res.raise_for_status()
             payload = res.json()
-            return list(payload.get("data", {}).get("result") or [])
+            return cast(list[dict[str, Any]], list(payload.get("data", {}).get("result") or []))
         except _PROMETHEUS_READ_ERRORS as exc:
             logger.debug("Prometheus query failed: %s", exc)
             return []
@@ -110,7 +111,7 @@ def _query_range(query: str, *, start_ts: int, end_ts: int, step_seconds: int) -
             )
             res.raise_for_status()
             payload = res.json()
-            return list(payload.get("data", {}).get("result") or [])
+            return cast(list[dict[str, Any]], list(payload.get("data", {}).get("result") or []))
         except _PROMETHEUS_READ_ERRORS as exc:
             logger.debug("Prometheus query failed: %s", exc)
             return []

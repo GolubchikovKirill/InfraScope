@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from typing import ClassVar, cast
 
 import pytest
 
@@ -18,7 +19,9 @@ from app.domains.inventory.printer_polling import (
     poll_single_printer_local,
     verify_printer_mac,
 )
+from app.domains.inventory.reachability import ReachabilityResult
 from app.services.snmp import PrinterStatus
+from app.services.snmp._pysnmp_compat import SnmpEngine
 
 
 class _NoLockRedis:
@@ -89,7 +92,7 @@ def test_verify_printer_mac_detects_mismatch() -> None:
 class _FakeEngine:
     """Stands in for SnmpEngine: records how many exist and whether each was closed."""
 
-    created: list[_FakeEngine] = []
+    created: ClassVar[list[_FakeEngine]] = []
 
     def __init__(self) -> None:
         self.closed = False
@@ -116,15 +119,16 @@ async def test_poll_printer_batch_preserves_result_for_each_ip(monkeypatch, fake
 
     async def fake_poll_one(printer: Printer, engine, *, full: bool = True):
         del engine, full
-        return printer.ip_address, {"is_online": printer.ip_address.endswith(".20")}, None
+        online = (printer.ip_address or "").endswith(".20")
+        return printer.ip_address, PrinterStatus(is_online=online, status="online" if online else "offline"), None
 
     monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", fake_poll_one)
 
     result = await poll_printer_batch(printers)
 
     assert result == {
-        "10.10.10.20": ({"is_online": True}, None),
-        "10.10.10.21": ({"is_online": False}, None),
+        "10.10.10.20": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.10.21": (PrinterStatus(is_online=False, status="offline"), None),
     }
 
 
@@ -175,16 +179,16 @@ async def test_poll_printer_batch_survives_one_printer_raising(monkeypatch, fake
 
     async def fake_poll_one(printer: Printer, engine, *, full: bool = True):
         del engine, full
-        if printer.ip_address.endswith(".60"):
+        if (printer.ip_address or "").endswith(".60"):
             raise RuntimeError("boom")
-        return printer.ip_address, {"is_online": True}, None
+        return printer.ip_address, PrinterStatus(is_online=True, status="online"), None
 
     monkeypatch.setattr("app.domains.inventory.printer_polling.poll_one_printer", fake_poll_one)
 
     result = await poll_printer_batch(printers)
 
     assert result["10.10.10.60"] == (None, None)
-    assert result["10.10.10.61"] == ({"is_online": True}, None)
+    assert result["10.10.10.61"] == (PrinterStatus(is_online=True, status="online"), None)
     assert fake_engines[0].closed is True
 
 
@@ -242,10 +246,10 @@ async def test_poll_one_printer_light_skips_toner_and_mac_calls(monkeypatch) -> 
     monkeypatch.setattr("app.domains.inventory.printer_polling.poll_printer_async", _must_not_be_called)
     monkeypatch.setattr("app.domains.inventory.printer_polling.get_snmp_mac_async", _must_not_be_called)
 
-    ip, result, mac = await poll_one_printer(printer, object(), full=False)
+    ip, result, mac = await poll_one_printer(printer, cast(SnmpEngine, object()), full=False)
 
     assert ip == "10.10.10.30"
-    assert result.is_online is True
+    assert result is not None and result.is_online is True
     assert mac is None
 
 
@@ -271,12 +275,12 @@ async def test_poll_one_printer_full_asks_for_the_mac_only_when_online(monkeypat
     monkeypatch.setattr("app.domains.inventory.printer_polling.get_snmp_mac_async", _mac)
     monkeypatch.setattr("app.domains.inventory.printer_polling.poll_jitter_async", _jitter)
 
-    _, _, mac = await poll_one_printer(printer, object())
+    _, _, mac = await poll_one_printer(printer, cast(SnmpEngine, object()))
     assert mac == "aa:bb:cc:dd:ee:ff" and mac_calls == ["10.10.10.31"]
 
     online["value"] = False
-    _, result, mac = await poll_one_printer(printer, object())
-    assert mac is None and result.is_online is False and mac_calls == ["10.10.10.31"]
+    _, result, mac = await poll_one_printer(printer, cast(SnmpEngine, object()))
+    assert mac is None and result is not None and result.is_online is False and mac_calls == ["10.10.10.31"]
 
 
 def test_apply_light_printer_result_preserves_toner_levels() -> None:
@@ -303,7 +307,7 @@ def test_whole_subnet_failing_at_once_is_flagged_as_a_path_problem(monkeypatch) 
     monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_MIN_DEVICES", 3)
     monkeypatch.setattr("app.domains.inventory.printer_polling.settings.POLL_PATH_FAILURE_RATIO", 0.8)
 
-    results = {
+    results: dict[str, tuple[PrinterStatus | ReachabilityResult | None, str | None]] = {
         "10.10.98.10": (None, None),
         "10.10.98.11": (None, None),
         "10.10.98.12": (None, None),
@@ -319,9 +323,9 @@ def test_one_printer_down_among_healthy_neighbours_is_not_a_path_problem(monkeyp
 
     results = {
         "10.10.98.10": (None, None),
-        "10.10.98.11": ({"is_online": True}, None),
-        "10.10.98.12": ({"is_online": True}, None),
-        "10.10.98.13": ({"is_online": True}, None),
+        "10.10.98.11": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.98.12": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.98.13": (PrinterStatus(is_online=True, status="online"), None),
     }
 
     assert _subnets_with_total_failure(results) == set()
@@ -344,9 +348,9 @@ def test_subnets_are_judged_independently(monkeypatch) -> None:
         "10.10.98.10": (None, None),
         "10.10.98.11": (None, None),
         "10.10.98.12": (None, None),
-        "10.10.99.10": ({"is_online": True}, None),
-        "10.10.99.11": ({"is_online": True}, None),
-        "10.10.99.12": ({"is_online": True}, None),
+        "10.10.99.10": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.99.11": (PrinterStatus(is_online=True, status="online"), None),
+        "10.10.99.12": (PrinterStatus(is_online=True, status="online"), None),
     }
 
     assert _subnets_with_total_failure(results) == {"10.10.98"}

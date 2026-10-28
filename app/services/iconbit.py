@@ -52,9 +52,9 @@ _CLIENT_LOCK = threading.Lock()
 def _client() -> httpx.Client:
     global _CLIENT, _CLIENT_PID
     pid = os.getpid()
-    if _CLIENT is None or _CLIENT_PID != pid:
+    if _CLIENT is None or pid != _CLIENT_PID:
         with _CLIENT_LOCK:
-            if _CLIENT is None or _CLIENT_PID != pid:
+            if _CLIENT is None or pid != _CLIENT_PID:
                 _CLIENT = httpx.Client(
                     auth=AUTH_CREDS,
                     timeout=TIMEOUT,

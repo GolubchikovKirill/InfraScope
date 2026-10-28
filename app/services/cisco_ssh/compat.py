@@ -62,7 +62,7 @@ class _KexGroup1SHA1(KexGroup14SHA256):
     """
 
     # RFC 2409 section 6.2, "Second Oakley Group"
-    P = 0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF  # noqa: E501
+    P = 0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF
     G = 2
 
     name = "diffie-hellman-group1-sha1"
@@ -70,31 +70,38 @@ class _KexGroup1SHA1(KexGroup14SHA256):
 
 
 def _install_legacy_ssh_compat() -> None:
-    kex_info = paramiko.Transport._kex_info
+    # Reaching into paramiko.Transport's class-level registries (_kex_info,
+    # _preferred_kex, _key_info, _preferred_keys) is the only way to re-add
+    # an algorithm paramiko itself dropped - there is no public API for it.
+    # These attributes are real at runtime (paramiko has carried them under
+    # these exact names across the affected versions) but are intentionally
+    # left out of paramiko's type stubs, so pyright sees Transport as not
+    # having them.
+    kex_info = paramiko.Transport._kex_info  # type: ignore[attr-defined]
     if _KexGroup14SHA1.name not in kex_info:
         kex_info[_KexGroup14SHA1.name] = _KexGroup14SHA1
-    preferred_kex = paramiko.Transport._preferred_kex
+    preferred_kex = paramiko.Transport._preferred_kex  # type: ignore[attr-defined]
     if _KexGroup14SHA1.name not in preferred_kex:
-        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup14SHA1.name)
+        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup14SHA1.name)  # type: ignore[attr-defined]
 
     # group1 goes in last of all - see _KexGroup1SHA1.
     if _KexGroup1SHA1.name not in kex_info:
         kex_info[_KexGroup1SHA1.name] = _KexGroup1SHA1
-    preferred_kex = paramiko.Transport._preferred_kex
+    preferred_kex = paramiko.Transport._preferred_kex  # type: ignore[attr-defined]
     if _KexGroup1SHA1.name not in preferred_kex:
-        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup1SHA1.name)
+        paramiko.Transport._preferred_kex = (*preferred_kex, _KexGroup1SHA1.name)  # type: ignore[attr-defined]
 
     # ssh-rsa host keys: same RSA key blob format as rsa-sha2-*, paramiko
     # still implements RSAKey fully - it was only delisted as a host-key
     # *type* and its SHA-1 signature hash was dropped from RSAKey.HASHES.
-    key_info = paramiko.Transport._key_info
+    key_info = paramiko.Transport._key_info  # type: ignore[attr-defined]
     if "ssh-rsa" not in key_info:
         key_info["ssh-rsa"] = paramiko.RSAKey
     if "ssh-rsa" not in paramiko.rsakey.RSAKey.HASHES:
         paramiko.rsakey.RSAKey.HASHES["ssh-rsa"] = hashes.SHA1
-    preferred_keys = paramiko.Transport._preferred_keys
+    preferred_keys = paramiko.Transport._preferred_keys  # type: ignore[attr-defined]
     if "ssh-rsa" not in preferred_keys:
-        paramiko.Transport._preferred_keys = (*preferred_keys, "ssh-rsa")
+        paramiko.Transport._preferred_keys = (*preferred_keys, "ssh-rsa")  # type: ignore[attr-defined]
 
 
 _install_legacy_ssh_compat()

@@ -26,11 +26,11 @@ from .poller import poll_printer_async, poll_printer_light_async
 __all__ = [
     "PrinterStatus",
     "TonerLevel",
-    "poll_printer_async",
-    "poll_printer_light_async",
-    "get_snmp_mac",
-    "get_snmp_mac_async",
     "_detect_color",
     "_detect_vendor",
     "_is_toner_supply",
+    "get_snmp_mac",
+    "get_snmp_mac_async",
+    "poll_printer_async",
+    "poll_printer_light_async",
 ]

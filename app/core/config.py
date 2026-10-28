@@ -33,9 +33,7 @@ class Settings(BaseSettings):
             return True
         if len(normalized) < 12:
             return True
-        if normalized.isdigit() or normalized.isalpha():
-            return True
-        return False
+        return bool(normalized.isdigit() or normalized.isalpha())
 
     @model_validator(mode="after")
     def validate_secret_key(self) -> "Settings":
