@@ -9,6 +9,11 @@ import { apiErrorMessage } from "./lib/apiError";
 import { showToast } from "./lib/toastBus";
 import ToastContainer from "./components/ToastContainer";
 import { ConfirmProvider } from "./components/ConfirmDialog";
+// Self-hosted, variable weight, split by unicode-range so only the latin and
+// cyrillic subsets are fetched - and from this server, not fonts.googleapis.com:
+// that stylesheet blocked the first paint for as long as the corporate gateway
+// took to answer (or time out) on every cold load.
+import "@fontsource-variable/inter";
 import "./index.css";
 
 initThemeMode();

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import {
   RefreshCw,
   Pencil,
@@ -52,7 +52,7 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export default function PrinterCard({
+function PrinterCard({
   printer,
   onPoll,
   onEdit,
@@ -387,3 +387,6 @@ export default function PrinterCard({
   );
 }
 
+// Memoised: a fleet page renders dozens of these, and only the card whose
+// printer or polling state changed needs to re-render.
+export default memo(PrinterCard);
