@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Archive, ArrowDown, ArrowUp, ArrowUpDown, History, Minus, Pencil, Plus, Save } from "lucide-react";
-import type { CartridgeStock, CartridgeStockInput, CartridgeStockMovement } from "../client";
+import type { CartridgeDemand, CartridgeStock, CartridgeStockInput, CartridgeStockMovement } from "../client";
 import CartridgeStockForm from "./CartridgeStockForm";
 
 type SortKey = "name" | "color" | "printers" | "quantity" | "minimum";
@@ -49,6 +49,17 @@ interface Props {
     data: CartridgeStockInput & { cartridge_name: string },
   ) => void | Promise<unknown>;
   onArchive?: (id: string) => void;
+  /** Toner-forecast demand per cartridge model (GET /printers/cartridges/forecast) */
+  demand?: CartridgeDemand[];
+  horizonDays?: number;
+}
+
+const demandKey = (name: string) => name.trim().split(/\s+/).join(" ").toLowerCase();
+
+function dueLabel(days: number | null): string {
+  if (days == null) return "";
+  const d = Math.max(Math.round(days), 0);
+  return d === 0 ? "нужен уже сейчас" : `первый через ~${d} дн.`;
 }
 
 function colorLabel(value: string | null): string {
@@ -81,6 +92,8 @@ export default function CartridgeStockPanel({
   onToggleArchived,
   onSaveCard,
   onArchive,
+  demand = [],
+  horizonDays = 30,
 }: Props) {
   const [drafts, setDrafts] = useState<Record<string, { quantity: string; minimum: string }>>({});
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -127,14 +140,27 @@ export default function CartridgeStockPanel({
 
   const totalStock = rows.reduce((sum, row) => sum + row.quantity_on_hand, 0);
   const lowCount = rows.filter((row) => row.quantity_on_hand <= row.minimum_stock).length;
+  const demandByName = useMemo(() => new Map(demand.map((d) => [demandKey(d.cartridge_name), d])), [demand]);
+  const toOrderTotal = demand.reduce((sum, d) => sum + d.to_order, 0);
+  // Cartridges the printers use but the catalog doesn't list - they can't be
+  // stocked until someone adds them, so they're called out separately.
+  const unlisted = demand.filter((d) => d.on_hand == null && d.needed > 0);
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 grid-cols-3">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         <Summary label="Позиций" value={rows.length} />
         <Summary label="На складе" value={totalStock} />
         <Summary label="Низкий остаток" value={lowCount} tone="warn" />
+        <Summary label={`Заказать на ${horizonDays} дн.`} value={toOrderTotal} tone={toOrderTotal > 0 ? "warn" : "default"} />
       </div>
+
+      {unlisted.length > 0 && (
+        <div className="app-chip-warn w-full justify-start rounded-lg px-3 py-2 text-xs">
+          Нет в справочнике, но понадобятся в ближайшие {horizonDays} дн.:{" "}
+          {unlisted.map((d) => `${d.cartridge_name} — ${d.needed} шт.`).join(", ")}
+        </div>
+      )}
 
       <div className="app-panel flex flex-wrap items-center justify-between gap-3 p-3">
         <div>
@@ -182,6 +208,10 @@ export default function CartridgeStockPanel({
                 <SortableHeader label="Принтеры" sortKey="printers" active={sortKey} dir={sortDir} onSort={toggleSort} />
                 <SortableHeader label="Остаток" sortKey="quantity" active={sortKey} dir={sortDir} onSort={toggleSort} />
                 <SortableHeader label="Минимум" sortKey="minimum" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                <th className="num" title={`Сколько замен по прогнозу расхода тонера в ближайшие ${horizonDays} дней`}>
+                  Нужно за {horizonDays} дн.
+                </th>
+                <th className="num" title="Нужно + минимальный остаток - что уже на складе">Заказать</th>
                 <th className="text-right">Действия</th>
               </tr>
             </thead>
@@ -189,6 +219,7 @@ export default function CartridgeStockPanel({
               {sortedRows.map((row) => {
                 const draft = draftFor(row);
                 const low = row.quantity_on_hand <= row.minimum_stock;
+                const forecast = demandByName.get(demandKey(row.cartridge_name));
                 const archived = !row.is_active;
                 return (
                   <tr
@@ -226,6 +257,22 @@ export default function CartridgeStockPanel({
                         inputMode="numeric"
                         className="app-input w-20 px-2 py-1 text-sm tabular-nums disabled:bg-[var(--surface-2)]"
                       />
+                    </td>
+                    <td className="num">
+                      {forecast ? (
+                        <span title={[dueLabel(forecast.next_due_days), forecast.printers.join(", ")].filter(Boolean).join(" · ")}>
+                          {forecast.needed}
+                        </span>
+                      ) : (
+                        <span className="text-[var(--text-faint)]">—</span>
+                      )}
+                    </td>
+                    <td className="num">
+                      {forecast && forecast.to_order > 0 ? (
+                        <span className="font-semibold text-[var(--warn-fg)]">{forecast.to_order}</span>
+                      ) : (
+                        <span className="text-[var(--text-faint)]">0</span>
+                      )}
                     </td>
                     <td>
                       <div className="flex justify-end gap-1">

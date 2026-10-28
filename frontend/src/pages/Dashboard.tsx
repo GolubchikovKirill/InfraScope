@@ -3,6 +3,7 @@ import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tansta
 import { RefreshCw, Plus, Search, Printer as PrinterIcon, Tag, Check, Archive } from "lucide-react";
 import {
   getCartridgeStockMovements,
+  getCartridgeDemand,
   getCartridgeStocks,
   getPrinters,
   getOfflineRiskPredictions,
@@ -23,7 +24,7 @@ import {
   type PrinterType,
 } from "../client";
 import { useAuth } from "../auth";
-import PrinterCard from "../components/PrinterCard";
+import PrinterCard, { type TonerForecastDetail } from "../components/PrinterCard";
 import ZebraCard from "../components/ZebraCard";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useQueryParamState } from "../hooks/useQueryParamState";
@@ -34,6 +35,9 @@ import { useConfirm } from "../components/ConfirmDialog";
 import PathSuspectBanner from "../components/PathSuspectBanner";
 
 type TabKey = PrinterType | "cartridges";
+
+/** How far ahead the cartridge stock tab plans orders */
+const DEMAND_HORIZON_DAYS = 30;
 type StatusFilter = "all" | "online" | "offline" | "low_toner";
 
 const TABS: { key: TabKey; label: string; icon: typeof PrinterIcon }[] = [
@@ -80,6 +84,12 @@ export default function Dashboard() {
     queryFn: () => getCartridgeStocks(debouncedSearch || undefined, showArchivedStock),
     enabled: activeTab === "cartridges",
     placeholderData: keepPreviousData,
+  });
+  const { data: demandData } = useQuery({
+    queryKey: ["cartridge-demand", DEMAND_HORIZON_DAYS],
+    queryFn: () => getCartridgeDemand(DEMAND_HORIZON_DAYS),
+    enabled: activeTab === "cartridges",
+    staleTime: 5 * 60_000,
   });
   const { data: selectedMovementsData } = useQuery({
     queryKey: ["cartridge-stock", selectedStockId, "movements"],
@@ -219,6 +229,16 @@ export default function Dashboard() {
       ),
     [tonerPredictions],
   );
+  const tonerForecastsByPrinter = useMemo(() => {
+    const acc: Record<string, Partial<Record<"black" | "cyan" | "magenta" | "yellow", TonerForecastDetail>>> = {};
+    for (const item of tonerPredictions) {
+      const color = item.toner_color;
+      if (!item.printer_id || !(color === "black" || color === "cyan" || color === "magenta" || color === "yellow")) continue;
+      acc[item.printer_id] ??= {};
+      acc[item.printer_id][color] ??= { low: item.days_low ?? null, high: item.days_high ?? null, basis: item.basis ?? null };
+    }
+    return acc;
+  }, [tonerPredictions]);
   const riskByDeviceId = useMemo(
     () =>
       riskPredictions.reduce<Record<string, string>>((acc, item) => {
@@ -382,6 +402,8 @@ export default function Dashboard() {
           cardError={stockCardError}
           onSaveCard={(id, data) => saveStockCardMut.mutateAsync({ id, data })}
           onArchive={(id) => archiveStockMut.mutate(id)}
+          demand={demandData?.data}
+          horizonDays={DEMAND_HORIZON_DAYS}
         />
       ) : isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -422,6 +444,7 @@ export default function Dashboard() {
                 isSuperuser={isSuperuser}
                 showLowTonerDetails={statusFilter === "low_toner"}
                 tonerPredictionDays={tonerDaysByPrinter[printer.id]}
+                tonerForecasts={tonerForecastsByPrinter[printer.id]}
                 offlineRiskLevel={riskByDeviceId[printer.id]}
                 onCopyToner={handleCopyToner}
               />

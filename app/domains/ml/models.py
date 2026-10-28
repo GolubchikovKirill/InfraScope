@@ -43,6 +43,12 @@ class MLTonerPrediction(SQLModel, table=True):
     toner_model: str | None = Field(default=None, max_length=128)
     current_level: int | None = Field(default=None)
     days_to_replacement: float | None = Field(default=None, index=True)
+    # The forecast band and the % per day it was computed from
+    days_low: float | None = Field(default=None)
+    days_high: float | None = Field(default=None)
+    daily_rate: float | None = Field(default=None)
+    # printer | cartridge_model | color | default - whose consumption the rate reflects
+    basis: str | None = Field(default=None, max_length=32)
     predicted_replacement_at: datetime | None = Field(default=None, index=True)
     confidence: float = Field(default=0.5)
     model_version: str = Field(max_length=64, index=True)

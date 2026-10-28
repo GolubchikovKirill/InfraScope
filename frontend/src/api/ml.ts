@@ -8,6 +8,13 @@ export interface MLTonerPrediction {
   toner_model: string | null;
   current_level: number | null;
   days_to_replacement: number | null;
+  /** the forecast band, in days */
+  days_low?: number | null;
+  days_high?: number | null;
+  /** % of the cartridge used per day */
+  daily_rate?: number | null;
+  /** whose consumption the rate reflects */
+  basis?: "printer" | "cartridge_model" | "color" | "default" | string | null;
   predicted_replacement_at: string | null;
   confidence: number;
   model_version: string;

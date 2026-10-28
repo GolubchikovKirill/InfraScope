@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import statistics
+import uuid
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
@@ -10,6 +11,16 @@ from sqlmodel import Session, col, delete, select
 from app.core.config import settings
 from app.domains.inventory.models import Printer
 from app.domains.ml.models import MLFeatureSnapshot, MLModelRegistry, MLOfflineRiskPrediction, MLTonerPrediction
+from app.ml.toner import ALGORITHM as TONER_ALGORITHM
+from app.ml.toner import (
+    Segment,
+    TonerRateModel,
+    backtest,
+    estimate_rate,
+    load_daily_readings,
+    segment_rates,
+    split_segments,
+)
 from app.observability.metrics import (
     ml_inference_duration_seconds,
     ml_model_active_info,
@@ -22,14 +33,6 @@ _TONER_FAMILY = "toner_forecast"
 _OFFLINE_FAMILY = "offline_risk"
 _ACTIVE = "active"
 _ARCHIVED = "archived"
-
-_DEFAULT_COLOR_RATES = {
-    "black": 1.2,
-    "cyan": 0.7,
-    "magenta": 0.7,
-    "yellow": 0.7,
-}
-
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(value, 1.0))
@@ -63,98 +66,74 @@ def _set_active_model(session: Session, model: MLModelRegistry) -> None:
     ml_model_active_info.labels(model_family=model.model_family, version=model.version).set(1)
 
 
+def _toner_history_window() -> datetime:
+    # Bounded to the window app.ml.retention keeps raw snapshots for: a rate
+    # drifts with how a store uses its printer, so recent cartridges are the
+    # representative ones, and the query stays bounded whether or not the
+    # daily prune has run yet.
+    return datetime.now(UTC) - timedelta(days=max(settings.ML_FEATURE_SNAPSHOT_RETENTION_DAYS, 1))
+
+
+def _toner_segments(session: Session) -> list[tuple[uuid.UUID, str, Segment]]:
+    labelled: list[tuple[uuid.UUID, str, Segment]] = []
+    for (printer_id, color), readings in load_daily_readings(session, _toner_history_window()).items():
+        labelled.extend((printer_id, color, segment) for segment in split_segments(readings))
+    return labelled
+
+
 def train_toner_model(session: Session, min_train_rows: int = 50) -> MLModelRegistry:
+    """Fit the fleet prior and score it on finished cartridges (see app.ml.toner).
+
+    train_rows counts cartridge lifetimes with a usable rate; metric_primary is
+    the backtest error in days (lower is better), metric_secondary the median
+    consumption in % per day.
+    """
     with ml_train_duration_seconds.labels(model_family=_TONER_FAMILY).time():
-        # Bounded to the same window app.ml.retention keeps raw snapshots
-        # for - training on the device's recent refill/replace history is
-        # both what the retention window leaves available and, for a rate
-        # that drifts with usage patterns, more representative than data
-        # from many months ago. Also keeps this query's result set (and the
-        # per-device/color grouping below) from growing forever regardless
-        # of whether the daily retention prune has run yet.
-        since = datetime.now(UTC) - timedelta(days=max(settings.ML_FEATURE_SNAPSHOT_RETENTION_DAYS, 1))
-        samples = session.exec(
-            select(MLFeatureSnapshot)
-            .where(
-                MLFeatureSnapshot.device_kind == "printer",
-                col(MLFeatureSnapshot.toner_color).is_not(None),
-                col(MLFeatureSnapshot.toner_level).is_not(None),
-                MLFeatureSnapshot.captured_at >= since,
-            )
-            .order_by(
-                col(MLFeatureSnapshot.device_id),
-                col(MLFeatureSnapshot.toner_color),
-                col(MLFeatureSnapshot.captured_at),
-            )
-        ).all()
+        labelled = _toner_segments(session)
+        rates = segment_rates([(color, segment) for _printer, color, segment in labelled])
+        rate_model = TonerRateModel.from_rates(rates)
+        check = backtest(labelled)
 
-        grouped: dict[tuple[str, str], list[MLFeatureSnapshot]] = defaultdict(list)
-        for row in samples:
-            if row.device_id is None or row.toner_color is None or row.toner_level is None:
-                continue
-            grouped[(str(row.device_id), row.toner_color)].append(row)
-
-        rates_by_key: dict[str, list[float]] = defaultdict(list)
-        rates_by_color: dict[str, list[float]] = defaultdict(list)
-        all_rates: list[float] = []
-        abs_errors: list[float] = []
-
-        for (_device, color), rows in grouped.items():
-            for idx in range(1, len(rows)):
-                prev = rows[idx - 1]
-                cur = rows[idx]
-                if prev.toner_level is None or cur.toner_level is None:
-                    continue
-                delta = prev.toner_level - cur.toner_level
-                days = max((cur.captured_at - prev.captured_at).total_seconds() / 86400.0, 0)
-                if delta <= 0 or days <= 0:
-                    continue
-                rate = delta / days
-                key = f"{color}:{(cur.toner_model or '').strip().lower() or 'unknown'}"
-                rates_by_key[key].append(rate)
-                rates_by_color[color].append(rate)
-                all_rates.append(rate)
-
-        key_model = {k: statistics.median(v) for k, v in rates_by_key.items() if v}
-        color_model = {k: statistics.median(v) for k, v in rates_by_color.items() if v}
-        global_rate = statistics.median(all_rates) if all_rates else 1.0
-
-        for rates in rates_by_key.values():
-            med = statistics.median(rates)
-            abs_errors.extend(abs(v - med) for v in rates)
-        mae = statistics.mean(abs_errors) if abs_errors else None
-
+        metadata = rate_model.to_metadata()
+        metadata["backtest"] = {
+            "cases": check.cases,
+            "mae_days": check.mae_days,
+            "mae_days_by_horizon": check.by_horizon,
+        }
         model = MLModelRegistry(
             model_family=_TONER_FAMILY,
             version=_new_version("toner"),
             status="candidate",
-            train_rows=len(all_rates),
-            metric_primary=mae,
-            metric_secondary=statistics.mean(all_rates) if all_rates else 0.0,
-            metadata_json=json.dumps(
-                {
-                    "rates_by_key": key_model,
-                    "rates_by_color": color_model,
-                    "global_daily_rate": global_rate,
-                    "default_color_rates": _DEFAULT_COLOR_RATES,
-                },
-                ensure_ascii=True,
-            ),
+            train_rows=len(rates),
+            metric_primary=check.mae_days,
+            metric_secondary=statistics.median(r for _c, _m, r in rates) if rates else 0.0,
+            metadata_json=json.dumps(metadata, ensure_ascii=True),
         )
         session.add(model)
 
         active = _latest_active_model(session, _TONER_FAMILY)
-        can_activate = len(all_rates) >= min_train_rows
-        if active and active.metric_primary is not None and model.metric_primary is not None:
-            can_activate = can_activate and (model.metric_primary <= active.metric_primary * 1.05)
-        if active is None and len(all_rates) > 0:
-            can_activate = True
+        if active is None or not _same_toner_algorithm(active):
+            # Nothing to compare against - including the pre-v1 model, whose
+            # "error" measured something else entirely and whose forecasts
+            # were wrong by two orders of magnitude.
+            can_activate = len(rates) > 0
+        else:
+            can_activate = len(rates) >= min_train_rows
+            if active.metric_primary is not None and model.metric_primary is not None:
+                can_activate = can_activate and model.metric_primary <= active.metric_primary * 1.05
         if can_activate:
             _set_active_model(session, model)
             ml_train_runs_total.labels(model_family=_TONER_FAMILY, result="activated").inc()
         else:
             ml_train_runs_total.labels(model_family=_TONER_FAMILY, result="candidate").inc()
         return model
+
+
+def _same_toner_algorithm(model: MLModelRegistry) -> bool:
+    try:
+        return json.loads(model.metadata_json or "{}").get("algorithm") == TONER_ALGORITHM
+    except ValueError:
+        return False
 
 
 def train_offline_risk_model(session: Session, min_train_rows: int = 50) -> MLModelRegistry:
@@ -230,15 +209,26 @@ def train_offline_risk_model(session: Session, min_train_rows: int = 50) -> MLMo
 
 
 def score_toner_predictions(session: Session) -> int:
+    """Days until each printer's cartridges run out, with a band.
+
+    The printer's own rate on its current cartridge is re-estimated here from
+    fresh data (the daily aggregate is cheap), so a forecast reacts within the
+    day; only the fleet prior comes from the trained model.
+    """
     with ml_inference_duration_seconds.labels(operation="toner").time():
         model = _latest_active_model(session, _TONER_FAMILY)
         if not model or not model.metadata_json:
             return 0
-        payload = json.loads(model.metadata_json)
-        rates_by_key: dict[str, float] = payload.get("rates_by_key", {})
-        rates_by_color: dict[str, float] = payload.get("rates_by_color", {})
-        default_rates: dict[str, float] = payload.get("default_color_rates", _DEFAULT_COLOR_RATES)
-        global_rate: float = float(payload.get("global_daily_rate", 1.0))
+        rate_model = TonerRateModel.from_metadata(json.loads(model.metadata_json))
+        if rate_model is None:
+            # An old-format model: no forecasts until the next training run
+            # replaces it, rather than publishing its broken numbers again.
+            return 0
+        current_segment: dict[tuple[uuid.UUID, str], Segment] = {}
+        for (printer_id, color), readings in load_daily_readings(session, _toner_history_window()).items():
+            segments = split_segments(readings)
+            if segments:
+                current_segment[(printer_id, color)] = segments[-1]
         now = datetime.now(UTC)
 
         # Keep a fresh prediction snapshot to avoid unbounded table growth.
@@ -254,14 +244,14 @@ def score_toner_predictions(session: Session) -> int:
             ):
                 if level is None:
                     continue
-                key = f"{color}:{(toner_model or '').strip().lower() or 'unknown'}"
-                rate = (
-                    rates_by_key.get(key) or rates_by_color.get(color) or default_rates.get(color) or global_rate or 1.0
+                forecast = rate_model.forecast(
+                    color=color,
+                    toner_model=toner_model,
+                    level=float(level),
+                    own=estimate_rate(current_segment.get((printer.id, color))),
                 )
-                if rate <= 0:
-                    continue
-                days = max(float(level) / float(rate), 0.0)
-                confidence = 0.92 if key in rates_by_key else (0.78 if color in rates_by_color else 0.6)
+                if forecast is None:
+                    continue  # -2/-3: the printer does not say how much is left
                 session.add(
                     MLTonerPrediction(
                         printer_id=printer.id,
@@ -269,9 +259,13 @@ def score_toner_predictions(session: Session) -> int:
                         toner_color=color,
                         toner_model=toner_model,
                         current_level=level,
-                        days_to_replacement=days,
-                        predicted_replacement_at=now + timedelta(days=days),
-                        confidence=confidence,
+                        days_to_replacement=forecast.days,
+                        days_low=forecast.days_low,
+                        days_high=forecast.days_high,
+                        daily_rate=forecast.daily_rate,
+                        basis=forecast.basis,
+                        predicted_replacement_at=now + timedelta(days=forecast.days),
+                        confidence=forecast.confidence,
                         model_version=model.version,
                     )
                 )
@@ -355,6 +349,12 @@ def run_training_cycle(session: Session, min_train_rows: int = 50) -> dict[str, 
 
 
 def run_scoring_cycle(session: Session) -> dict[str, int]:
+    active = _latest_active_model(session, _TONER_FAMILY)
+    if active is not None and not _same_toner_algorithm(active):
+        # First scoring after an upgrade: the nightly retrain is up to a day
+        # away, and the old model's forecasts are the ones being replaced.
+        train_toner_model(session, min_train_rows=settings.ML_MIN_TRAIN_ROWS)
+        session.flush()
     toner_count = score_toner_predictions(session)
     risk_count = score_offline_risk(session)
     session.commit()

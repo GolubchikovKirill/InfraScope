@@ -132,6 +132,28 @@ export async function getCartridgeStocks(search?: string, includeInactive = fals
   return data;
 }
 
+/** Cartridges of one model the fleet will need within the horizon (toner forecast vs stock). */
+export interface CartridgeDemand {
+  cartridge_name: string;
+  toner_color: string | null;
+  stock_id: string | null;
+  needed: number;
+  /** null: the cartridge is not in the stock catalog */
+  on_hand: number | null;
+  minimum_stock: number;
+  to_order: number;
+  next_due_days: number | null;
+  printers: string[];
+}
+
+export async function getCartridgeDemand(horizonDays = 30) {
+  const { data } = await api.get<{ horizon_days: number; data: CartridgeDemand[]; count: number }>(
+    "/printers/cartridges/forecast",
+    { params: { horizon_days: horizonDays } },
+  );
+  return data;
+}
+
 export async function createCartridgeStock(payload: CartridgeStockInput & { cartridge_name: string }) {
   const { data } = await api.post<CartridgeStock>("/printers/cartridges", payload);
   return data;

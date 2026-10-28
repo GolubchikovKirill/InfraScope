@@ -19,6 +19,8 @@ from app.domains.inventory.printer_polling import (
     poll_single_printer_local,
 )
 from app.domains.inventory.schemas import (
+    CartridgeDemandPublic,
+    CartridgeDemandsPublic,
     CartridgeIssueRequest,
     CartridgeStockCreate,
     CartridgeStockMovementPublic,
@@ -34,6 +36,7 @@ from app.domains.inventory.schemas import (
 from app.domains.operations.models import EventLog
 from app.domains.shared.schemas import Message
 from app.services.cache import EntityCache
+from app.services.cartridge_demand import forecast_cartridge_demand
 from app.services.cartridge_stock import (
     CartridgeStockDuplicateError,
     CartridgeStockMissingError,
@@ -179,6 +182,32 @@ def read_cartridge_stock(
     del current_user
     rows = list_cartridge_stock(session, search=search, include_inactive=include_inactive)
     return CartridgeStocksPublic(data=cast(list[CartridgeStockPublic], list(rows)), count=len(rows))
+
+
+@router.get("/cartridges/forecast", response_model=CartridgeDemandsPublic)
+def read_cartridge_demand(
+    session: SessionDep,
+    current_user: CurrentUser,
+    horizon_days: int = Query(default=30, ge=1, le=180),
+) -> CartridgeDemandsPublic:
+    """Cartridges needed within the horizon per model, from the toner forecast,
+    against stock on hand - what to order now."""
+    del current_user
+    rows = [
+        CartridgeDemandPublic(
+            cartridge_name=d.cartridge_name,
+            toner_color=d.toner_color,
+            stock_id=uuid.UUID(d.stock_id) if d.stock_id else None,
+            needed=d.needed,
+            on_hand=d.on_hand,
+            minimum_stock=d.minimum_stock,
+            to_order=d.to_order,
+            next_due_days=d.next_due_days,
+            printers=sorted(d.printers),
+        )
+        for d in forecast_cartridge_demand(session, horizon_days=horizon_days)
+    ]
+    return CartridgeDemandsPublic(horizon_days=horizon_days, data=rows, count=len(rows))
 
 
 @router.post(

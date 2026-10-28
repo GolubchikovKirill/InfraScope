@@ -28,8 +28,33 @@ interface Props {
   isSuperuser: boolean;
   showLowTonerDetails?: boolean;
   tonerPredictionDays?: Partial<Record<"black" | "cyan" | "magenta" | "yellow", number | null>>;
+  /** band and basis behind each forecast, for its tooltip */
+  tonerForecasts?: Partial<Record<"black" | "cyan" | "magenta" | "yellow", TonerForecastDetail>>;
   offlineRiskLevel?: "low" | "medium" | "high" | string | null;
   onCopyToner?: (text: string) => void;
+}
+
+export interface TonerForecastDetail {
+  low: number | null;
+  high: number | null;
+  basis: string | null;
+}
+
+const BASIS_LABEL: Record<string, string> = {
+  printer: "по расходу этого принтера",
+  cartridge_model: "по среднему расходу этой модели картриджа",
+  color: "по среднему расходу этого цвета",
+  default: "по типовому расходу - данных пока мало",
+};
+
+function forecastTitle(days: number, detail: TonerForecastDetail | undefined): string {
+  if (!detail) return `${days} дн. до замены`;
+  const band =
+    detail.low != null && detail.high != null
+      ? ` (от ${Math.max(Math.round(detail.low), 0)} до ${Math.round(detail.high)} дн.)`
+      : "";
+  const basis = detail.basis ? `, ${BASIS_LABEL[detail.basis] ?? detail.basis}` : "";
+  return `≈${days} дн. до замены${band}${basis}`;
 }
 
 const TONER_COLORS = {
@@ -61,6 +86,7 @@ function PrinterCard({
   isSuperuser,
   showLowTonerDetails = false,
   tonerPredictionDays,
+  tonerForecasts,
   offlineRiskLevel,
   onCopyToner,
 }: Props) {
@@ -279,7 +305,7 @@ function PrinterCard({
                       <span
                         key={entry.key}
                         className={`ml-chip inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${entry.toneClass}`}
-                        title={`${entry.value} дн. до замены (${entry.key})`}
+                        title={forecastTitle(entry.value, tonerForecasts?.[entry.key])}
                       >
                         {entry.shortLabel}
                         <span>{entry.value} дн.</span>
@@ -307,7 +333,13 @@ function PrinterCard({
                   <span>
                     {item.key}: {item.name || "модель не указана"} ({item.level}%)
                     {tonerPredictionDays?.[TONER_COLORS[item.key]] != null && (
-                      <span className="ml-1 text-[11px] text-amber-900/80">
+                      <span
+                        className="ml-1 text-[11px] text-amber-900/80"
+                        title={forecastTitle(
+                          Math.max(Math.round(tonerPredictionDays[TONER_COLORS[item.key]] || 0), 0),
+                          tonerForecasts?.[TONER_COLORS[item.key]],
+                        )}
+                      >
                         ~{Math.max(Math.round(tonerPredictionDays[TONER_COLORS[item.key]] || 0), 0)} дн.
                       </span>
                     )}

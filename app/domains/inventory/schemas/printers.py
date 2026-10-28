@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from .common import _normalize_mac, _validate_ip
 
 __all__ = [
+    "CartridgeDemandPublic",
+    "CartridgeDemandsPublic",
     "CartridgeIssueRequest",
     "CartridgeStockCreate",
     "CartridgeStockMovementPublic",
@@ -234,6 +236,26 @@ class CartridgeStockPublic(BaseModel):
 
 class CartridgeStocksPublic(BaseModel):
     data: list[CartridgeStockPublic]
+    count: int
+
+
+class CartridgeDemandPublic(BaseModel):
+    """Cartridges of one model the fleet will need within the horizon."""
+
+    cartridge_name: str
+    toner_color: str | None = None
+    stock_id: uuid.UUID | None = None
+    needed: int
+    on_hand: int | None = None  # None: not in the stock catalog at all
+    minimum_stock: int
+    to_order: int
+    next_due_days: float | None = None
+    printers: list[str]
+
+
+class CartridgeDemandsPublic(BaseModel):
+    horizon_days: int
+    data: list[CartridgeDemandPublic]
     count: int
 
 

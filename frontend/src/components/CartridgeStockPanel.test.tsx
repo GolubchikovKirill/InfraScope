@@ -219,4 +219,48 @@ describe("CartridgeStockPanel card editing", () => {
     expect(screen.queryByRole("button", { name: /Карточка картриджа/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /В архив/i })).not.toBeInTheDocument();
   });
+
+  it("shows what the toner forecast says to order, and cartridges missing from the catalog", () => {
+    render(
+      <CartridgeStockPanel
+        rows={rows}
+        loading={false}
+        isSuperuser={false}
+        onSelect={vi.fn()}
+        onAdjust={vi.fn()}
+        onIssue={vi.fn()}
+        horizonDays={30}
+        demand={[
+          {
+            cartridge_name: "cf259a",
+            toner_color: "black",
+            stock_id: "stock-1",
+            needed: 5,
+            on_hand: 3,
+            minimum_stock: 1,
+            to_order: 3,
+            next_due_days: 2,
+            printers: ["Store A", "Store B"],
+          },
+          {
+            cartridge_name: "W2030A",
+            toner_color: "black",
+            stock_id: null,
+            needed: 2,
+            on_hand: null,
+            minimum_stock: 0,
+            to_order: 2,
+            next_due_days: 9,
+            printers: ["Store C"],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Нужно за 30 дн.")).toBeInTheDocument();
+    expect(screen.getByTitle(/первый через ~2 дн\. · Store A, Store B/)).toHaveTextContent("5");
+    expect(screen.getByText("Заказать на 30 дн.").previousSibling).toHaveTextContent("5");
+    expect(screen.getByText(/Нет в справочнике/)).toHaveTextContent("W2030A — 2 шт.");
+  });
 });
+
