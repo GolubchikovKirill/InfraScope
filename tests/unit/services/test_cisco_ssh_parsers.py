@@ -142,3 +142,32 @@ def test_parse_interface_status_table_keeps_ports_with_no_description():
     assert rows[2].name is None
     assert rows[2].status == "notconnect"
     assert rows[2].vlan_text == "1"
+
+
+def test_parse_show_version_reads_every_field():
+    from app.services.cisco_ssh import parse_show_version
+
+    output = (
+        "Cisco IOS Software, C2960 Software (C2960-LANBASEK9-M), Version 15.0(2)SE11, RELEASE SOFTWARE (fc3)\n"
+        "SW-STORE-12 uptime is 12 weeks, 3 days, 4 hours, 1 minute\n"
+        "Model number                    : WS-C2960-24PC-L\n"
+    )
+
+    assert parse_show_version(output) == {
+        "hostname": "SW-STORE-12",
+        "uptime": "12 weeks, 3 days, 4 hours, 1 minute",
+        "ios_version": "15.0(2)SE11",
+        "model_info": "WS-C2960-24PC-L",
+    }
+
+
+def test_parse_port_poe_watts_matches_the_port_in_either_spelling():
+    from app.services.cisco_ssh import parse_port_poe_watts
+
+    output = (
+        "Interface Admin  Oper       Power   Device              Class Max\n"
+        "Gi1/0/7   auto   on         6.4     AIR-CAP1602I-E-K9   3     30.0\n"
+    )
+
+    assert parse_port_poe_watts(output, "GigabitEthernet1/0/7") == 6.4
+    assert parse_port_poe_watts(output, "Gi1/0/8") is None

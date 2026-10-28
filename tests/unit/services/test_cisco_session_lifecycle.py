@@ -160,7 +160,7 @@ def test_get_access_points_reuses_a_caller_supplied_session(monkeypatch):
     def _must_not_construct(*_args, **_kwargs):
         raise AssertionError("a caller-supplied session must not be replaced with a new connection")
 
-    monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", _must_not_construct)
+    monkeypatch.setattr("app.services.cisco_ssh.session.CiscoSSH", _must_not_construct)
 
     shared = _Session()
     result = get_access_points("10.0.0.10", "admin", "pass", "enable", 22, 20, shared)

@@ -34,7 +34,7 @@ class _FakeSSH:
 
 def test_get_access_points_returns_none_when_ssh_connect_fails(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.cisco_ssh.CiscoSSH",
+        "app.services.cisco_ssh.session.CiscoSSH",
         lambda *a, **kw: _FakeSSH(connect_ok=False),
     )
     assert get_access_points("10.0.0.1", "admin", "pass") is None
@@ -42,7 +42,7 @@ def test_get_access_points_returns_none_when_ssh_connect_fails(monkeypatch) -> N
 
 def test_get_access_points_returns_none_when_cdp_command_fails(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.cisco_ssh.CiscoSSH",
+        "app.services.cisco_ssh.session.CiscoSSH",
         lambda *a, **kw: _FakeSSH(connect_ok=True, fail_on="show cdp neighbors detail"),
     )
     assert get_access_points("10.0.0.1", "admin", "pass") is None
@@ -50,7 +50,7 @@ def test_get_access_points_returns_none_when_cdp_command_fails(monkeypatch) -> N
 
 def test_get_access_points_returns_empty_list_for_a_genuinely_clean_scan(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.cisco_ssh.CiscoSSH",
+        "app.services.cisco_ssh.session.CiscoSSH",
         lambda *a, **kw: _FakeSSH(connect_ok=True, cdp_output="no neighbors here"),
     )
     result = get_access_points("10.0.0.1", "admin", "pass")
@@ -59,7 +59,7 @@ def test_get_access_points_returns_empty_list_for_a_genuinely_clean_scan(monkeyp
 
 def test_get_access_points_keeps_aps_when_an_enrichment_step_fails(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.cisco_ssh.CiscoSSH",
+        "app.services.cisco_ssh.session.CiscoSSH",
         lambda *a, **kw: _FakeSSH(connect_ok=True, cdp_output=_CDP_ONE_AP, fail_on="show power inline"),
     )
     result = get_access_points("10.0.0.1", "admin", "pass", vlan=20)

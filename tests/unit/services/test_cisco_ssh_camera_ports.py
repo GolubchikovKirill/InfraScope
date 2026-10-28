@@ -43,7 +43,7 @@ class _FakeSSH:
 
 def test_get_camera_ports_returns_none_when_ssh_connect_fails(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.cisco_ssh.CiscoSSH",
+        "app.services.cisco_ssh.session.CiscoSSH",
         lambda *a, **kw: _FakeSSH(connect_ok=False),
     )
     assert get_camera_ports("10.0.0.1", "admin", "pass", "enable", 22, {241, 244, 247}) is None
@@ -51,7 +51,7 @@ def test_get_camera_ports_returns_none_when_ssh_connect_fails(monkeypatch) -> No
 
 def test_get_camera_ports_returns_none_when_status_command_fails(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.cisco_ssh.CiscoSSH",
+        "app.services.cisco_ssh.session.CiscoSSH",
         lambda *a, **kw: _FakeSSH(connect_ok=True, fail_on="show interfaces status"),
     )
     assert get_camera_ports("10.0.0.1", "admin", "pass", "enable", 22, {241, 244, 247}) is None
@@ -59,7 +59,7 @@ def test_get_camera_ports_returns_none_when_status_command_fails(monkeypatch) ->
 
 def test_get_camera_ports_filters_by_vlan_and_enriches_poe(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.cisco_ssh.CiscoSSH",
+        "app.services.cisco_ssh.session.CiscoSSH",
         lambda *a, **kw: _FakeSSH(connect_ok=True),
     )
     result = get_camera_ports("10.0.0.1", "admin", "pass", "enable", 22, {241, 244, 247})
@@ -77,7 +77,7 @@ def test_get_camera_ports_filters_by_vlan_and_enriches_poe(monkeypatch) -> None:
 
 def test_get_camera_ports_survives_poe_enrichment_failure(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.services.cisco_ssh.CiscoSSH",
+        "app.services.cisco_ssh.session.CiscoSSH",
         lambda *a, **kw: _FakeSSH(connect_ok=True, fail_on="show power inline"),
     )
     result = get_camera_ports("10.0.0.1", "admin", "pass", "enable", 22, {244, 247})
