@@ -7,7 +7,8 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.14",
     "argon2-cffi>=25.1.0",
-    # alembic/env.py runs migrations through an async engine on ASYNC_DATABASE_URI
+    # alembic/env.py runs migrations on an async engine (postgresql+asyncpg, which
+    # also needs greenlet): nothing in app/ imports them, but every deploy does
     "asyncpg>=0.30",
     "bcrypt>=4.2",
     "fastapi>=0.129.0",
@@ -34,6 +35,7 @@ dependencies = [
     "python-docx>=1.2.0",
     "qrcode[pil]>=8.2",
     "python-tds>=1.16.1",
+    "greenlet>=3.3.1",
 ]
 
 [dependency-groups]
