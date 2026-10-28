@@ -7,7 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.14",
     "argon2-cffi>=25.1.0",
-    "asyncpg>=0.30",
     "bcrypt>=4.2",
     "fastapi>=0.129.0",
     "httpx>=0.28",
@@ -29,17 +28,18 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.59b0",
     "opentelemetry-instrumentation-httpx>=0.59b0",
     "opentelemetry-sdk>=1.38.0",
-    "jsonschema>=4.25.1",
     "pyyaml>=6.0.3",
     "python-docx>=1.2.0",
     "qrcode[pil]>=8.2",
     "python-tds>=1.16.1",
-    "greenlet>=3.3.1",
-    "pyrefly>=0.45.0",
 ]
 
 [dependency-groups]
 dev = [
+    # tooling: type checker and the CI validator for services/*.yaml - never
+    # imported by the app, so kept out of the production image
+    "pyrefly>=0.45.0",
+    "jsonschema>=4.25.1",
     "ruff>=0.9",
     "pytest>=8.0",
     "pytest-cov>=4.1.0",

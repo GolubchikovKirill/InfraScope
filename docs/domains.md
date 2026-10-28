@@ -37,7 +37,7 @@ before adding new route-level logic.
 - Domain package: `app/domains/inventory/`
 - Backend routes: `app/api/routes/printers.py`, `switches/` (package), `computers.py`,
   `media_players.py`
-- Services: `app/services/snmp/` (package), `cisco_ssh.py`, `device_poll.py`,
+- Services: `app/services/snmp/` (package), `cisco_ssh/` (package), `device_poll.py`,
   `smart_search.py` (text matching in lists), `switches/`
 - Application services: `app/domains/inventory/printer_polling.py`,
   `app/domains/inventory/media_polling.py`, `app/domains/inventory/switch_polling.py`,
