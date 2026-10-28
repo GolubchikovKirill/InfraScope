@@ -104,7 +104,7 @@ export default function SwitchPortsTable({ sw, isSuperuser, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="app-panel w-full max-w-7xl max-h-[90vh] overflow-hidden border-slate-200/70 shadow-2xl">
         <div className="p-4 border-b border-slate-200 flex items-center justify-between gap-3">
           <div>

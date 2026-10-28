@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from sqlmodel import Session, select
 
 from app.core.db import engine
-from app.models import Computer
+from app.domains.inventory.models import Computer
 
 ROWS: list[tuple[str, str | None, str, str]] = [
     ("VNA-MGR-04", "A4", "DF", "vna-mgr-04"),

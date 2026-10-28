@@ -3,10 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import Index
 from sqlmodel import Field, SQLModel
 
 
 class EventLog(SQLModel, table=True):
+    # Mirrors alembic 926a321779de: per-device status history lookups.
+    __table_args__ = (Index("ix_eventlog_kind_type_created", "device_kind", "event_type", "created_at", "device_name"),)
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     severity: str = Field(default="info", max_length=16, index=True)
     category: str = Field(default="system", max_length=64, index=True)

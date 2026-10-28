@@ -10,7 +10,7 @@ def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     """poe_cycle_* really wait 3-5 s between shutting a port and bringing it
     back up (the AP needs the power gap). The tests drive a fake SSH session,
     so there is nothing to wait for - it was 25 s of pure sleeping."""
-    monkeypatch.setattr("app.services.cisco_ssh.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("app.services.cisco_ssh.client.time.sleep", lambda _seconds: None)
 
 
 class _FakeSSH:
@@ -45,7 +45,7 @@ def test_poe_cycle_ap_restores_power_when_failure_happens_after_power_off(monkey
     # Sequence: "configure terminal", "interface X", "power inline never", "end" (power-off,
     # calls 1-4), then call 5 ("configure terminal" for the power-on phase) fails.
     fake = _FakeSSH(fail_at_call=5)
-    monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", lambda *a, **kw: fake)
+    monkeypatch.setattr("app.services.cisco_ssh.session.CiscoSSH", lambda *a, **kw: fake)
 
     result = poe_cycle_ap("10.0.0.1", "admin", "pass", "", 22, "Gi1/0/1")
 
@@ -58,7 +58,7 @@ def test_poe_cycle_ap_restores_power_when_failure_happens_after_power_off(monkey
 
 def test_poe_cycle_ap_succeeds_normally_without_any_failure(monkeypatch) -> None:
     fake = _FakeSSH()
-    monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", lambda *a, **kw: fake)
+    monkeypatch.setattr("app.services.cisco_ssh.session.CiscoSSH", lambda *a, **kw: fake)
 
     result = poe_cycle_ap("10.0.0.1", "admin", "pass", "", 22, "Gi1/0/1")
 
@@ -77,7 +77,7 @@ def test_poe_cycle_ap_logs_critical_when_recovery_itself_fails(monkeypatch, capl
             return ""
 
     fake = _AlwaysFailsAfterPowerOff()
-    monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", lambda *a, **kw: fake)
+    monkeypatch.setattr("app.services.cisco_ssh.session.CiscoSSH", lambda *a, **kw: fake)
 
     with caplog.at_level("ERROR"):
         result = poe_cycle_ap("10.0.0.1", "admin", "pass", "", 22, "Gi1/0/1")
@@ -90,7 +90,7 @@ def test_reboot_ap_restores_admin_up_when_failure_happens_after_shutdown(monkeyp
     # "configure terminal", "interface X", "shutdown" (calls 1-3), then call 4
     # ("no shutdown") fails.
     fake = _FakeSSH(fail_at_call=4)
-    monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", lambda *a, **kw: fake)
+    monkeypatch.setattr("app.services.cisco_ssh.session.CiscoSSH", lambda *a, **kw: fake)
 
     result = reboot_ap("10.0.0.1", "admin", "pass", "", 22, "Gi1/0/1")
 
@@ -106,7 +106,7 @@ def test_poe_cycle_ports_bulk_restores_power_on_every_port_when_failure_happens_
     # calls: "configure terminal"(1), then 2x per interface for power-off (2-7),
     # "end"(8), then "configure terminal"(9) for power-on phase fails.
     fake = _FakeSSH(fail_at_call=9)
-    monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", lambda *a, **kw: fake)
+    monkeypatch.setattr("app.services.cisco_ssh.session.CiscoSSH", lambda *a, **kw: fake)
 
     result = poe_cycle_ports_bulk("10.0.0.1", "admin", "pass", "", 22, interfaces)
 
@@ -118,7 +118,7 @@ def test_poe_cycle_ports_bulk_restores_power_on_every_port_when_failure_happens_
 def test_poe_cycle_ports_bulk_succeeds_normally_without_any_failure(monkeypatch) -> None:
     interfaces = ["Gi1/0/10", "Gi1/0/11"]
     fake = _FakeSSH()
-    monkeypatch.setattr("app.services.cisco_ssh.CiscoSSH", lambda *a, **kw: fake)
+    monkeypatch.setattr("app.services.cisco_ssh.session.CiscoSSH", lambda *a, **kw: fake)
 
     result = poe_cycle_ports_bulk("10.0.0.1", "admin", "pass", "", 22, interfaces)
 

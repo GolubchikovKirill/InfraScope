@@ -16,10 +16,19 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          "react-vendor": ["react", "react-dom", "react-router-dom"],
-          query: ["@tanstack/react-query"],
-          motion: ["framer-motion"],
+        // Libraries in their own long-lived chunks, so a deploy that only
+        // touches app code leaves them in every browser's cache. The object
+        // form matched package entry points only: react-dom/client and the
+        // scheduler - most of React - ended up in the app chunk and were
+        // re-downloaded after every release.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom|cookie|set-cookie-parser)\//.test(id)) {
+            return "react-vendor";
+          }
+          if (id.includes("node_modules/@tanstack/")) return "query";
+          if (id.includes("node_modules/axios/")) return "http";
+          return undefined;
         },
       },
     },

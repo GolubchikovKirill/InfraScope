@@ -2,6 +2,23 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "../api/http";
 
+/** Server cache namespace -> the React Query keys that show it. */
+const ENTITY_QUERY_KEYS: Record<string, string[]> = {
+  printers: ["printers"],
+  media_players: ["media-players"],
+  switches: ["switches", "switch-ports"],
+  cash_registers: ["cash-registers"],
+  computers: ["computers"],
+};
+
+/**
+ * Invalidations arrive in bursts: a poll cycle, a bulk edit or a reboot run
+ * announce the same entity several times within a second, and every tab
+ * refetched the whole list once per message. Collecting them for a short
+ * window turns a burst into one refetch per list.
+ */
+export const INVALIDATE_COALESCE_MS = 400;
+
 export function useRealtime() {
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
@@ -10,6 +27,24 @@ export function useRealtime() {
     let reconnectTimeout: number;
     let attempts = 0;
     let disposed = false;
+    const pending = new Set<string>();
+    let flushTimeout: number | undefined;
+
+    function flush() {
+      flushTimeout = undefined;
+      for (const entity of pending) {
+        for (const key of ENTITY_QUERY_KEYS[entity] ?? []) {
+          queryClient.invalidateQueries({ queryKey: [key] });
+        }
+      }
+      pending.clear();
+    }
+
+    function scheduleInvalidate(entity: string) {
+      if (!(entity in ENTITY_QUERY_KEYS)) return;
+      pending.add(entity);
+      flushTimeout ??= window.setTimeout(flush, INVALIDATE_COALESCE_MS);
+    }
 
     // 3s, 6s, 12s, 24s, then hold at 30s - a socket that never opens (stale
     // token, backend down) must not hammer the handshake once per 3s forever.
@@ -42,17 +77,7 @@ export function useRealtime() {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.event === "invalidate") {
-            const entity = data.id;
-            if (entity === "printers") queryClient.invalidateQueries({ queryKey: ["printers"] });
-            else if (entity === "media_players") queryClient.invalidateQueries({ queryKey: ["media-players"] });
-            else if (entity === "switches") {
-              queryClient.invalidateQueries({ queryKey: ["switches"] });
-              queryClient.invalidateQueries({ queryKey: ["switch-ports"] });
-            }
-            else if (entity === "cash_registers") queryClient.invalidateQueries({ queryKey: ["cash-registers"] });
-            else if (entity === "computers") queryClient.invalidateQueries({ queryKey: ["computers"] });
-          }
+          if (data.event === "invalidate" && typeof data.id === "string") scheduleInvalidate(data.id);
         } catch {
           // ignore parse errors
         }
@@ -90,6 +115,7 @@ export function useRealtime() {
     return () => {
       disposed = true;
       clearTimeout(reconnectTimeout);
+      clearTimeout(flushTimeout);
       if (wsRef.current) {
         wsRef.current.onclose = null; // Prevent reconnect loop on unmount
         wsRef.current.close();

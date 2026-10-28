@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
+from sqlmodel import Session
 
 from app.domains.inventory.ap_auto_reboot import run_ap_reboot_for_switch
 from app.domains.inventory.ap_registry import MergedAccessPoint, set_ap_excluded
@@ -40,7 +42,7 @@ async def test_run_ap_reboot_for_switch_skips_without_touching_registry_when_swi
 
     monkeypatch.setattr("app.domains.inventory.ap_auto_reboot.write_event_log", _fake_write_event_log)
 
-    result = await run_ap_reboot_for_switch(_FakeSession(), switch)
+    result = await run_ap_reboot_for_switch(cast(Session, _FakeSession()), switch)
 
     assert result["skipped"] == "switch_unreachable"
     assert result["results"] == []
@@ -83,7 +85,7 @@ async def test_run_ap_reboot_logs_failure_when_ap_does_not_come_back_online(monk
         lambda _session, **kwargs: captured.append(kwargs),
     )
 
-    result = await run_ap_reboot_for_switch(_FakeSession(), switch)
+    result = await run_ap_reboot_for_switch(cast(Session, _FakeSession()), switch)
 
     failure_events = [c for c in captured if c["event_type"] == "ap_auto_reboot_failed"]
     assert len(failure_events) == 1

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [v2/vnk_deploy]
+    branches: [main, dev]
   pull_request:
-    branches: [v2/vnk_deploy]
+    branches: [main, dev]
   workflow_dispatch:
 
 env:

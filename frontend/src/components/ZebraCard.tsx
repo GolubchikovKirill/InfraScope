@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { RefreshCw, Pencil, Trash2, Tag, ExternalLink, Usb } from "lucide-react";
 import type { Printer } from "../client";
 import OnlineStatusBadge from "./OnlineStatusBadge";
@@ -23,7 +24,7 @@ function statusBadge(printer: Printer) {
   return <OnlineStatusBadge isOnline={printer.is_online} />;
 }
 
-export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
+function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {
   const isUsb = printer.connection_type === "usb";
 
   const polledAt = printer.last_polled_at
@@ -32,19 +33,19 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
-      <div className="p-5 flex flex-col gap-3">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="app-entity-icon">
-              {isUsb ? <Usb className="h-5 w-5" /> : <Tag className="h-5 w-5" />}
-            </div>
-            <div className="min-w-0">
-              <div className="app-card-title truncate">{printer.model}</div>
-              <div className="app-card-meta app-mono truncate">{printer.store_name}</div>
-            </div>
+      <div className="p-5 flex flex-1 flex-col gap-3">
+        {/* Header: the store leads, as on the laser printer card */}
+        <div>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="app-card-store min-w-0" title={printer.store_name}>
+              {printer.store_name}
+            </h3>
+            <div className="shrink-0 pt-0.5">{statusBadge(printer)}</div>
           </div>
-          <div className="shrink-0">{statusBadge(printer)}</div>
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 app-card-subtitle" title={printer.model}>
+            <span className="text-[var(--brand)]">{isUsb ? <Usb className="h-3.5 w-3.5 shrink-0" /> : <Tag className="h-3.5 w-3.5 shrink-0" />}</span>
+            <span className="truncate">{printer.model}</span>
+          </div>
         </div>
 
         {/* IP or Host PC */}
@@ -66,7 +67,7 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div className="mt-auto flex items-center justify-between pt-2 border-t border-[var(--border-faint)]">
           <span className="text-[11px] text-gray-400">
             {isUsb
               ? "Подключение: USB"
@@ -122,3 +123,7 @@ export default function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling
     </div>
   );
 }
+
+// Memoised: a fleet page renders dozens of these, and only the card whose
+// printer or polling state changed needs to re-render.
+export default memo(ZebraCard);

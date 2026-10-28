@@ -4,23 +4,23 @@ import { useEscapeKey } from "../../hooks/useEscapeKey";
 import type { CashState } from "../../lib/cashRegisters";
 
 export const STATE_CHIP: Record<CashState, string> = {
-  online: "bg-teal-50 text-teal-800 border-teal-200 dark:bg-teal-950/40 dark:text-teal-200 dark:border-teal-900",
-  offline: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600",
-  unknown: "bg-slate-50 text-slate-500 border-slate-200 border-dashed dark:bg-slate-900 dark:text-slate-400 dark:border-slate-700",
+  online: "bg-teal-50 text-teal-800 border-teal-200",
+  offline: "bg-slate-100 text-slate-700 border-slate-300",
+  unknown: "bg-slate-50 text-slate-500 border-slate-200 border-dashed",
 };
 
 export function Row({ label, value, warn }: { label: string; value: ReactNode; warn?: boolean }) {
   if (value === null || value === undefined || value === "") return null;
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
-      <dt className="shrink-0 text-slate-500 dark:text-slate-400">{label}</dt>
-      <dd className={`text-right ${warn ? "font-medium text-amber-700 dark:text-amber-300" : "text-slate-800 dark:text-slate-100"}`}>{value}</dd>
+      <dt className="shrink-0 text-slate-500">{label}</dt>
+      <dd className={`text-right ${warn ? "font-medium text-amber-700" : "text-slate-800"}`}>{value}</dd>
     </div>
   );
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{children}</h3>;
+  return <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{children}</h3>;
 }
 
 /** The side panel every quick look shares: backdrop, header, scrollable body, footer. */
@@ -46,7 +46,7 @@ export default function DrawerShell({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-slate-900/30 backdrop-blur-[1px]"
+      className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-[1px]"
       onMouseDown={(e) => {
         pressedOnBackdrop.current = e.target === e.currentTarget;
       }}
@@ -62,14 +62,14 @@ export default function DrawerShell({
       >
         <header className="flex items-start justify-between gap-3 border-b border-[var(--app-panel-border)] px-5 py-4">
           <div className="min-w-0">
-            <p className="truncate text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</p>
-            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
+            <p className="truncate text-lg font-semibold text-slate-900">{title}</p>
+            <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Закрыть"
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
           >
             <X className="h-5 w-5" />
           </button>

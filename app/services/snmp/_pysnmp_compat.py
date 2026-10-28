@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
+from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
     ObjectIdentity,

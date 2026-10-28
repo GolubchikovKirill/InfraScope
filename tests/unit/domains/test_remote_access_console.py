@@ -279,6 +279,7 @@ def test_provision_account_returns_the_password_but_never_stores_it(db_session, 
 
     account, secret = asyncio.run(service.provision_account(db_session, username="ivanov"))
     assert len(secret) >= 12
+    assert account.console_user_id is not None
     assert console.passwords[account.console_user_id] == secret
     # the engineer lands in the group the shared book is shared with
     ivanov = next(u for u in console.users if u["username"] == "ivanov")

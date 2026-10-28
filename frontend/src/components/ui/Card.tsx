@@ -1,7 +1,6 @@
 import React from "react";
-import { motion, HTMLMotionProps } from "framer-motion";
 
-export interface CardProps extends HTMLMotionProps<"div"> {
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   glass?: boolean;
   interactive?: boolean;
 }
@@ -9,14 +8,14 @@ export interface CardProps extends HTMLMotionProps<"div"> {
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className = "", glass = true, interactive = false, children, ...props }, ref) => {
     return (
-      <motion.div
+      // The hover lift comes from .app-card (surfaces.css)
+      <div
         ref={ref}
-        whileHover={interactive ? { y: -3 } : {}}
         className={`app-panel overflow-hidden ${interactive ? "app-card cursor-pointer" : ""} ${className}`}
         {...props}
       >
         {children}
-      </motion.div>
+      </div>
     );
   }
 );
@@ -32,7 +31,7 @@ export function CardHeader({ className = "", children, ...props }: React.HTMLAtt
 
 export function CardTitle({ className = "", children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
-    <h3 className={`text-lg font-semibold text-slate-800 dark:text-slate-100 ${className}`} {...props}>
+    <h3 className={`text-lg font-semibold text-slate-800 ${className}`} {...props}>
       {children}
     </h3>
   );

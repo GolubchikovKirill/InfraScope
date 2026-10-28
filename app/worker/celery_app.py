@@ -90,6 +90,23 @@ if settings.AUTO_REBOOT_AP_ENABLED:
         }
     )
 
+if settings.DHCP_CLEAR_ENABLED:
+    # 20 minutes ahead of each AP reboot cycle (04:30 / 16:30 UTC), so rebooted
+    # APs come back to a clean DHCP table. The previous reboot cycle is long
+    # finished by then (a switch's cycle runs well under an hour).
+    _beat_schedule.update(
+        {
+            "dhcp-clear-morning": {
+                "task": "tasks.dhcp_clear_cycle",
+                "schedule": crontab(hour=4, minute=10),
+            },
+            "dhcp-clear-evening": {
+                "task": "tasks.dhcp_clear_cycle",
+                "schedule": crontab(hour=16, minute=10),
+            },
+        }
+    )
+
 if settings.SWITCH_PORT_SNAPSHOT_ENABLED:
     _beat_schedule.update(
         {

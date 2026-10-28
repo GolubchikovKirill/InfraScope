@@ -24,9 +24,9 @@ const STATE_TEXT: Record<ScreenState, string> = {
 function Stat({ label, value, detail }: { label: string; value: number; detail?: string }) {
   return (
     <div className="app-panel p-4">
-      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-100">{value}</p>
-      {detail && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{detail}</p>}
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-800">{value}</p>
+      {detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}
     </div>
   );
 }
@@ -38,10 +38,10 @@ function ScreenRow({ screen, canManage }: { screen: RemoteDevice; canManage: boo
       <div className="flex min-w-0 items-center gap-3">
         <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${DOT[state]}`} aria-hidden="true" />
         <div className="min-w-0">
-          <p className="truncate font-mono text-sm font-medium text-slate-900 dark:text-slate-100">
+          <p className="truncate font-mono text-sm font-medium text-slate-900">
             {screen.hostname}
           </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-slate-500">
             {STATE_TEXT[state]}
             {screen.logged_in_user ? ` · пользователь ${screen.logged_in_user}` : ""}
             {state === "online" ? "" : screen.last_seen_at ? ` · был в консоли ${relTime(screen.last_seen_at)}` : ""}
@@ -93,7 +93,7 @@ export default function ScreensPage() {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Экран или магазин" className="app-input w-full py-2 pl-9 pr-3 text-sm" />
         </label>
         <div className="flex flex-wrap items-center gap-4">
-          <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600">
             <input type="checkbox" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} />
             Только активные
             {onlyActive && hidden > 0 && <span className="text-xs text-slate-400">(скрыто {hidden})</span>}
@@ -108,9 +108,9 @@ export default function ScreensPage() {
       {devices.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="app-skeleton h-28" />)}</div>
       ) : devices.isError ? (
-        <div className="app-panel p-8 text-center text-sm text-slate-600 dark:text-slate-300">Не удалось загрузить экраны. Попробуйте обновить позже.</div>
+        <div className="app-panel p-8 text-center text-sm text-slate-600">Не удалось загрузить экраны. Попробуйте обновить позже.</div>
       ) : zones.length === 0 ? (
-        <div className="app-panel flex flex-col items-center gap-2 p-10 text-center text-sm text-slate-500 dark:text-slate-400">
+        <div className="app-panel flex flex-col items-center gap-2 p-10 text-center text-sm text-slate-500">
           <Tv className="h-8 w-8 text-slate-300" />
           {all.length === 0
             ? "Экранов нет: в удалённом доступе нет устройств с TV в имени."
@@ -122,15 +122,15 @@ export default function ScreensPage() {
         zones.map((zone) => (
           <section key={zone.key} data-testid={`zone-${zone.key}`}>
             <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{zone.label}</h3>
-              <span className="text-xs text-slate-500 dark:text-slate-400">{zone.total} экранов · {zone.active} активны</span>
+              <h3 className="text-sm font-semibold text-slate-800">{zone.label}</h3>
+              <span className="text-xs text-slate-500">{zone.total} экранов · {zone.active} активны</span>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
               {zone.stores.map((store) => (
                 <div key={store.key} data-testid={`store-${store.key}`} className="app-panel p-4">
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <h4 className="truncate text-sm font-medium text-slate-800 dark:text-slate-100" title={store.title}>{store.title}</h4>
-                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    <h4 className="truncate text-sm font-medium text-slate-800" title={store.title}>{store.title}</h4>
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
                       {store.screens.filter(isActiveScreen).length}/{store.screens.length}
                     </span>
                   </div>

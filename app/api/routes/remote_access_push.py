@@ -16,7 +16,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from sqlmodel import select
+from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import not_found
@@ -63,7 +63,7 @@ def require_runner_token(
 @router.post("/push", response_model=PushEnqueueResult, dependencies=[Depends(get_current_active_superuser)])
 def enqueue_push(payload: PushRequest, session: SessionDep, current_user: CurrentUser) -> PushEnqueueResult:
     """Queue RustDesk pushes. Nothing runs here: a runner picks the jobs up."""
-    devices = list(session.exec(select(RemoteAccessDevice).where(RemoteAccessDevice.id.in_(payload.device_ids))).all())
+    devices = list(session.exec(select(RemoteAccessDevice).where(col(RemoteAccessDevice.id).in_(payload.device_ids))).all())
     found = {d.id for d in devices}
     unknown = [str(i) for i in payload.device_ids if i not in found]
     if unknown:

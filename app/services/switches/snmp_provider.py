@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
+from pysnmp.hlapi.asyncio import (
     CommunityData,
     ContextData,
     ObjectIdentity,
@@ -14,11 +14,11 @@ from pysnmp.hlapi.asyncio import (  # noqa: E402  # noqa: E402
     set_cmd,
     walk_cmd,
 )
-from pysnmp.proto.rfc1902 import Integer, OctetString  # noqa: E402
+from pysnmp.proto.rfc1902 import Integer, OctetString
 
-from app.domains.inventory.models import NetworkSwitch  # noqa: E402
-from app.observability.metrics import snmp_operations_total  # noqa: E402
-from app.services.switches.base import SwitchPollInfo, SwitchPortState  # noqa: E402
+from app.domains.inventory.models import NetworkSwitch
+from app.observability.metrics import snmp_operations_total
+from app.services.switches.base import SwitchPollInfo, SwitchPortState
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,7 @@ def _uptime_ticks_to_human(raw_ticks: str | None) -> str | None:
 
 class SnmpSwitchProvider:
     def poll_switch(self, switch: NetworkSwitch) -> SwitchPollInfo:
-        result = asyncio.run(self._poll_switch_async(switch))
-        return result
+        return asyncio.run(self._poll_switch_async(switch))
 
     async def _poll_switch_async(self, switch: NetworkSwitch) -> SwitchPollInfo:
         try:
@@ -125,7 +124,7 @@ class SnmpSwitchProvider:
                 except ValueError:
                     speed_mbps = None
 
-            admin_status = {"1": "up", "2": "down", "3": "testing"}.get(admin_by_idx.get(idx, ""), None)
+            admin_status = {"1": "up", "2": "down", "3": "testing"}.get(admin_by_idx.get(idx, ""))
             oper_status = {
                 "1": "up",
                 "2": "down",
@@ -134,7 +133,7 @@ class SnmpSwitchProvider:
                 "5": "dormant",
                 "6": "notPresent",
                 "7": "lowerLayerDown",
-            }.get(oper_by_idx.get(idx, ""), None)
+            }.get(oper_by_idx.get(idx, ""))
 
             vlan: int | None = None
             vlan_raw = vlan_by_idx.get(idx)
@@ -188,7 +187,7 @@ class SnmpSwitchProvider:
                 return None
             return {
                 "hostname": sys_name or host,
-                "model_info": sys_descr,
+                "model_info": sys_descr or "",
                 "uptime": _uptime_ticks_to_human(sys_uptime) or sys_uptime or "",
             }
         finally:
@@ -294,10 +293,6 @@ class SnmpSwitchProvider:
         timeout: int,
         retries: int,
     ) -> UdpTransportTarget:
-        """Support both modern and legacy pysnmp async transport APIs."""
-        create = getattr(UdpTransportTarget, "create", None)
-        if callable(create):
-            return await create((host, port), timeout=timeout, retries=retries)
         return await UdpTransportTarget.create((host, port), timeout=timeout, retries=retries)
 
     def set_admin_state(self, switch: NetworkSwitch, port: str, admin_state: str) -> None:

@@ -16,6 +16,10 @@ class MLTonerPredictionPublic(BaseModel):
     toner_model: str | None = None
     current_level: int | None = None
     days_to_replacement: float | None = None
+    days_low: float | None = None
+    days_high: float | None = None
+    daily_rate: float | None = None
+    basis: str | None = None
     predicted_replacement_at: datetime | None = None
     confidence: float
     model_version: str

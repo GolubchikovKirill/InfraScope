@@ -12,21 +12,23 @@ logger = logging.getLogger(__name__)
 def check_database(engine) -> bool:
     try:
         with Session(engine) as session:
-            session.exec(text("SELECT 1")).one()
-        return True
-    except Exception as exc:  # noqa: BLE001 - a health probe reports any failure as "not ready"
+            session.execute(text("SELECT 1")).one()
+    except Exception as exc:
         logger.warning("Readiness: database check failed: %s", exc)
         return False
+    else:
+        return True
 
 
 async def check_redis(get_redis) -> bool:
     try:
         redis = await get_redis()
         await redis.ping()
-        return True
-    except Exception as exc:  # noqa: BLE001 - a health probe reports any failure as "not ready"
+    except Exception as exc:
         logger.warning("Readiness: redis check failed: %s", exc)
         return False
+    else:
+        return True
 
 
 def build_readiness_response(checks: dict[str, bool]) -> dict | JSONResponse:

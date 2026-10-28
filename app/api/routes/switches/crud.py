@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import cast
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import func, select
 
@@ -18,7 +20,7 @@ from app.domains.inventory.schemas import (
 )
 from app.domains.shared.schemas import Message
 from app.observability.metrics import set_device_counts
-from app.services.cache import get_cached_model, set_cached_model
+from app.services.cache import EntityCache
 from app.services.event_log import write_event_log
 from app.services.smart_search import build_ilike_filter
 
@@ -28,13 +30,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["switches"])
 
+_SWITCHES_CACHE = EntityCache("switches", ttl=CACHE_TTL)
+
 
 def _query_switches_page(
     session: SessionDep,
     name: str | None,
     skip: int,
     limit: int,
-) -> tuple[list[NetworkSwitch], int]:
+) -> tuple[Sequence[NetworkSwitch], int]:
     statement = select(NetworkSwitch)
     count_stmt = select(func.count()).select_from(NetworkSwitch)
     if name:
@@ -64,9 +68,9 @@ async def read_switches(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, le=200),
     name: str | None = None,
-) -> NetworkSwitchesPublic:
-    cache_key = f"switches:{name or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, NetworkSwitchesPublic):
+) -> Response:
+    cache_variant = f"{name or ''}:{skip}:{limit}"
+    if cached := await _SWITCHES_CACHE.get_response(cache_variant):
         return cached
 
     switches, count = await run_in_threadpool(_query_switches_page, session, name, skip, limit)
@@ -75,11 +79,9 @@ async def read_switches(
         total=len(switches),
         online=sum(1 for s in switches if s.is_online),
     )
-    result = NetworkSwitchesPublic(data=switches, count=count)
+    result = NetworkSwitchesPublic(data=cast(list[NetworkSwitchPublic], list(switches)), count=count)
 
-    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
-
-    return result
+    return await _SWITCHES_CACHE.respond(cache_variant, result)
 
 
 @router.post("/", response_model=NetworkSwitchPublic, dependencies=[Depends(get_current_active_superuser)])

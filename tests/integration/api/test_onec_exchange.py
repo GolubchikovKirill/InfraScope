@@ -1,4 +1,5 @@
 from app.api.routes import onec_exchange as onec_routes
+from app.services.contracts import IntegrationServiceResult
 
 
 def test_onec_exchange_requires_auth(client):
@@ -20,14 +21,14 @@ def test_onec_exchange_success(client, admin_token: str, monkeypatch):
 
     async def _fake_exchange(**_kwargs):
         captured.update(_kwargs)
-        return {
-            "target": _kwargs.get("target"),
-            "ok": True,
-            "message": "ok",
-            "status_code": 200,
-            "request_id": "req-1",
-            "payload": {"accepted": True},
-        }
+        return IntegrationServiceResult(
+            target=_kwargs.get("target"),
+            ok=True,
+            message="ok",
+            status_code=200,
+            request_id="req-1",
+            payload={"accepted": True},
+        )
 
     monkeypatch.setattr(onec_routes.onec_exchange_service, "exchange_product_docs_by_barcode", _fake_exchange)
 

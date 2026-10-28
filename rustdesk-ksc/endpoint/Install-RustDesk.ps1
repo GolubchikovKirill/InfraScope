@@ -164,6 +164,21 @@ function Write-Opts($locks) {
     }
 }
 
+# The connection-manager window ("who connected") and the tray icon are drawn by
+# processes in the USER's session, and they read the options from that user's own
+# profile - not from the service profiles above. Without this file a till shows the
+# cashier a pop-up on every remote connection even though the service is set to hide it.
+function Write-UserOpts($locks) {
+    $t = Build-Toml $locks
+    Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -notmatch '^(Public|Default|Default User|All Users)$' -and (Test-Path ($_.FullName + '\AppData\Roaming'))
+    } | ForEach-Object {
+        $d = $_.FullName + '\AppData\Roaming\RustDesk\config'
+        if (-not (Test-Path $d)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
+        [IO.File]::WriteAllText((Join-Path $d 'RustDesk2.toml'), $t, [Text.Encoding]::ASCII)
+    }
+}
+
 Stop-RD
 Write-Opts $false
 foreach ($d in $dirs) {
@@ -198,6 +213,8 @@ if ($unattended) {
 }
 
 if ($hidden) {
+    Write-UserOpts $unattended
+    L 'user-profile options written (no connection pop-up, no tray)'
     $n = 0
     Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | ForEach-Object {
         Get-ChildItem ($_.FullName + '\Desktop') -Filter 'RustDesk*.lnk' -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item $_.FullName -Force; $n++ }

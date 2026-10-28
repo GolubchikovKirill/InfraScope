@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Monitor, Music, ExternalLink, Clock, Cpu,
   Network, Wifi, Play, Square, Volume2, Upload, X, FileAudio, Copy, MoreHorizontal, Radio,
@@ -12,6 +12,7 @@ import {
 } from "../client";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useInViewport } from "../hooks/useInViewport";
 import { useConfirm } from "./ConfirmDialog";
 import OnlineStatusBadge from "./OnlineStatusBadge";
 
@@ -48,16 +49,21 @@ function webPanelUrl(player: MediaPlayer): string {
 }
 
 function IconbitControls({ playerId }: { playerId: string }) {
-  const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  const onScreen = useInViewport(rootRef);
+  // Each status read is 2-3 HTTP requests from the server to the player over
+  // the store's link. Every online Iconbit card used to fire one every 10 s
+  // whether anyone could see it or not; now only the cards on screen poll.
   const { data: ibStatus, refetch } = useQuery({
     queryKey: ["iconbit-status", playerId],
     queryFn: () => getIconbitStatus(playerId),
-    refetchInterval: 10_000,
-    staleTime: 5_000,
+    enabled: onScreen,
+    refetchInterval: onScreen ? 15_000 : false,
+    staleTime: 10_000,
   });
 
   const withBusy = (fn: () => Promise<unknown>) => async () => {
@@ -115,7 +121,7 @@ function IconbitControls({ playerId }: { playerId: string }) {
   const isPlaying = ibStatus.is_playing && ibStatus.now_playing;
 
   return (
-    <div className="mt-1 space-y-2">
+    <div ref={rootRef} className="mt-1 space-y-2">
       {/* Now playing */}
       <div className="space-y-1">
         <div className="flex items-center gap-1.5 text-xs">

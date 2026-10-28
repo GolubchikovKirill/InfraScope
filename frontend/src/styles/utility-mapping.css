@@ -1,0 +1,100 @@
+/* ============================================================================
+   10. DARK MODE: WHITE
+   ----------------------------------------------------------------------------
+   Every other Tailwind colour is re-pointed for the dark theme in
+   palette-dark.css (generated), which replaced the hand-kept list of
+   !important overrides that used to live here and never covered hover:,
+   amber/emerald notices or borders. White is the exception: it is one
+   variable for both bg-white (a card surface) and text-white (ink on a filled
+   button), and only the surface use should turn dark.
+   ========================================================================== */
+
+:root[data-theme="dark"] .bg-white {
+  background-color: var(--surface-1);
+}
+
+/* Frosted white chips and panels (bg-white/70 over a card) */
+:root[data-theme="dark"] .bg-white\/60,
+:root[data-theme="dark"] .bg-white\/70,
+:root[data-theme="dark"] .bg-white\/80 {
+  background-color: color-mix(in srgb, var(--surface-2) 85%, transparent);
+}
+
+:root[data-theme="dark"] .hover\:bg-white\/70:hover,
+:root[data-theme="dark"] .hover\:bg-white\/60:hover {
+  background-color: var(--surface-3);
+}
+
+/* ============================================================================
+   11. BRAND MAPPING
+   ----------------------------------------------------------------------------
+   Components reach for assorted "generic UI blue" shades as filler when what
+   they actually mean is "the app's accent". Those are folded into the brand
+   here so the interface stays one colour family.
+
+   Deliberately NOT included: amber, orange, yellow, emerald, red, rose. Those
+   carry status meaning. Folding amber into crimson - which this file used to
+   do - turned every "heads up" into what looked like a failure.
+   ========================================================================== */
+
+.text-blue-600,
+.text-blue-700,
+.text-sky-600,
+.text-sky-700,
+.text-indigo-600,
+.text-indigo-700,
+.text-purple-600,
+.text-purple-700,
+.text-teal-600,
+.text-teal-700,
+.text-cyan-600,
+.text-violet-600 {
+  color: var(--app-accent-text) !important;
+}
+
+.bg-blue-50,
+.bg-sky-50,
+.bg-indigo-50,
+.bg-purple-50,
+.bg-teal-50,
+.bg-violet-50 {
+  background-color: var(--brand-soft) !important;
+}
+
+.border-blue-200,
+.border-blue-300,
+.border-sky-200,
+.border-indigo-200,
+.border-purple-200,
+.border-teal-200 {
+  border-color: var(--brand-border) !important;
+}
+
+.bg-blue-500,
+.bg-blue-600,
+.bg-sky-500,
+.bg-purple-600 {
+  background-color: var(--brand-fill) !important;
+}
+
+.hover\:bg-blue-700:hover,
+.hover\:bg-purple-700:hover {
+  background-color: var(--brand-strong) !important;
+}
+
+.border-blue-500 {
+  border-color: var(--brand) !important;
+}
+
+.focus\:border-blue-500:focus {
+  border-color: var(--brand) !important;
+}
+
+.focus\:ring-blue-500:focus,
+.peer-focus\:ring-blue-300:focus {
+  --tw-ring-color: var(--brand-ring) !important;
+}
+
+.peer:checked ~ .peer-checked\:bg-blue-600 {
+  background-color: var(--brand-fill) !important;
+}

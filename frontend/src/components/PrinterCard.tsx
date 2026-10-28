@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import {
   RefreshCw,
   Pencil,
@@ -28,8 +28,33 @@ interface Props {
   isSuperuser: boolean;
   showLowTonerDetails?: boolean;
   tonerPredictionDays?: Partial<Record<"black" | "cyan" | "magenta" | "yellow", number | null>>;
+  /** band and basis behind each forecast, for its tooltip */
+  tonerForecasts?: Partial<Record<"black" | "cyan" | "magenta" | "yellow", TonerForecastDetail>>;
   offlineRiskLevel?: "low" | "medium" | "high" | string | null;
   onCopyToner?: (text: string) => void;
+}
+
+export interface TonerForecastDetail {
+  low: number | null;
+  high: number | null;
+  basis: string | null;
+}
+
+const BASIS_LABEL: Record<string, string> = {
+  printer: "по расходу этого принтера",
+  cartridge_model: "по среднему расходу этой модели картриджа",
+  color: "по среднему расходу этого цвета",
+  default: "по типовому расходу - данных пока мало",
+};
+
+function forecastTitle(days: number, detail: TonerForecastDetail | undefined): string {
+  if (!detail) return `${days} дн. до замены`;
+  const band =
+    detail.low != null && detail.high != null
+      ? ` (от ${Math.max(Math.round(detail.low), 0)} до ${Math.round(detail.high)} дн.)`
+      : "";
+  const basis = detail.basis ? `, ${BASIS_LABEL[detail.basis] ?? detail.basis}` : "";
+  return `≈${days} дн. до замены${band}${basis}`;
 }
 
 const TONER_COLORS = {
@@ -52,7 +77,7 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export default function PrinterCard({
+function PrinterCard({
   printer,
   onPoll,
   onEdit,
@@ -61,6 +86,7 @@ export default function PrinterCard({
   isSuperuser,
   showLowTonerDetails = false,
   tonerPredictionDays,
+  tonerForecasts,
   offlineRiskLevel,
   onCopyToner,
 }: Props) {
@@ -122,44 +148,55 @@ export default function PrinterCard({
 
   return (
     <div className="app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col">
-      <div className="p-5 flex flex-col gap-4">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="app-entity-icon">
-              <PrinterIcon className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="app-card-title truncate">{printer.model}</div>
-              <div className="app-card-meta app-mono truncate">{printer.store_name}</div>
-            </div>
+      <div className="p-5 flex flex-1 flex-col gap-3.5">
+        {/* Header: the store leads. People scan this page for a shop ("which
+            store is out of toner"), not for a printer model - most of the fleet
+            is the same three models - so the store is the card's title and the
+            model steps down to the line beneath it. */}
+        <div>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="app-card-store min-w-0" title={printer.store_name}>
+              {printer.store_name}
+            </h3>
+            <div className="shrink-0 pt-0.5"><OnlineStatusBadge isOnline={printer.is_online} /></div>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <OnlineStatusBadge isOnline={printer.is_online} />
-            {isFlapping && (
-              <span
-                className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700"
-                title="Принтер часто уходит в оффлайн и возвращается — возможна нестабильная связь на месте"
-              >
-                Нестабильная связь · {printer.offline_count_24h} за 24 ч
-              </span>
-            )}
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 app-card-subtitle" title={printer.model}>
+            <span className="text-[var(--brand)]"><PrinterIcon className="h-3.5 w-3.5 shrink-0" /></span>
+            <span className="truncate">{printer.model}</span>
           </div>
         </div>
 
-        {/* IP + MAC */}
-        {printer.ip_address && (
-          <div className="app-card-meta app-mono">{printer.ip_address}</div>
+        {/* Address line + warnings. The flapping hint used to sit under the
+            status badge, where it squeezed the title down to "Brother …". */}
+        {(printer.ip_address || printer.host_pc || printer.page_count != null) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 app-card-meta">
+            {printer.ip_address && <span className="app-mono">{printer.ip_address}</span>}
+            {printer.host_pc && (
+              <span>
+                <span className="text-[var(--text-faint)]">ПК:</span>{" "}
+                <span className="app-mono text-[var(--text-muted)]">{printer.host_pc}</span>
+              </span>
+            )}
+            {printer.page_count != null && (
+              <span title="Отпечатано страниц за всё время (счётчик принтера)">
+                <span className="app-mono text-[var(--text-muted)]">{printer.page_count.toLocaleString("ru-RU")}</span>{" "}
+                <span className="text-[var(--text-faint)]">стр.</span>
+              </span>
+            )}
+          </div>
+        )}
+        {isFlapping && (
+          <div
+            className="app-chip-warn self-start"
+            title="Принтер часто уходит в оффлайн и возвращается — возможна нестабильная связь на месте"
+          >
+            Нестабильная связь · {printer.offline_count_24h} за 24 ч
+          </div>
         )}
         {isOffline && printer.reachability_reason && (
           <div className="flex items-center gap-1.5 text-xs text-[var(--danger-fg)]">
             <AlertTriangle className="h-3 w-3 shrink-0" />
             <span>{describeOfflineReason(printer.reachability_reason)}</span>
-          </div>
-        )}
-        {printer.host_pc && (
-          <div className="text-xs text-gray-500">
-            <span className="text-gray-400">Hostname:</span> {printer.host_pc}
           </div>
         )}
 
@@ -168,7 +205,7 @@ export default function PrinterCard({
           <TonerBar
             label="K"
             level={printer.toner_black}
-            color="bg-gray-800"
+            color="bg-[var(--toner-k)]"
             bgColor="bg-gray-100"
             tonerName={printer.toner_black_name}
             isCopied={copiedToner === printer.toner_black_name}
@@ -177,7 +214,7 @@ export default function PrinterCard({
           <TonerBar
             label="C"
             level={printer.toner_cyan}
-            color="bg-cyan-500"
+            color="bg-[var(--toner-c)]"
             bgColor="bg-cyan-50"
             tonerName={printer.toner_cyan_name}
             isCopied={copiedToner === printer.toner_cyan_name}
@@ -186,7 +223,7 @@ export default function PrinterCard({
           <TonerBar
             label="M"
             level={printer.toner_magenta}
-            color="bg-pink-500"
+            color="bg-[var(--toner-m)]"
             bgColor="bg-pink-50"
             tonerName={printer.toner_magenta_name}
             isCopied={copiedToner === printer.toner_magenta_name}
@@ -195,7 +232,7 @@ export default function PrinterCard({
           <TonerBar
             label="Y"
             level={printer.toner_yellow}
-            color="bg-yellow-400"
+            color="bg-[var(--toner-y)]"
             bgColor="bg-yellow-50"
             tonerName={printer.toner_yellow_name}
             isCopied={copiedToner === printer.toner_yellow_name}
@@ -203,7 +240,7 @@ export default function PrinterCard({
           />
         </div>
         {isTonerStale && (
-          <div className="text-[11px] text-amber-600">
+          <div className="text-[11px] text-[var(--warn-fg)]">
             {tonerUpdatedAt ? `Данные картриджей от ${tonerUpdatedAt} (принтер сейчас оффлайн)` : "Принтер оффлайн — данные картриджей могут быть устаревшими"}
           </div>
         )}
@@ -274,7 +311,7 @@ export default function PrinterCard({
                       <span
                         key={entry.key}
                         className={`ml-chip inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${entry.toneClass}`}
-                        title={`${entry.value} дн. до замены (${entry.key})`}
+                        title={forecastTitle(entry.value, tonerForecasts?.[entry.key])}
                       >
                         {entry.shortLabel}
                         <span>{entry.value} дн.</span>
@@ -302,7 +339,13 @@ export default function PrinterCard({
                   <span>
                     {item.key}: {item.name || "модель не указана"} ({item.level}%)
                     {tonerPredictionDays?.[TONER_COLORS[item.key]] != null && (
-                      <span className="ml-1 text-[11px] text-amber-900/80">
+                      <span
+                        className="ml-1 text-[11px] text-amber-900/80"
+                        title={forecastTitle(
+                          Math.max(Math.round(tonerPredictionDays[TONER_COLORS[item.key]] || 0), 0),
+                          tonerForecasts?.[TONER_COLORS[item.key]],
+                        )}
+                      >
                         ~{Math.max(Math.round(tonerPredictionDays[TONER_COLORS[item.key]] || 0), 0)} дн.
                       </span>
                     )}
@@ -321,7 +364,7 @@ export default function PrinterCard({
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div className="mt-auto flex items-center justify-between pt-2 border-t border-[var(--border-faint)]">
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
@@ -382,3 +425,6 @@ export default function PrinterCard({
   );
 }
 
+// Memoised: a fleet page renders dozens of these, and only the card whose
+// printer or polling state changed needs to re-render.
+export default memo(PrinterCard);

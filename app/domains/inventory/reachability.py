@@ -13,12 +13,14 @@ everything into a bool.
 
 from __future__ import annotations
 
+import asyncio
 import errno as errno_mod
 import ipaddress
 import logging
 import socket
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -144,7 +146,7 @@ def probe_host_ports(
             started = perf_counter()
             try:
                 failure = probe(resolved_address, port, attempt_timeout)
-            except Exception as exc:  # noqa: BLE001 - a probe bug must not read as a host outage; it is tagged probe_error
+            except Exception as exc:
                 logger.debug("Probe %s:%s raised %r", resolved_address, port, exc)
                 _observe(probe_scope, REASON_PROBE_ERROR, started)
                 last_reason = REASON_PROBE_ERROR
@@ -184,6 +186,133 @@ def probe_tcp_endpoint(
     and the failure classification the old one-shot connect never had.
     """
     return probe_host_ports(address, ports=(port,), timeout=timeout, probe_scope=probe_scope)
+
+
+async def probe_host_ports_async(
+    hostname: str,
+    *,
+    ports: tuple[int, ...],
+    timeout: float,
+    probe_scope: str = "generic",
+    max_attempts: int | None = None,
+    retry_backoff_seconds: float | None = None,
+    timeout_multiplier: float | None = None,
+    dns_search_suffixes: str = "",
+    dns_server: str = "",
+) -> ReachabilityResult:
+    """`probe_host_ports` for the bulk pollers: every port at once, no threads.
+
+    The sync probe walks the ports one by one, each with its retries, on a
+    worker thread - and asyncio.to_thread shares one default pool of
+    min(32, cpu + 4) threads, 8 on the 4-vCPU server. So a "concurrency 16"
+    computer poll ran 8 probes at a time, and an offline till spent
+    2 ports x (1.5 s + 1.9 s) before it could be reported. Here each attempt
+    connects to all ports concurrently on the event loop and stops at the
+    first one that accepts: an offline host costs one attempt ladder, not one
+    per port, and the poller's semaphore is the only limit.
+
+    The verdict matches the sync probe: online on any accepted connection; a
+    dead route ends the probe at once; otherwise the reason of the last port
+    in `ports` order on the last attempt.
+    """
+    try:
+        # An IP literal (printers, media players) needs no resolver - and no
+        # trip through the thread pool to find that out.
+        resolved_address: str | None = str(ipaddress.ip_address(hostname.strip()))
+    except ValueError:
+        resolved_address = await asyncio.to_thread(
+            resolve_hostname,
+            hostname,
+            dns_search_suffixes=dns_search_suffixes,
+            dns_server=dns_server,
+        )
+    if not resolved_address:
+        return ReachabilityResult(is_online=False, reason=REASON_DNS_UNRESOLVED)
+
+    attempts = max(1, max_attempts if max_attempts is not None else settings.NETWORK_PROBE_MAX_ATTEMPTS)
+    backoff = max(
+        0.0,
+        retry_backoff_seconds if retry_backoff_seconds is not None else settings.NETWORK_PROBE_RETRY_BACKOFF_SECONDS,
+    )
+    timeout_scale = max(
+        1.0,
+        timeout_multiplier if timeout_multiplier is not None else settings.NETWORK_PROBE_TIMEOUT_MULTIPLIER,
+    )
+
+    last_reason = REASON_NO_RESPONSE
+    for attempt_idx in range(attempts):
+        reasons = await _probe_ports_concurrently(
+            resolved_address, ports, timeout * (timeout_scale**attempt_idx), probe_scope
+        )
+        if reasons is None:
+            return ReachabilityResult(is_online=True, resolved_address=resolved_address)
+        if REASON_NO_ROUTE in reasons.values():
+            return ReachabilityResult(is_online=False, reason=REASON_NO_ROUTE, resolved_address=resolved_address)
+        last_reason = reasons[ports[-1]]
+        if attempt_idx < attempts - 1 and backoff > 0:
+            await asyncio.sleep(backoff * (attempt_idx + 1))
+
+    return ReachabilityResult(is_online=False, reason=last_reason, resolved_address=resolved_address)
+
+
+async def probe_tcp_endpoint_async(
+    address: str,
+    *,
+    port: int,
+    timeout: float,
+    probe_scope: str,
+) -> ReachabilityResult:
+    """`probe_tcp_endpoint` on the event loop - label printers, media players."""
+    return await probe_host_ports_async(address, ports=(port,), timeout=timeout, probe_scope=probe_scope)
+
+
+async def _probe_ports_concurrently(
+    address: str, ports: tuple[int, ...], timeout: float, probe_scope: str
+) -> dict[int, str] | None:
+    """One attempt on every port. None as soon as any accepts (the rest are
+    cancelled); otherwise why each port failed."""
+    tasks = {asyncio.create_task(_async_port_probe(address, port, timeout, probe_scope)): port for port in ports}
+    reasons: dict[int, str] = {}
+    try:
+        pending = set(tasks)
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                failure = task.result()
+                if failure is None:
+                    return None
+                reasons[tasks[task]] = failure
+                if failure == REASON_NO_ROUTE:
+                    # Same reasoning as the sync probe: the other ports sit
+                    # behind the same missing route.
+                    return reasons
+        return reasons
+    finally:
+        for task in tasks:
+            task.cancel()
+        with suppress(asyncio.CancelledError):
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _async_port_probe(address: str, port: int, timeout: float, probe_scope: str) -> str | None:
+    started = perf_counter()
+    try:
+        _reader, writer = await asyncio.wait_for(asyncio.open_connection(address, port), timeout)
+    except asyncio.CancelledError:
+        raise
+    except OSError as exc:  # TimeoutError from wait_for is an OSError too
+        failure = _classify_os_error(exc)
+        _observe(probe_scope, failure, started)
+        return failure
+    except Exception as exc:
+        logger.debug("Probe %s:%s raised %r", address, port, exc)
+        _observe(probe_scope, REASON_PROBE_ERROR, started)
+        return REASON_PROBE_ERROR
+    _observe(probe_scope, "success", started)
+    writer.close()
+    with suppress(Exception):
+        await asyncio.wait_for(writer.wait_closed(), 1.0)
+    return None
 
 
 def _observe(probe_scope: str, result: str, started: float) -> None:

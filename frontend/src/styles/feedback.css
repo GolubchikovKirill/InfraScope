@@ -1,0 +1,113 @@
+/* ============================================================================
+   9. FEEDBACK: skeletons, toasts, route transitions
+   ========================================================================== */
+
+.app-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+
+.app-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  animation: skeleton-sweep 1.25s ease-in-out infinite;
+}
+
+:root[data-theme="dark"] .app-skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+}
+
+@keyframes route-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.route-fade {
+  animation: route-fade-in 150ms ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-in {
+  animation: toast-in 150ms ease-out;
+}
+
+/* The "show menu" button appearing once the sidebar is hidden */
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.slide-in-left {
+  animation: slide-in-left 200ms ease-out;
+}
+
+/* Briefly flags the row a cross-link (?focus=) landed on - see useRowFocus. */
+@keyframes app-row-flash {
+  0%,
+  100% {
+    box-shadow: none;
+    background-color: transparent;
+  }
+  15%,
+  60% {
+    box-shadow: 0 0 0 2px var(--brand-border);
+    background-color: var(--brand-soft);
+  }
+}
+
+.row-flash {
+  animation: app-row-flash 1.6s ease-out;
+  border-radius: 0.75rem;
+}
+
+/* A scrollbar is furniture, not an accent. The crimson one was the loudest
+   thing on a quiet page. */
+.app-compact-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.app-compact-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.app-compact-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+}
+
+.app-compact-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--text-faint);
+}
+
+.app-compact-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

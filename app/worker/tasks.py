@@ -5,11 +5,12 @@ import functools
 import logging
 import secrets
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
+from typing import Any, Protocol, cast
 
 import redis
 from celery import shared_task
@@ -18,12 +19,18 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.db import engine
+from app.core.io_pool import install_io_executor
 from app.core.redis import close_redis
 from app.domains.inventory.ap_auto_reboot import (
     get_eligible_switches_for_auto_reboot,
     parse_allowed_stores,
     run_ap_reboot_for_switch,
     switch_eligible_for_auto_reboot,
+)
+from app.domains.inventory.dhcp_clear import (
+    get_eligible_switches_for_dhcp_clear,
+    run_dhcp_clear_for_switch,
+    switch_eligible_for_dhcp_clear,
 )
 from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
 from app.domains.inventory.port_snapshot import capture_switch_port_snapshot, get_switches_for_snapshot
@@ -62,6 +69,9 @@ class _AutoRebootLease:
     lock_key: str
     done_key: str
     token: str
+    # Defaults to the AP-reboot window; other live-switch tasks (DHCP cleanup)
+    # share this lease with their own.
+    dedup_seconds: int | None = None
 
     def mark_attempted(self) -> None:
         # Compare-and-delete prevents one expired/replaced lease holder from
@@ -81,20 +91,40 @@ class _AutoRebootLease:
             self.lock_key,
             self.done_key,
             self.token,
-            settings.AUTO_REBOOT_AP_CYCLE_DEDUP_SECONDS,
+            self.dedup_seconds or settings.AUTO_REBOOT_AP_CYCLE_DEDUP_SECONDS,
         )
 
     def close(self) -> None:
-        try:
+        with suppress(RedisError):
             self.client.close()
-        except RedisError:
-            pass
 
 
 def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoRebootLease | None, str | None]:
     """Acquire a fail-closed distributed lease for live switch operations."""
-    lock_key = f"lock:ap-auto-reboot:switch:{switch_id}"
-    done_key = f"done:ap-auto-reboot:{switch_id}:{cycle_id}"
+    return _acquire_switch_lease(
+        scope="ap-auto-reboot",
+        switch_id=switch_id,
+        cycle_id=cycle_id,
+        lock_seconds=settings.AUTO_REBOOT_AP_TASK_LOCK_SECONDS,
+        dedup_seconds=settings.AUTO_REBOOT_AP_CYCLE_DEDUP_SECONDS,
+    )
+
+
+def _acquire_dhcp_clear_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoRebootLease | None, str | None]:
+    return _acquire_switch_lease(
+        scope="dhcp-clear",
+        switch_id=switch_id,
+        cycle_id=cycle_id,
+        lock_seconds=settings.DHCP_CLEAR_TASK_LOCK_SECONDS,
+        dedup_seconds=settings.DHCP_CLEAR_CYCLE_DEDUP_SECONDS,
+    )
+
+
+def _acquire_switch_lease(
+    *, scope: str, switch_id: str, cycle_id: str, lock_seconds: int, dedup_seconds: int
+) -> tuple[_AutoRebootLease | None, str | None]:
+    lock_key = f"lock:{scope}:switch:{switch_id}"
+    done_key = f"done:{scope}:{switch_id}:{cycle_id}"
     token = secrets.token_urlsafe(24)
     client = redis.Redis.from_url(
         settings.REDIS_URL,
@@ -120,7 +150,7 @@ def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoR
             lock_key,
             done_key,
             token,
-            settings.AUTO_REBOOT_AP_TASK_LOCK_SECONDS,
+            lock_seconds,
         )
     except RedisError:
         client.close()
@@ -129,7 +159,12 @@ def _acquire_auto_reboot_lease(*, switch_id: str, cycle_id: str) -> tuple[_AutoR
         return None, "lock_unavailable"
 
     if claimed == 1:
-        return _AutoRebootLease(client=client, lock_key=lock_key, done_key=done_key, token=token), None
+        return (
+            _AutoRebootLease(
+                client=client, lock_key=lock_key, done_key=done_key, token=token, dedup_seconds=dedup_seconds
+            ),
+            None,
+        )
 
     client.close()
     return None, "already_attempted" if claimed == 0 else "already_running"
@@ -144,6 +179,7 @@ def _run_async(coro):
     """
 
     async def _runner():
+        install_io_executor()
         try:
             return await coro
         finally:
@@ -176,7 +212,29 @@ class _Failed(dict):
     (recorded as result="error", and not retried)."""
 
 
-def _task(name: str, *, retries: int | None = None, **celery_options):
+class CeleryTask(Protocol):
+    """The slice of a Celery task object callers here actually use.
+
+    celery.local.Proxy - what @_task(...) and @shared_task actually hand back -
+    has an untyped __getattr__ whose inferred return type (list[str] | Any, from
+    one of its own early-return branches) poisons every attribute access on a
+    task object. Routing task objects through this Protocol instead of the raw
+    Proxy type fixes that at the one place it is produced.
+    """
+
+    name: str
+    autoretry_for: tuple[type[BaseException], ...]
+    retry_kwargs: dict[str, Any]
+
+    def run(self, *args: Any, **kwargs: Any) -> dict: ...
+    def delay(self, *args: Any, **kwargs: Any) -> Any: ...
+    def apply_async(self, *args: Any, **kwargs: Any) -> Any: ...
+    def apply(self, *args: Any, **kwargs: Any) -> Any: ...
+
+
+def _task(
+    name: str, *, retries: int | None = None, **celery_options: Any
+) -> Callable[[Callable[..., Any]], CeleryTask]:
     """Declare a Celery task with its metrics and result envelope.
 
     The decorated function is the task body only: it returns the task-specific
@@ -196,7 +254,7 @@ def _task(name: str, *, retries: int | None = None, **celery_options):
         else {}
     )
 
-    def decorate(body):
+    def decorate(body: Callable[..., Any]) -> CeleryTask:
         @functools.wraps(body)
         def run(self, *args, **kwargs) -> dict:
             started_at = _task_started(name)
@@ -213,7 +271,7 @@ def _task(name: str, *, retries: int | None = None, **celery_options):
             payload.setdefault("finished_at", datetime.now(UTC).isoformat())
             return payload
 
-        return shared_task(bind=True, name=f"tasks.{name}", **retry, **celery_options)(run)
+        return cast(CeleryTask, shared_task(bind=True, name=f"tasks.{name}", **retry, **celery_options)(run))
 
     return decorate
 
@@ -294,7 +352,9 @@ def ap_auto_reboot_cycle_task(self) -> dict:
         stagger = max(settings.AUTO_REBOOT_AP_STAGGER_SECONDS, 0)
         cycle_id = self.request.id or str(uuid.uuid4())
         for index, switch in enumerate(switches):
-            ap_auto_reboot_switch_task.apply_async(args=[str(switch.id), cycle_id], countdown=index * stagger)
+            ap_auto_reboot_switch_task.apply_async(
+                args=[str(switch.id), cycle_id], countdown=index * stagger
+            )
             worker_tasks_enqueued_total.labels(operation="ap_auto_reboot_switch").inc()
     return {
         "status": "dispatched",
@@ -346,6 +406,61 @@ def ap_auto_reboot_switch_task(self, switch_id: str, cycle_id: str | None = None
             lease.close()
 
 
+@_task("dhcp_clear_cycle", soft_time_limit=120, time_limit=300)
+def dhcp_clear_cycle_task(self) -> dict:
+    """Dispatcher: one independent, staggered task per eligible switch - same
+    reasoning as the AP-reboot dispatcher (no all-at-once burst, one switch's
+    failure can't block the rest)."""
+    with Session(engine) as session:
+        switches = get_eligible_switches_for_dhcp_clear(session)
+        stagger = max(settings.DHCP_CLEAR_STAGGER_SECONDS, 0)
+        cycle_id = self.request.id or str(uuid.uuid4())
+        for index, switch in enumerate(switches):
+            dhcp_clear_switch_task.apply_async(args=[str(switch.id), cycle_id], countdown=index * stagger)
+            worker_tasks_enqueued_total.labels(operation="dhcp_clear_switch").inc()
+    return {
+        "status": "dispatched",
+        "switches_scheduled": len(switches),
+        "stagger_seconds": stagger,
+        "cycle_id": cycle_id,
+    }
+
+
+# No retries, for the same reason as the AP reboot: this writes to a live
+# switch, and a retry after a partial failure is an operator's call.
+@_task("dhcp_clear_switch", soft_time_limit=240, time_limit=300)
+def dhcp_clear_switch_task(self, switch_id: str, cycle_id: str | None = None) -> dict:
+    cycle_id = cycle_id or self.request.id or f"manual:{uuid.uuid4()}"
+    lease, skipped_reason = _acquire_dhcp_clear_lease(switch_id=switch_id, cycle_id=cycle_id)
+    if lease is None:
+        return _Skipped({"switch_id": switch_id, "cycle_id": cycle_id, "status": skipped_reason})
+    try:
+        with Session(engine) as session:
+            switch = session.get(NetworkSwitch, uuid.UUID(switch_id))
+            if switch is None:
+                return _Failed({"status": "switch_not_found", "switch_id": switch_id})
+
+            # Re-check at execution time, not just at dispatch (see the
+            # AP-reboot task): the toggle or allowlist may flip in between.
+            if not switch.dhcp_clear_enabled:
+                return _Skipped({"status": "disabled_since_dispatch", "switch": switch.name})
+
+            allowed_stores = parse_allowed_stores(settings.DHCP_CLEAR_ALLOWED_STORES)
+            eligible, reason = switch_eligible_for_dhcp_clear(switch, allowed_stores)
+            if not eligible:
+                return _Skipped({"status": "no_longer_eligible", "switch": switch.name, "reason": reason})
+
+            result = _run_async(run_dhcp_clear_for_switch(session, switch))
+        return {"cycle_id": cycle_id, **result}
+    finally:
+        try:
+            lease.mark_attempted()
+        except RedisError:
+            pass
+        finally:
+            lease.close()
+
+
 @_task("switch_port_snapshot_cycle", soft_time_limit=120, time_limit=300)
 def switch_port_snapshot_cycle_task(self) -> dict:
     """Dispatcher: one independent, staggered task per switch, same reasoning
@@ -358,7 +473,9 @@ def switch_port_snapshot_cycle_task(self) -> dict:
         switches = get_switches_for_snapshot(session)
         stagger = max(settings.SWITCH_PORT_SNAPSHOT_STAGGER_SECONDS, 0)
         for index, switch in enumerate(switches):
-            switch_port_snapshot_task.apply_async(args=[str(switch.id)], countdown=index * stagger)
+            switch_port_snapshot_task.apply_async(
+                args=[str(switch.id)], countdown=index * stagger
+            )
             worker_tasks_enqueued_total.labels(operation="switch_port_snapshot").inc()
     return {"status": "dispatched", "switches_scheduled": len(switches), "stagger_seconds": stagger}
 
@@ -482,7 +599,7 @@ def remote_access_sync_task(self) -> dict:
                 accounts_seen = _run_async(_remote_access_service.sync_accounts(session)).get("accounts_seen", 0)
                 # only rows the console is missing or whose password went stale
                 book_pushed = _run_async(_remote_access_service.sync_stale_address_book(session)).get("pushed", 0)
-            except Exception as exc:  # noqa: BLE001 - reported through console_error, not raised
+            except Exception as exc:
                 logger.warning("RustDesk console sync failed: %s", exc)
                 console_error = str(exc)
         statuses = _remote_access_service.refresh_status_from_inventory(session)

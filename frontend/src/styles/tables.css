@@ -1,0 +1,57 @@
+/* ============================================================================
+   3d. TABLES
+   ----------------------------------------------------------------------------
+   Six tables across the app had grown five different header treatments and
+   three different cell paddings. One shared shape instead, so a port list and
+   a log read the same way.
+   ========================================================================== */
+
+.app-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.app-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.app-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.5rem 0.875rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.app-table tbody td {
+  padding: 0.5rem 0.875rem;
+  border-bottom: 1px solid var(--border-faint);
+  font-size: 0.8125rem;
+  color: var(--text-default);
+  vertical-align: middle;
+}
+
+.app-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.app-table tbody tr:hover td {
+  background: var(--surface-2);
+}
+
+/* Figures that get compared down a column, so they line up and right-align */
+.app-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

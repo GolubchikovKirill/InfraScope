@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 import redis
+import redis.exceptions
 
 from app.core.config import settings
 from app.worker import tasks

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
+from sqlmodel import Session
 
 from app.domains.inventory.ap_auto_reboot import get_eligible_switches_for_auto_reboot
 from app.domains.inventory.models import NetworkSwitch
@@ -74,7 +77,7 @@ def test_get_eligible_switches_sorted_and_filtered_by_allowlist(monkeypatch) -> 
     rows = [_switch("A2"), _switch("A1"), _switch("A3")]  # A3 not in allowlist
     session = _FakeSession(rows=rows)
 
-    result = get_eligible_switches_for_auto_reboot(session)
+    result = get_eligible_switches_for_auto_reboot(cast(Session, session))
 
     assert [sw.name for sw in result] == ["A1", "A2"]
 
@@ -85,7 +88,7 @@ def test_get_eligible_switches_empty_when_globally_disabled(monkeypatch) -> None
 
     session = _FakeSession(rows=[_switch("A1")])
 
-    assert get_eligible_switches_for_auto_reboot(session) == []
+    assert get_eligible_switches_for_auto_reboot(cast(Session, session)) == []
 
 
 def test_cycle_task_dispatches_one_subtask_per_switch_with_stagger(monkeypatch) -> None:

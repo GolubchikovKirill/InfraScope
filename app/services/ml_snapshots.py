@@ -34,6 +34,7 @@ def write_printer_snapshots(session, printer: Printer, *, source: str = "poll") 
         MLFeatureSnapshot(
             **base,
             source=source,
+            page_count=printer.page_count,
         )
     )
     for color, level, model in (

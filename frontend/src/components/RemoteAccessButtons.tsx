@@ -135,7 +135,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
         {rustId && (
           <a
             href={rustdeskLink(rustId)}
-            className={`${btn} bg-[var(--brand)] text-white hover:brightness-95`}
+            className={`${btn} bg-[var(--brand-fill)] text-white hover:brightness-95`}
             title={`rustdesk://${rustId}`}
           >
             <MonitorSmartphone className="h-4 w-4" />

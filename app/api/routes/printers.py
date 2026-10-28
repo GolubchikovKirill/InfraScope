@@ -1,14 +1,18 @@
 import logging
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from fastapi.concurrency import run_in_threadpool
-from sqlmodel import func, select
+from sqlmodel import Session, col, func, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import conflict, not_found
-from app.domains.inventory.models import Printer
+from app.core.db import engine
+from app.domains.inventory.cartridge_journal import lifetime_stats
+from app.domains.inventory.models import CartridgeReplacement, CartridgeStock, Printer
 from app.domains.inventory.printer_polling import (
     PrinterNotFoundError,
     UnsupportedPrinterPollError,
@@ -17,8 +21,14 @@ from app.domains.inventory.printer_polling import (
     poll_single_printer_local,
 )
 from app.domains.inventory.schemas import (
+    CartridgeDemandPublic,
+    CartridgeDemandsPublic,
     CartridgeIssueRequest,
+    CartridgeLifeStatsPublic,
+    CartridgeReplacementPublic,
+    CartridgeReplacementsPublic,
     CartridgeStockCreate,
+    CartridgeStockMovementPublic,
     CartridgeStockMovementsPublic,
     CartridgeStockPublic,
     CartridgeStocksPublic,
@@ -30,7 +40,8 @@ from app.domains.inventory.schemas import (
 )
 from app.domains.operations.models import EventLog
 from app.domains.shared.schemas import Message
-from app.services.cache import get_cached_model, set_cached_model
+from app.services.cache import EntityCache
+from app.services.cartridge_demand import forecast_cartridge_demand
 from app.services.cartridge_stock import (
     CartridgeStockDuplicateError,
     CartridgeStockMissingError,
@@ -51,6 +62,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["printers"])
 
 CACHE_TTL = 30
+_PRINTERS_CACHE = EntityCache("printers", ttl=CACHE_TTL)
 
 
 def _query_printers_page(
@@ -100,7 +112,7 @@ def _attach_offline_counts(session: SessionDep, printers: list[PrinterPublic]) -
             EventLog.device_kind == "printer",
             EventLog.event_type == "device_offline",
             EventLog.created_at >= cutoff,
-            EventLog.device_name.in_(store_names),
+            col(EventLog.device_name).in_(store_names),
         )
         .group_by(EventLog.device_name)
     ).all()
@@ -136,6 +148,35 @@ async def _resolve_mac_for_printer(printer: Printer) -> str | None:
     )
 
 
+async def _fill_mac_in_background(printer_id: uuid.UUID, ip_address: str) -> None:
+    # MAC lookup against an unreachable host runs into SNMP and ping timeouts
+    # (~20s), so it must not hold up the create/edit request: the save button
+    # in the UI would spin for that long. Look the MAC up after the response
+    # and write it only if the printer still sits on the same IP and nobody
+    # has set a MAC in the meantime.
+    #
+    # The lookup runs with no session open: holding one across ~20 s of SNMP and
+    # ping timeouts kept a pooled DB connection checked out the whole time, and a
+    # handful of edits in a row was enough to drain the pool for every request.
+    with Session(engine) as session:
+        printer = session.get(Printer, printer_id)
+        if printer is None:
+            return
+        session.expunge(printer)
+    resolved_mac = await _resolve_mac_for_printer(printer)
+    if not resolved_mac:
+        return
+    with Session(engine) as session:
+        printer = session.get(Printer, printer_id)
+        if printer is None or printer.ip_address != ip_address or printer.mac_address:
+            return
+        printer.mac_address = resolved_mac
+        printer.mac_status = "verified"
+        session.add(printer)
+        session.commit()
+    await invalidate_printer_cache()
+
+
 @router.get("/cartridges", response_model=CartridgeStocksPublic)
 def read_cartridge_stock(
     session: SessionDep,
@@ -145,7 +186,56 @@ def read_cartridge_stock(
 ) -> CartridgeStocksPublic:
     del current_user
     rows = list_cartridge_stock(session, search=search, include_inactive=include_inactive)
-    return CartridgeStocksPublic(data=rows, count=len(rows))
+    return CartridgeStocksPublic(data=cast(list[CartridgeStockPublic], list(rows)), count=len(rows))
+
+
+@router.get("/replacements", response_model=CartridgeReplacementsPublic)
+def read_cartridge_replacements(
+    session: SessionDep,
+    current_user: CurrentUser,
+    printer_id: uuid.UUID | None = None,
+    days: int = Query(default=180, ge=1, le=730),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> CartridgeReplacementsPublic:
+    """Cartridge swaps detected by polling, newest first, with the measured life
+    of each cartridge model over the same window."""
+    del current_user
+    since = datetime.now(UTC) - timedelta(days=days)
+    statement = select(CartridgeReplacement).where(CartridgeReplacement.replaced_at >= since)
+    if printer_id is not None:
+        statement = statement.where(CartridgeReplacement.printer_id == printer_id)
+    rows = session.exec(statement.order_by(col(CartridgeReplacement.replaced_at).desc())).all()
+    return CartridgeReplacementsPublic(
+        data=[CartridgeReplacementPublic.model_validate(row) for row in rows[:limit]],
+        count=len(rows),
+        stats=[CartridgeLifeStatsPublic(**asdict(stat)) for stat in lifetime_stats(list(rows))],
+    )
+
+
+@router.get("/cartridges/forecast", response_model=CartridgeDemandsPublic)
+def read_cartridge_demand(
+    session: SessionDep,
+    current_user: CurrentUser,
+    horizon_days: int = Query(default=30, ge=1, le=180),
+) -> CartridgeDemandsPublic:
+    """Cartridges needed within the horizon per model, from the toner forecast,
+    against stock on hand - what to order now."""
+    del current_user
+    rows = [
+        CartridgeDemandPublic(
+            cartridge_name=d.cartridge_name,
+            toner_color=d.toner_color,
+            stock_id=uuid.UUID(d.stock_id) if d.stock_id else None,
+            needed=d.needed,
+            on_hand=d.on_hand,
+            minimum_stock=d.minimum_stock,
+            to_order=d.to_order,
+            next_due_days=d.next_due_days,
+            printers=sorted(d.printers),
+        )
+        for d in forecast_cartridge_demand(session, horizon_days=horizon_days)
+    ]
+    return CartridgeDemandsPublic(horizon_days=horizon_days, data=rows, count=len(rows))
 
 
 @router.post(
@@ -157,7 +247,7 @@ def create_cartridge(
     payload: CartridgeStockCreate,
     session: SessionDep,
     current_user: CurrentUser,
-) -> CartridgeStockPublic:
+) -> CartridgeStock:
     try:
         return create_cartridge_stock(session, payload, actor=current_user.email)
     except CartridgeStockDuplicateError as exc:
@@ -176,7 +266,7 @@ def archive_cartridge(
     stock_id: uuid.UUID,
     session: SessionDep,
     current_user: CurrentUser,
-) -> CartridgeStockPublic:
+) -> CartridgeStock:
     try:
         return deactivate_cartridge_stock(session, stock_id, actor=current_user.email)
     except CartridgeStockMissingError as exc:
@@ -190,7 +280,7 @@ def archive_cartridge(
 )
 def sync_cartridge_stock(session: SessionDep) -> CartridgeStocksPublic:
     rows = sync_cartridge_stock_from_printers(session)
-    return CartridgeStocksPublic(data=rows, count=len(rows))
+    return CartridgeStocksPublic(data=cast(list[CartridgeStockPublic], rows), count=len(rows))
 
 
 @router.patch(
@@ -203,7 +293,7 @@ def patch_cartridge_stock(
     payload: CartridgeStockUpdate,
     session: SessionDep,
     current_user: CurrentUser,
-) -> CartridgeStockPublic:
+) -> CartridgeStock:
     try:
         return update_cartridge_stock(session, stock_id, payload, actor=current_user.email)
     except CartridgeStockMissingError as exc:
@@ -225,7 +315,7 @@ def issue_cartridge(
     payload: CartridgeIssueRequest,
     session: SessionDep,
     current_user: CurrentUser,
-) -> CartridgeStockPublic:
+) -> CartridgeStock:
     try:
         return issue_cartridge_stock(session, stock_id, payload, actor=current_user.email)
     except CartridgeStockMissingError as exc:
@@ -246,7 +336,9 @@ def read_cartridge_movements(
         rows = list_cartridge_movements(session, stock_id, limit=limit)
     except CartridgeStockMissingError as exc:
         raise HTTPException(status_code=404, detail="Cartridge stock item not found") from exc
-    return CartridgeStockMovementsPublic(data=rows, count=len(rows))
+    return CartridgeStockMovementsPublic(
+        data=cast(list[CartridgeStockMovementPublic], list(rows)), count=len(rows)
+    )
 
 
 @router.get("/", response_model=PrintersPublic)
@@ -257,33 +349,28 @@ async def read_printers(
     limit: int = Query(default=200, le=500),
     store_name: str | None = None,
     printer_type: str = Query(default="laser"),
-) -> PrintersPublic:
-    cache_key = f"printers:{printer_type}:{store_name or ''}:{skip}:{limit}"
-    if cached := await get_cached_model(cache_key, PrintersPublic):
+) -> Response:
+    cache_variant = f"{printer_type}:{store_name or ''}:{skip}:{limit}"
+    if cached := await _PRINTERS_CACHE.get_response(cache_variant):
         return cached
 
-    printers, count = await run_in_threadpool(
-        _query_printers_page, session, printer_type, store_name, skip, limit
-    )
+    printers, count = await run_in_threadpool(_query_printers_page, session, printer_type, store_name, skip, limit)
     result = PrintersPublic(data=printers, count=count)
 
-    await set_cached_model(cache_key, result, ttl=CACHE_TTL)
-
-    return result
+    return await _PRINTERS_CACHE.respond(cache_variant, result)
 
 
 @router.post("/", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
-async def create_printer(session: SessionDep, printer_in: PrinterCreate) -> Printer:
+async def create_printer(session: SessionDep, printer_in: PrinterCreate, background_tasks: BackgroundTasks) -> Printer:
     if printer_in.connection_type == "ip" and printer_in.ip_address:
         _check_unique_ip(session, printer_in.ip_address)
     printer = Printer(**printer_in.model_dump())
-    if printer.connection_type == "ip" and printer.ip_address and not printer.mac_address:
-        printer.mac_address = await _resolve_mac_for_printer(printer)
-        printer.mac_status = "verified" if printer.mac_address else None
     session.add(printer)
     session.commit()
     session.refresh(printer)
     await invalidate_printer_cache()
+    if printer.connection_type == "ip" and printer.ip_address and not printer.mac_address:
+        background_tasks.add_task(_fill_mac_in_background, printer.id, printer.ip_address)
     return printer
 
 
@@ -296,7 +383,9 @@ def read_printer(printer_id: uuid.UUID, session: SessionDep, current_user: Curre
 
 
 @router.patch("/{printer_id}", response_model=PrinterPublic, dependencies=[Depends(get_current_active_superuser)])
-async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in: PrinterUpdate) -> Printer:
+async def update_printer(
+    session: SessionDep, printer_id: uuid.UUID, printer_in: PrinterUpdate, background_tasks: BackgroundTasks
+) -> Printer:
     printer = _get_printer_or_404(session, printer_id)
     update_data = printer_in.model_dump(exclude_unset=True)
     if "ip_address" in update_data and update_data["ip_address"] is not None:
@@ -305,20 +394,17 @@ async def update_printer(session: SessionDep, printer_id: uuid.UUID, printer_in:
     ip_changed = "ip_address" in update_data and update_data.get("ip_address") != printer.ip_address
     explicit_mac = "mac_address" in update_data
     printer.sqlmodel_update(update_data)
-    if (
-        printer.connection_type == "ip"
-        and printer.ip_address
-        and ip_changed
-        and not explicit_mac
-    ):
-        resolved_mac = await _resolve_mac_for_printer(printer)
-        if resolved_mac:
-            printer.mac_address = resolved_mac
-            printer.mac_status = "verified"
+    if ip_changed and not explicit_mac:
+        # The old MAC belongs to whatever used to sit on the old IP; keeping it
+        # "verified" would point MAC/ARP checks at the wrong device.
+        printer.mac_address = None
+        printer.mac_status = None
     session.add(printer)
     session.commit()
     session.refresh(printer)
     await invalidate_printer_cache()
+    if printer.connection_type == "ip" and printer.ip_address and ip_changed and not explicit_mac:
+        background_tasks.add_task(_fill_mac_in_background, printer.id, printer.ip_address)
     return printer
 
 

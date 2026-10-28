@@ -4,6 +4,8 @@ import random
 import time
 from dataclasses import dataclass
 
+from redis.typing import EncodableT, FieldT
+
 from app.core.config import settings
 from app.core.redis import REDIS_ERRORS, get_redis
 from app.observability.metrics import poll_resilience_events_total
@@ -151,7 +153,7 @@ async def apply_poll_outcome(
     poll_resilience_events_total.labels(kind=kind, event=decision.event).inc()
 
     if r is not None:
-        payload: dict[str, str | int] = {
+        payload: dict[FieldT, EncodableT] = {
             "failures": decision.failures,
             "circuit_failures": decision.circuit_failures,
             "effective_online": 1 if decision.effective_online else 0,

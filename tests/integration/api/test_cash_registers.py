@@ -62,11 +62,10 @@ def test_poll_all_cash_registers_polls_in_process(client, admin_token: str, monk
 
 
 def test_poll_cash_register_updates_reachability(client, admin_token: str, monkeypatch):
-    monkeypatch.setattr(
-        cash_register_polling,
-        "probe_cash_register",
-        lambda _hostname: ReachabilityResult(is_online=False, reason="port_closed"),
-    )
+    async def _probe(_hostname):
+        return ReachabilityResult(is_online=False, reason="port_closed")
+
+    monkeypatch.setattr(cash_register_polling, "probe_cash_register", _probe)
 
     created = client.post(
         "/api/v1/cash-registers/",

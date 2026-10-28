@@ -4,6 +4,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import cast
 
 from sqlmodel import Session, select
 
@@ -13,13 +14,13 @@ from app.domains.inventory.reachability import (
     REASON_PROBE_ERROR,
     ReachabilityResult,
     build_dns_search_suffixes,
-    probe_host_ports,
+    probe_host_ports_async,
 )
 from app.domains.operations.models import CashRegister
-from app.domains.operations.schemas import CashRegistersPublic
+from app.domains.operations.schemas import CashRegisterPublic, CashRegistersPublic
 from app.services.cache import invalidate_entity_cache
 from app.services.event_log import write_event_log
-from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_sync
+from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,10 @@ async def invalidate_cash_register_cache() -> None:
     await invalidate_entity_cache("cash_registers")
 
 
-def probe_cash_register(hostname: str) -> ReachabilityResult:
+async def probe_cash_register(hostname: str) -> ReachabilityResult:
     suffixes = build_dns_search_suffixes(settings.DNS_SEARCH_SUFFIXES, settings.DOMAIN)
-    poll_jitter_sync()
-    return probe_host_ports(
+    await poll_jitter_async()
+    return await probe_host_ports_async(
         hostname,
         ports=(3389, 445),
         timeout=1.5,
@@ -72,7 +73,7 @@ async def _probe_cash_registers_bulk(rows: list[CashRegister]) -> dict[uuid.UUID
 
     async def _run(row: CashRegister) -> tuple[uuid.UUID, ReachabilityResult]:
         async with semaphore:
-            return row.id, await asyncio.to_thread(probe_cash_register, row.hostname)
+            return row.id, await probe_cash_register(row.hostname)
 
     pairs = await asyncio.gather(*[_run(row) for row in rows]) if rows else []
     return dict(pairs)
@@ -120,7 +121,7 @@ async def poll_single_cash_register_local(*, session: Session, cash_id: uuid.UUI
     # A manual poll is a person asking right now, so it bypasses the circuit
     # breaker on purpose - that is also how someone confirms a register is
     # back before the breaker's own window would have retried it.
-    probe = await asyncio.to_thread(probe_cash_register, cash.hostname)
+    probe = await probe_cash_register(cash.hostname)
     apply_cash_register_poll_result(cash, is_online=probe.is_online, reason=probe.reason)
     record_cash_register_status_change(session, cash, previous_online)
     session.add(cash)
@@ -143,7 +144,7 @@ async def poll_all_cash_registers_local(*, session: Session) -> CashRegistersPub
 
     rows = session.exec(select(CashRegister)).all()
     if not lock_acquired:
-        return CashRegistersPublic(data=rows, count=len(rows))
+        return CashRegistersPublic(data=cast(list[CashRegisterPublic], rows), count=len(rows))
 
     try:
         poll_targets = [row for row in rows if not await is_circuit_open("cash_register", str(row.id))]
@@ -172,7 +173,7 @@ async def poll_all_cash_registers_local(*, session: Session) -> CashRegistersPub
         session.commit()
         result = session.exec(select(CashRegister).order_by(CashRegister.kkm_number)).all()
         await invalidate_cash_register_cache()
-        return CashRegistersPublic(data=result, count=len(result))
+        return CashRegistersPublic(data=cast(list[CashRegisterPublic], result), count=len(result))
     finally:
         if lock_acquired:
             try:

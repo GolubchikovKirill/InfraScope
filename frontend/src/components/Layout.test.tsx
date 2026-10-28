@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
-import type { ReactNode } from "react";
 
 const authState = {
   user: null as null | { email: string; full_name: string | null; is_superuser: boolean },

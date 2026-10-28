@@ -312,7 +312,7 @@ def test_switch_poe_cycle_is_rate_limited_by_cooldown(client: TestClient, admin_
 
         def set_poe(self, _switch, port, action):
             calls.append((port, action))
-            return None
+            return
 
     fake_redis = _FakeRedis()
 
@@ -785,3 +785,97 @@ def test_port_write_fails_closed_when_the_safety_lock_cannot_be_taken(client: Te
 
     assert response.status_code == 503
     assert calls == []
+
+
+def _create_dhcp_switch(client: TestClient, admin_token: str, *, name: str = "A30", **extra) -> str:
+    created = client.post(
+        "/api/v1/switches/",
+        json={"name": name, "ip_address": "10.10.10.77", "ssh_username": "admin", "ap_vlan": 20, **extra},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert created.status_code == 200, created.text
+    return created.json()["id"]
+
+
+def test_switch_dhcp_clear_fields_default_off_and_validate_mode(client: TestClient, admin_token: str):
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    switch_id = _create_dhcp_switch(client, admin_token)
+    got = client.get(f"/api/v1/switches/{switch_id}", headers=headers).json()
+    assert got["dhcp_clear_enabled"] is False
+    assert got["dhcp_clear_mode"] == "dry_run"
+
+    bad = client.patch(f"/api/v1/switches/{switch_id}", json={"dhcp_clear_mode": "yolo"}, headers=headers)
+    assert bad.status_code == 422
+    ok = client.patch(
+        f"/api/v1/switches/{switch_id}",
+        json={"dhcp_clear_enabled": True, "dhcp_clear_mode": "LIVE"},
+        headers=headers,
+    )
+    assert ok.status_code == 200
+    assert (ok.json()["dhcp_clear_enabled"], ok.json()["dhcp_clear_mode"]) == (True, "live")
+
+
+def test_switch_dhcp_diagnostics_is_read_only_and_reports_the_plan(
+    client: TestClient, admin_token: str, user_token: str, monkeypatch
+):
+    from app.api.routes.switches import dhcp as switch_dhcp
+    from app.services.cisco_dhcp import ROLE_EXTERNAL, DhcpDiagnostics
+
+    switch_id = _create_dhcp_switch(client, admin_token)
+    monkeypatch.setattr(
+        switch_dhcp, "run_dhcp_diagnostics", lambda *a, **kw: DhcpDiagnostics(vlan=20, role=ROLE_EXTERNAL)
+    )
+
+    # A plain (non-superuser) account may read it: it only sends `show` commands.
+    resp = client.get(f"/api/v1/switches/{switch_id}/dhcp", headers={"Authorization": f"Bearer {user_token}"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["role"] == "external"
+    assert body["planned_commands"] == []
+    assert "not the DHCP server" in body["skipped_reasons"][0]
+
+
+def test_switch_dhcp_diagnostics_502_when_switch_unreachable(client: TestClient, admin_token: str, monkeypatch):
+    from app.api.routes.switches import dhcp as switch_dhcp
+
+    switch_id = _create_dhcp_switch(client, admin_token)
+    monkeypatch.setattr(switch_dhcp, "run_dhcp_diagnostics", lambda *a, **kw: None)
+    resp = client.get(f"/api/v1/switches/{switch_id}/dhcp", headers={"Authorization": f"Bearer {admin_token}"})
+    assert resp.status_code == 502
+
+
+def test_switch_dhcp_clear_run_now_gates(client: TestClient, admin_token: str, user_token: str, monkeypatch):
+    from app.api.routes.switches import dhcp as switch_dhcp
+
+    monkeypatch.setattr(settings, "DHCP_CLEAR_ENABLED", True)
+    monkeypatch.setattr(settings, "DHCP_CLEAR_ALLOWED_STORES", "A30")
+    admin = {"Authorization": f"Bearer {admin_token}"}
+    switch_id = _create_dhcp_switch(client, admin_token)
+    url = f"/api/v1/switches/{switch_id}/dhcp/clear"
+
+    assert client.post(url, headers={"Authorization": f"Bearer {user_token}"}).status_code == 403
+    # Per-switch toggle is off by default.
+    assert client.post(url, headers=admin).status_code == 409
+
+    client.patch(f"/api/v1/switches/{switch_id}", json={"dhcp_clear_enabled": True}, headers=admin)
+    monkeypatch.setattr(settings, "DHCP_CLEAR_ALLOWED_STORES", "A99")
+    not_allowed = client.post(url, headers=admin)
+    assert not_allowed.status_code == 400 and "allowlist" in not_allowed.json()["detail"]
+
+    monkeypatch.setattr(settings, "DHCP_CLEAR_ALLOWED_STORES", "A30")
+
+    async def _fake_run(_session, switch):
+        return {"switch": switch.name, "mode": "dry_run", "role": "local_server", "commands_planned": 3}
+
+    monkeypatch.setattr(switch_dhcp, "run_dhcp_clear_for_switch", _fake_run)
+    ok = client.post(url, headers=admin)
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["commands_planned"] == 3
+
+
+def test_switch_dhcp_history_lists_only_dhcp_events(client: TestClient, admin_token: str):
+    switch_id = _create_dhcp_switch(client, admin_token)
+    resp = client.get(
+        f"/api/v1/switches/{switch_id}/dhcp/history", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert resp.status_code == 200 and resp.json() == []

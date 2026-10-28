@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.core.config import settings
 from app.domains.operations.models import AppSetting
@@ -18,7 +18,7 @@ def _default_general_settings() -> dict[str, str]:
 
 def get_general_settings(session: Session) -> dict[str, str]:
     defaults = _default_general_settings()
-    rows = session.exec(select(AppSetting).where(AppSetting.key.in_(GENERAL_SETTINGS_KEYS))).all()
+    rows = session.exec(select(AppSetting).where(col(AppSetting.key).in_(GENERAL_SETTINGS_KEYS))).all()
     for row in rows:
         defaults[row.key] = row.value
     return defaults
@@ -31,7 +31,7 @@ def update_general_settings(session: Session, values: dict[str, str]) -> dict[st
 
     existing = {
         row.key: row
-        for row in session.exec(select(AppSetting).where(AppSetting.key.in_(list(normalized.keys())))).all()
+        for row in session.exec(select(AppSetting).where(col(AppSetting.key).in_(list(normalized.keys())))).all()
     }
     now = datetime.now(UTC)
     for key, value in normalized.items():

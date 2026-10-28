@@ -74,7 +74,7 @@ def test_laptops_are_flagged_and_listed_after_the_rest(client, admin_token, db_s
 
     data = client.get("/api/v1/computers/stale", headers=_auth(admin_token)).json()["data"]
 
-    assert [c["hostname"] for c in data][0] == "VNK-SEC-07"
+    assert next(c["hostname"] for c in data) == "VNK-SEC-07"
     assert {c["hostname"] for c in data if c["laptop_like"]} == {"VNK-TAM-NB01", "VNK-DIR-NOTE", "VNK-HR-N02", "VNK-LPT-01"}
     assert next(c for c in data if c["hostname"] == "VNK-SEC-07")["laptop_like"] is False
 
@@ -161,14 +161,15 @@ def test_deleting_a_cash_register_or_media_player_releases_its_remote_access_ent
     monkeypatch.setattr(media_routes, "_invalidate_cache", _noop)
     if kind == "cash_register":
         row = CashRegister(kkm_number="1", hostname="VNA-KKM-999")
-        link = "cash_register_id"
     else:
         row = MediaPlayer(device_type="nettop", name="n", model="m", ip_address="10.0.0.9", hostname="VNA-MUZ-999")
-        link = "media_player_id"
     db_session.add(row)
     db_session.commit()
     db_session.refresh(row)
-    device = RemoteAccessDevice(hostname="host-999", managed=True, **{link: row.id})
+    if kind == "cash_register":
+        device = RemoteAccessDevice(hostname="host-999", managed=True, cash_register_id=row.id)
+    else:
+        device = RemoteAccessDevice(hostname="host-999", managed=True, media_player_id=row.id)
     db_session.add(device)
     db_session.commit()
     device_id = device.id
@@ -178,4 +179,5 @@ def test_deleting_a_cash_register_or_media_player_releases_its_remote_access_ent
     assert response.status_code == 200
     db_session.expire_all()
     kept = db_session.get(RemoteAccessDevice, device_id)
+    link = "cash_register_id" if kind == "cash_register" else "media_player_id"
     assert kept is not None and getattr(kept, link) is None and kept.managed is False

@@ -30,7 +30,7 @@ os.environ.setdefault("OTEL_ENABLED", "false")
 # at a media service that does not exist here.
 os.environ.setdefault("MEDIA_SERVICE_ENABLED", "false")
 
-import app.domains.registry  # noqa: F401  (all tables in the test metadata)
+import app.domains.registry
 from app.api import deps
 from app.core.limiter import limiter as app_limiter
 from app.core.security import get_password_hash
@@ -147,6 +147,7 @@ def client(db_session, monkeypatch: pytest.MonkeyPatch):
     # too, not the production engine (host "db"), which does not exist here.
     monkeypatch.setattr(deps, "engine", engine)
     monkeypatch.setattr("app.main.engine", engine)
+    monkeypatch.setattr("app.api.routes.printers.engine", engine)
 
     monkeypatch.setattr(deps, "is_token_blacklisted", _is_blacklisted)
     from app.api.routes import auth as auth_routes
@@ -156,7 +157,7 @@ def client(db_session, monkeypatch: pytest.MonkeyPatch):
 
     def _fake_check_request_limit(request, _endpoint, _in_middleware=True):
         request.state.view_rate_limit = None
-        return None
+        return
 
     monkeypatch.setattr(app_limiter, "_check_request_limit", _fake_check_request_limit)
 

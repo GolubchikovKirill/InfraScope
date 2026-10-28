@@ -33,9 +33,7 @@ class Settings(BaseSettings):
             return True
         if len(normalized) < 12:
             return True
-        if normalized.isdigit() or normalized.isalpha():
-            return True
-        return False
+        return bool(normalized.isdigit() or normalized.isalpha())
 
     @model_validator(mode="after")
     def validate_secret_key(self) -> "Settings":
@@ -113,6 +111,21 @@ class Settings(BaseSettings):
     # AP is auto-excluded from further cycles and a critical event is logged;
     # re-including it (after checking on site) resets the streak.
     AUTO_REBOOT_AP_ESCALATE_AFTER_CYCLES: int = 2
+    # Scheduled DHCP cleanup (conflict list + AP-VLAN bindings) on switches that
+    # are themselves the DHCP server for the AP VLAN. Same two gates as the AP
+    # reboot - global switch plus store allowlist - and a switch additionally
+    # starts in dry_run. DHCP_CLEAR_ACTIONS picks what is cleared: "conflict"
+    # (harmless) and/or "binding" (AP-VLAN automatic leases only; the AP then
+    # re-leases on its next renewal or reboot).
+    DHCP_CLEAR_ENABLED: bool = True
+    DHCP_CLEAR_ALLOWED_STORES: str = "A30"
+    DHCP_CLEAR_ACTIONS: str = "conflict,binding"
+    # More leased AP-VLAN addresses than this means the VLAN is not what we
+    # think it is; refuse to clear rather than wipe a large lease table.
+    DHCP_CLEAR_MAX_BINDINGS: int = 300
+    DHCP_CLEAR_STAGGER_SECONDS: int = 30
+    DHCP_CLEAR_TASK_LOCK_SECONDS: int = 1_800
+    DHCP_CLEAR_CYCLE_DEDUP_SECONDS: int = 86_400
     # Periodic switch port-config snapshot, purely for history/drift
     # detection - read-only, no writes to any switch. Runs every N days;
     # a new row is only stored when the config actually changed since the
@@ -251,15 +264,32 @@ class Settings(BaseSettings):
     # evidence to tell those two apart, so the normal per-device logic runs.
     POLL_PATH_FAILURE_MIN_DEVICES: int = 3
     POLL_PATH_FAILURE_RATIO: float = 0.8
-    PRINTER_POLL_MAX_WORKERS: int = 16
+    # How many devices of one kind are in flight at once. Polling is almost all
+    # waiting on the network - an SNMP request or a TCP connect costs one socket
+    # and no CPU - so the cycle is ~ceil(devices / limit) x the slowest device.
+    # These cover the whole fleet (52 printers, 80 tills, 126 computers) in one
+    # or two waves; a single store link only ever sees its own few devices.
+    PRINTER_POLL_MAX_WORKERS: int = 48
+    # SNMP to printers: per request, so a full toner walk pays it per PDU. A
+    # printer on the LAN answers in tens of ms; the old 5 s x 3 tries meant 15 s
+    # before a dead printer was even handed to the TCP fallback. False offlines
+    # from one lost packet are what POLL_OFFLINE_CONFIRMATIONS is for.
+    PRINTER_SNMP_TIMEOUT_SECONDS: float = 2.0
+    PRINTER_SNMP_RETRIES: int = 1
+    # Threads behind asyncio.to_thread on each event loop (worker task loops and
+    # the API). The default pool is min(32, cpu + 4) = 8 on the 4-vCPU server,
+    # which silently capped every to_thread-based poll at 8 devices whatever its
+    # own limit said - switch polls (paramiko / sync SNMP) run there.
+    BLOCKING_IO_THREADS: int = 48
     # Laser printers poll every 15 min (see celery_app.py), but only need a
     # full SNMP toner walk this rarely - cycle N of every M is "full", the
     # rest are a cheap online/offline-only check. 4 == once an hour.
     PRINTER_FULL_POLL_EVERY_N_CYCLES: int = 4
-    MEDIA_POLL_MAX_WORKERS: int = 12
-    SWITCH_POLL_MAX_CONCURRENCY: int = 8
-    COMPUTER_POLL_CONCURRENCY: int = 16
-    CASH_REGISTER_POLL_CONCURRENCY: int = 16
+    MEDIA_POLL_MAX_WORKERS: int = 32
+    # One SSH/SNMP session per switch, so this never stacks VTY sessions on one box
+    SWITCH_POLL_MAX_CONCURRENCY: int = 16
+    COMPUTER_POLL_CONCURRENCY: int = 64
+    CASH_REGISTER_POLL_CONCURRENCY: int = 64
     NETWORK_PROBE_MAX_ATTEMPTS: int = 2
     NETWORK_PROBE_RETRY_BACKOFF_SECONDS: float = 0.15
     NETWORK_PROBE_TIMEOUT_MULTIPLIER: float = 1.25

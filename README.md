@@ -107,11 +107,14 @@ cp .env.example .env
 ```bash
 WORKER_CONCURRENCY=6
 POLL_JITTER_MAX_MS=120
-PRINTER_POLL_MAX_WORKERS=16
-MEDIA_POLL_MAX_WORKERS=12
-SWITCH_POLL_MAX_CONCURRENCY=8
-COMPUTER_POLL_CONCURRENCY=16
-CASH_REGISTER_POLL_CONCURRENCY=16
+PRINTER_POLL_MAX_WORKERS=48
+MEDIA_POLL_MAX_WORKERS=32
+SWITCH_POLL_MAX_CONCURRENCY=16
+COMPUTER_POLL_CONCURRENCY=64
+CASH_REGISTER_POLL_CONCURRENCY=64
+PRINTER_SNMP_TIMEOUT_SECONDS=2
+PRINTER_SNMP_RETRIES=1
+BLOCKING_IO_THREADS=48
 ```
 
 ### 3) Доступ
@@ -258,6 +261,10 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `POLL_CIRCUIT_FAILURE_THRESHOLD`
   - `POLL_CIRCUIT_OPEN_SECONDS`
   - `POLL_RESILIENCE_STATE_TTL_SECONDS`
+- Очистка DHCP на свитчах (Cisco, VLAN 20):
+  - `DHCP_CLEAR_ENABLED`, `DHCP_CLEAR_ALLOWED_STORES` (по умолчанию `A30`)
+  - `DHCP_CLEAR_ACTIONS` (`conflict`, `binding`), `DHCP_CLEAR_MAX_BINDINGS`
+  - `DHCP_CLEAR_STAGGER_SECONDS`, `DHCP_CLEAR_TASK_LOCK_SECONDS`, `DHCP_CLEAR_CYCLE_DEDUP_SECONDS`
 - Worker:
   - `WORKER_CONCURRENCY`, `WORKER_POOL`, `WORKER_METRICS_PORT`
 - Internal service HTTP policy:
@@ -286,6 +293,7 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
 - Media Players: `/media-players/*`
 - Media Center: `/media-center/*`, манифест клиента: `media-service /clients/{player_id}/manifest`
 - Switches: `/switches/*`, `/switches/discover/*`
+- Switch DHCP: `GET /switches/{id}/dhcp` (диагностика, только `show`), `POST /switches/{id}/dhcp/clear` (запуск сейчас), `GET /switches/{id}/dhcp/history`
 - Tasks/Worker: `/tasks/*`
 - Forecasting API: `/ml/*`
 - Observability API: `/observability/service-map`, `/observability/service-map/timeseries`
@@ -341,6 +349,24 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
 - `docker-compose.prod.yml` оставлен минимальным и безопасным, без сложных network override.
 - Для macOS/Windows (Docker Desktop VM) больше опирайтесь на SNMP/HTTP fingerprint, чем на ARP.
 - Для предсказуемого апдейта на сервере используйте `./scripts/deploy-compose-prod.sh`.
+
+### Очистка DHCP на свитчах
+
+Диагностика и очистка DHCP идут по SSH (`app/services/cisco_dhcp.py`). Диагностика только читает
+(`show ip dhcp pool/binding/conflict/snooping`, конфиг SVI) и определяет, **кто раздаёт DHCP для VLAN 20**:
+
+| Роль | Значение | Очистка |
+|---|---|---|
+| `local_server` | у свитча есть пул, покрывающий его SVI | выполняется |
+| `relay` | на SVI стоит `ip helper-address` | не выполняется — таблицы на другом сервере |
+| `external` | у VLAN нет SVI (L2-свитч) | не выполняется |
+
+Расписание — 07:10 и 19:10 МСК (04:10/16:10 UTC), за 20 минут до перезагрузки точек. Чистится
+`clear ip dhcp conflict *` и `clear ip dhcp binding <ip>` только для автоматических аренд VLAN 20
+(статические резервации и DHCP snooping не трогаются). Как и перезагрузка точек, очистка включается
+тумблером на карточке свитча, ограничена `DHCP_CLEAR_ALLOWED_STORES` и стартует в режиме `dry_run`
+(команды только пишутся в журнал, событие `dhcp_clear_dry_run`); боевой режим включается кнопкой «тест/боевой».
+Результаты — в Логах, фильтр «Очистка DHCP».
 
 ### Tracing: карта связей между сервисами
 

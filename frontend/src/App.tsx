@@ -1,31 +1,73 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import { useRealtime } from "./hooks/useRealtime";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const OverviewPage = lazy(() => import("./pages/OverviewPage"));
-const MediaPlayersPage = lazy(() => import("./pages/MediaPlayersPage"));
-const SwitchesPage = lazy(() => import("./pages/SwitchesPage"));
-const LogsPage = lazy(() => import("./pages/LogsPage"));
-const CashRegistersPage = lazy(() => import("./pages/CashRegistersPage"));
-const ComputersPage = lazy(() => import("./pages/ComputersPage"));
-const OneCPage = lazy(() => import("./pages/OneCPage"));
-const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const UsersPage = lazy(() => import("./pages/Users"));
-const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
-const HonestSignPage = lazy(() => import("./pages/HonestSignPage"));
-const ScreensPage = lazy(() => import("./pages/ScreensPage"));
-const CamerasPage = lazy(() => import("./pages/CamerasPage"));
-const RemoteAccessPage = lazy(() => import("./pages/RemoteAccessPage"));
-const CredentialsPage = lazy(() => import("./pages/CredentialsPage"));
+const pageLoaders = {
+  Dashboard: () => import("./pages/Dashboard"),
+  OverviewPage: () => import("./pages/OverviewPage"),
+  MediaPlayersPage: () => import("./pages/MediaPlayersPage"),
+  SwitchesPage: () => import("./pages/SwitchesPage"),
+  LogsPage: () => import("./pages/LogsPage"),
+  CashRegistersPage: () => import("./pages/CashRegistersPage"),
+  ComputersPage: () => import("./pages/ComputersPage"),
+  OneCPage: () => import("./pages/OneCPage"),
+  SettingsPage: () => import("./pages/SettingsPage"),
+  UsersPage: () => import("./pages/Users"),
+  NotFoundPage: () => import("./pages/NotFoundPage"),
+  HonestSignPage: () => import("./pages/HonestSignPage"),
+  ScreensPage: () => import("./pages/ScreensPage"),
+  CamerasPage: () => import("./pages/CamerasPage"),
+  RemoteAccessPage: () => import("./pages/RemoteAccessPage"),
+  CredentialsPage: () => import("./pages/CredentialsPage"),
+};
+
+const Dashboard = lazy(pageLoaders.Dashboard);
+const OverviewPage = lazy(pageLoaders.OverviewPage);
+const MediaPlayersPage = lazy(pageLoaders.MediaPlayersPage);
+const SwitchesPage = lazy(pageLoaders.SwitchesPage);
+const LogsPage = lazy(pageLoaders.LogsPage);
+const CashRegistersPage = lazy(pageLoaders.CashRegistersPage);
+const ComputersPage = lazy(pageLoaders.ComputersPage);
+const OneCPage = lazy(pageLoaders.OneCPage);
+const SettingsPage = lazy(pageLoaders.SettingsPage);
+const UsersPage = lazy(pageLoaders.UsersPage);
+const NotFoundPage = lazy(pageLoaders.NotFoundPage);
+const HonestSignPage = lazy(pageLoaders.HonestSignPage);
+const ScreensPage = lazy(pageLoaders.ScreensPage);
+const CamerasPage = lazy(pageLoaders.CamerasPage);
+const RemoteAccessPage = lazy(pageLoaders.RemoteAccessPage);
+const CredentialsPage = lazy(pageLoaders.CredentialsPage);
+
+/**
+ * Fetch every page's chunk once the browser is idle after sign-in, so the first
+ * visit to a section renders at once instead of showing the route spinner while
+ * its chunk downloads. Pages are code-split for the first paint, not to be
+ * fetched on click; together they are a few hundred kB, gzip far less.
+ */
+function usePrefetchPages(enabled: boolean) {
+  useEffect(() => {
+    // jsdom (unit tests) would import every page module in the background
+    if (!enabled || navigator.userAgent.includes("jsdom")) return;
+    const prefetch = () => {
+      for (const load of Object.values(pageLoaders)) void load().catch(() => undefined);
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(prefetch, { timeout: 4000 });
+      return () => window.cancelIdleCallback(handle);
+    }
+    const timer = globalThis.setTimeout(prefetch, 1500);
+    return () => globalThis.clearTimeout(timer);
+  }, [enabled]);
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
 
   useRealtime();
+  usePrefetchPages(Boolean(user));
 
   if (isLoading) {
     return (

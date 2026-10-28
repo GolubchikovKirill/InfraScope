@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import http.client
 import logging
 import re
@@ -111,10 +112,8 @@ def _parse_hp_consumable_xml(data: bytes) -> list[TonerLevel]:
                             is_consumable = True
                             break
             elif ctag == "ConsumablePercentageLevelRemaining":
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     pct = max(0, min(100, int(text)))
-                except (ValueError, TypeError):
-                    pass
             elif ctag in ("ConsumableTypeEnum", "ConsumableType"):
                 t = text.lower()
                 if "ink" in t or "toner" in t or "colorant" in t or "printcolorant" in t:

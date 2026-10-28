@@ -17,7 +17,7 @@ def test_deploy_config_served_when_the_caller_is_the_device_itself(client, db_se
     _configure_deploy(monkeypatch)
     service.ensure_device(db_session, hostname="VNA-MGR-501", permanent_password="kentdful")
     # no console history yet (last_ip unset) - falls through to the DNS lookup
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.51")
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.51")
 
     resp = client.post(
         "/api/v1/remote-access/deploy/config",
@@ -33,7 +33,7 @@ def test_deploy_config_refused_when_the_caller_is_a_different_machine(client, db
     # some other endpoint to fish a different device's password out of its row
     _configure_deploy(monkeypatch)
     service.ensure_device(db_session, hostname="VNA-MGR-502", permanent_password="kentdful")
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.52")
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.52")
 
     resp = client.post(
         "/api/v1/remote-access/deploy/config",
@@ -53,7 +53,7 @@ def test_deploy_config_accepts_a_console_seen_ip_even_if_dns_disagrees(client, d
     dev.last_ip = "10.10.99.53"
     db_session.add(dev)
     db_session.commit()
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.254")  # stale on purpose
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.254")  # stale on purpose
 
     resp = client.post(
         "/api/v1/remote-access/deploy/config",
@@ -68,7 +68,7 @@ def test_deploy_config_refused_with_no_signal_at_all(client, db_session, monkeyp
     # exactly what a stolen token used against a name that doesn't exist looks like
     _configure_deploy(monkeypatch)
     service.ensure_device(db_session, hostname="VNA-MGR-504", permanent_password="kentdful")
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: None)
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: None)
 
     resp = client.post(
         "/api/v1/remote-access/deploy/config",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import subprocess
 
@@ -26,7 +27,7 @@ async def _snmp_mac_on_engine(engine: SnmpEngine, ip_address: str, community: st
     """ifPhysAddress over an engine the caller owns (and closes)."""
     try:
         target = await UdpTransportTarget.create((ip_address, 161), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP target %s not usable: %s", ip_address, exc)
         return None
 
@@ -47,7 +48,7 @@ async def _snmp_mac_on_engine(engine: SnmpEngine, ip_address: str, community: st
                     octets = val.asOctets()
                     if len(octets) == 6 and any(b != 0 for b in octets):
                         return ":".join(f"{b:02x}" for b in octets)
-    except Exception as exc:  # noqa: BLE001 - best-effort probe: an unreachable or non-SNMP host is the normal case
+    except Exception as exc:
         logger.debug("SNMP MAC walk on %s failed: %s", ip_address, exc)
     return None
 
@@ -91,14 +92,13 @@ async def _get_snmp_mac_async(ip_address: str, community: str = "public") -> str
 def _get_mac_from_arp(ip_address: str) -> str | None:
     """Read MAC from system ARP table. Works with network_mode: host on Linux."""
     # Ping to populate ARP cache
-    try:
+    with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired):
         subprocess.run(
             ["ping", "-c", "1", "-W", "1", ip_address],
             capture_output=True,
+            check=False,
             timeout=3,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
 
     try:
         with open("/proc/net/arp") as f:
@@ -115,6 +115,7 @@ def _get_mac_from_arp(ip_address: str) -> str | None:
         out = subprocess.run(
             ["ip", "neigh", "show", ip_address],
             capture_output=True,
+            check=False,
             text=True,
             timeout=3,
         ).stdout.strip()

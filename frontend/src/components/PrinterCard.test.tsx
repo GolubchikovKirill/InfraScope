@@ -117,4 +117,22 @@ describe("PrinterCard", () => {
       expect(screen.queryByText("Редактировать")).not.toBeInTheDocument();
     });
   });
+
+  it("leads with the store, with the model as the secondary line", () => {
+    render(
+      <PrinterCard
+        printer={printer}
+        onPoll={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        isPolling={false}
+        isSuperuser={false}
+      />,
+    );
+
+    const heading = screen.getByRole("heading");
+    expect(heading).toHaveTextContent("Store A");
+    expect(heading).toHaveClass("app-card-store");
+    expect(screen.getByText("HP M404")).not.toBe(heading);
+  });
 });

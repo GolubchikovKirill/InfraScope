@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from time import perf_counter
 
-from app.observability.metrics import snmp_operations_total
+from app.observability.metrics import snmp_operations_total, snmp_poll_duration_seconds
 
 from ._pysnmp_compat import CommunityData, SnmpEngine, UdpTransportTarget
 from .helpers import _detect_vendor
 from .http_scrape import _get_toners_via_http
 from .oids import (
+    OID_MARKER_LIFE_COUNT,
     OID_PRINTER_STATUS_BASE,
     OID_SYS_DESCR,
     PRINTER_STATUS_MAP,
@@ -83,10 +86,8 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
     status_text = "unknown"
     status_rows = await _snmp_walk(engine, target, comm, OID_PRINTER_STATUS_BASE)
     if status_rows:
-        try:
+        with contextlib.suppress(ValueError, TypeError):
             status_text = PRINTER_STATUS_MAP.get(int(status_rows[0][1]), "unknown")
-        except (ValueError, TypeError):
-            pass
 
     # Strategy 1: standard Printer MIB (RFC 3805)
     toners = await _get_standard_toners(engine, target, comm)
@@ -100,18 +101,16 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
             toners = await _get_ricoh_toners(engine, target, comm, toners)
 
     # Strategy 3: vendor-specific SNMP fallback
-    if not toners:
-        if vendor == "brother":
-            logger.debug("%s: standard MIB empty, trying Brother proprietary OIDs", ip_address)
-            toners = await _get_brother_toners(engine, target, comm)
+    if not toners and vendor == "brother":
+        logger.debug("%s: standard MIB empty, trying Brother proprietary OIDs", ip_address)
+        toners = await _get_brother_toners(engine, target, comm)
 
-    # Strategy 4: HTTP scraping (HP EWS XML, works even with restricted SNMP)
+    # Strategy 4: HTTP scraping (HP EWS XML, works even with restricted SNMP).
+    # Exactly once: a second identical attempt used to follow here, which for a
+    # printer without a web panel doubled the HTTP timeouts (2 URLs x http/https
+    # x 8 s) on every full cycle and never found anything the first one didn't.
     if not toners:
         logger.debug("%s: no SNMP toner data, trying HTTP scraping", ip_address)
-        toners = await asyncio.to_thread(_get_toners_via_http, ip_address)
-
-    # Strategy 5: HTTP fallback even when SNMP gives data but no toners found
-    if not toners:
         toners = await asyncio.to_thread(_get_toners_via_http, ip_address)
 
     if not toners:
@@ -127,6 +126,7 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
         toners=toners,
         sys_description=sys_descr,
         vendor=vendor,
+        page_count=await _read_page_count(engine, target, comm),
     )
     for toner in toners:
         match toner.color:
@@ -142,17 +142,38 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
     return result
 
 
+async def _read_page_count(engine: SnmpEngine, target: UdpTransportTarget, comm: CommunityData) -> int | None:
+    """Lifetime page count (prtMarkerLifeCount), or None if the printer has none.
+
+    Pages are a steadier measure of use than toner percent - a cartridge model
+    yields roughly the same pages wherever it is, while percent comes in 1 or
+    10 % steps or as "some left" (-3) - so the counter is recorded alongside
+    the levels for the forecast to learn from.
+    """
+    rows = await _snmp_walk(engine, target, comm, OID_MARKER_LIFE_COUNT)
+    counts = []
+    for _oid, value in rows:
+        try:
+            counts.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    # Several markers (colour devices with separate engines) each count; the
+    # largest is the device's own total. 0 means the counter isn't supported.
+    best = max(counts, default=0)
+    return best if best > 0 else None
+
+
 async def _measured(operation: str, coro) -> PrinterStatus:
+    started = perf_counter()
     try:
         result = await coro
     except Exception:
         snmp_operations_total.labels(operation=operation, result="error", reason="exception").inc()
+        snmp_poll_duration_seconds.labels(operation=operation, result="error").observe(perf_counter() - started)
         raise
-    snmp_operations_total.labels(
-        operation=operation,
-        result="success" if result.is_online else "offline",
-        reason="none",
-    ).inc()
+    outcome = "success" if result.is_online else "offline"
+    snmp_operations_total.labels(operation=operation, result=outcome, reason="none").inc()
+    snmp_poll_duration_seconds.labels(operation=operation, result=outcome).observe(perf_counter() - started)
     return result
 
 

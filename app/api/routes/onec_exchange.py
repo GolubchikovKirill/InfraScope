@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlmodel import select
+from sqlmodel import col, select
 
 from app.api.deps import SessionDep, get_current_active_superuser
 from app.domains.integrations.schemas import OneCExchangeByBarcodeRequest, OneCExchangeByBarcodeResponse
@@ -34,7 +34,7 @@ def _resolve_cash_register_targets(
     if not values:
         return []
 
-    rows = session.exec(select(CashRegister).where(column.in_(values))).all()
+    rows = session.exec(select(CashRegister).where(col(column).in_(values))).all()
     by_key: dict[str, CashRegister] = {}
     for row in rows:
         key_value = getattr(row, identifier_kind)
@@ -92,5 +92,4 @@ async def run_exchange_by_barcode(
         cash_register_targets=resolved_targets,
         source=payload.source,
     )
-    result_payload = result.to_dict() if hasattr(result, "to_dict") else result
-    return OneCExchangeByBarcodeResponse(**result_payload)
+    return OneCExchangeByBarcodeResponse(**result.to_dict())

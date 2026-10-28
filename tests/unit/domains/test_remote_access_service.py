@@ -527,6 +527,7 @@ def test_sync_from_console_clears_an_old_failure_once_the_client_runs_under_our_
 
     d = _dev(db_session, "VNA-SKD-14")
     assert d.deploy_state == "configured"
+    assert d.deploy_detail is not None
     assert "Ошибка снята автоматически" in d.deploy_detail and "Отказано в доступе" in d.deploy_detail
 
 
@@ -705,12 +706,14 @@ def test_apply_deploy_report_records_what_the_endpoint_said(db_session) -> None:
         rustdesk_id="VNA_MGR_301",
         version="1.4.9",
     )
+    assert dev is not None
     assert dev.deploy_state == "configured" and dev.installed_version == "1.4.9"
     assert dev.deploy_reported_at is not None
 
     dev = service.apply_deploy_report(
         db_session, hostname="VNA-MGR-301", state="failed", detail="msiexec exit 1603"
     )
+    assert dev is not None
     assert dev.deploy_state == "failed" and dev.deploy_detail == "msiexec exit 1603"
 
 
@@ -735,14 +738,14 @@ def test_verify_deploy_source_accepts_a_matching_last_ip(db_session) -> None:
 def test_verify_deploy_source_falls_back_to_dns_when_last_ip_is_unset(db_session, monkeypatch) -> None:
     dev = service.ensure_device(db_session, hostname="VNA-MGR-511")
     assert dev.last_ip is None
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.11" if h == "VNA-MGR-511" else None)
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.11" if h == "VNA-MGR-511" else None)
     assert service.verify_deploy_source(dev, "10.10.99.11") is True
 
 
 def test_verify_deploy_source_prefers_last_ip_over_a_stale_dns_record(db_session, monkeypatch) -> None:
     dev = service.ensure_device(db_session, hostname="VNA-MGR-512")
     dev.last_ip = "10.10.99.12"
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.254")
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.254")
     assert service.verify_deploy_source(dev, "10.10.99.12") is True
 
 
@@ -751,13 +754,13 @@ def test_verify_deploy_source_refuses_a_mismatched_caller(db_session, monkeypatc
     # used from some other machine to ask for this device's row
     dev = service.ensure_device(db_session, hostname="VNA-MGR-513")
     dev.last_ip = "10.10.99.13"
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.13")
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.13")
     assert service.verify_deploy_source(dev, "10.10.99.66") is False
 
 
 def test_verify_deploy_source_refuses_with_no_signal_at_all(db_session, monkeypatch) -> None:
     dev = service.ensure_device(db_session, hostname="VNA-MGR-514")
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: None)
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: None)
     assert service.verify_deploy_source(dev, "10.10.99.14") is False
 
 
@@ -897,6 +900,7 @@ def test_apply_deploy_report_records_edition_and_derives_applocker_support(db_se
         os_edition="Core",
         os_caption="Windows 10 Домашняя для одного языка",
     )
+    assert dev is not None
     assert dev.os_edition == "Core"
     assert dev.os_caption == "Windows 10 Домашняя для одного языка"
     assert dev.applocker_supported is False
@@ -904,6 +908,7 @@ def test_apply_deploy_report_records_edition_and_derives_applocker_support(db_se
     # a later report with no edition (e.g. a retry that failed before reading
     # it) must not erase what we already learned
     dev = service.apply_deploy_report(db_session, hostname="VNA-MGR-305", state="configured")
+    assert dev is not None
     assert dev.os_edition == "Core" and dev.applocker_supported is False
 
 
@@ -912,6 +917,7 @@ def test_apply_deploy_report_with_a_capable_edition(db_session) -> None:
     dev = service.apply_deploy_report(
         db_session, hostname="VNA-MGR-306", state="configured", os_edition="Professional"
     )
+    assert dev is not None
     assert dev.applocker_supported is True
 
 
@@ -966,6 +972,7 @@ def test_deploy_report_reaching_configured_clears_staleness(db_session) -> None:
     # the operator reruns the rollout; the script reapplies everything and
     # reports success again, which clears the staleness naturally
     dev = service.apply_deploy_report(db_session, hostname="VNA-MGR-311", state="configured")
+    assert dev is not None
     assert dev.deploy_state == "configured"
     assert service.readiness(dev) in ("ready", "installed_offline")
 
