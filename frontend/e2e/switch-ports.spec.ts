@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("switch ports modal supports safe write action", async ({ page }) => {
-  await page.route("**/api/v1/users/me", async (route) => {
+  await page.route("**/api/v1/auth/me", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -82,7 +82,7 @@ test("switch ports modal supports safe write action", async ({ page }) => {
   });
 
   await page.goto("/switches");
-  await expect(page.getByText("Сетевое оборудование")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Сетевое оборудование" })).toBeVisible();
   await page.getByRole("button", { name: "Порты свитча" }).click();
   await expect(page.getByText("Gi0/1")).toBeVisible();
   await page.getByRole("button", { name: "Down" }).click();

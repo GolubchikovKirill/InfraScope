@@ -29,10 +29,13 @@ def listening_port():
 
 @pytest.fixture
 def closed_port():
-    # Bound but not listening: the kernel answers a connect with RST
+    # A freed port: nothing bound, so the kernel answers a connect with RST.
+    # Bound-but-not-listening only does that on Linux; macOS drops the SYN
+    # and the probe times out instead.
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
-        yield sock.getsockname()[1]
+        port = sock.getsockname()[1]
+    yield port
 
 
 @pytest.mark.asyncio
