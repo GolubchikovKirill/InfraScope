@@ -735,14 +735,14 @@ def test_verify_deploy_source_accepts_a_matching_last_ip(db_session) -> None:
 def test_verify_deploy_source_falls_back_to_dns_when_last_ip_is_unset(db_session, monkeypatch) -> None:
     dev = service.ensure_device(db_session, hostname="VNA-MGR-511")
     assert dev.last_ip is None
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.11" if h == "VNA-MGR-511" else None)
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.11" if h == "VNA-MGR-511" else None)
     assert service.verify_deploy_source(dev, "10.10.99.11") is True
 
 
 def test_verify_deploy_source_prefers_last_ip_over_a_stale_dns_record(db_session, monkeypatch) -> None:
     dev = service.ensure_device(db_session, hostname="VNA-MGR-512")
     dev.last_ip = "10.10.99.12"
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.254")
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.254")
     assert service.verify_deploy_source(dev, "10.10.99.12") is True
 
 
@@ -751,13 +751,13 @@ def test_verify_deploy_source_refuses_a_mismatched_caller(db_session, monkeypatc
     # used from some other machine to ask for this device's row
     dev = service.ensure_device(db_session, hostname="VNA-MGR-513")
     dev.last_ip = "10.10.99.13"
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: "10.10.99.13")
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.13")
     assert service.verify_deploy_source(dev, "10.10.99.66") is False
 
 
 def test_verify_deploy_source_refuses_with_no_signal_at_all(db_session, monkeypatch) -> None:
     dev = service.ensure_device(db_session, hostname="VNA-MGR-514")
-    monkeypatch.setattr(service, "_resolve_hostname_ip", lambda h: None)
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: None)
     assert service.verify_deploy_source(dev, "10.10.99.14") is False
 
 
