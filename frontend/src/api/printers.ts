@@ -25,6 +25,9 @@ export interface Printer {
   toner_magenta_name: string | null;
   toner_yellow_name: string | null;
   toner_updated_at: string | null;
+  /** lifetime pages (SNMP prtMarkerLifeCount); absent where unsupported */
+  page_count?: number | null;
+  page_count_updated_at?: string | null;
   last_polled_at: string | null;
   offline_count_24h: number;
   created_at: string;
@@ -150,6 +153,40 @@ export async function getCartridgeDemand(horizonDays = 30) {
   const { data } = await api.get<{ horizon_days: number; data: CartridgeDemand[]; count: number }>(
     "/printers/cartridges/forecast",
     { params: { horizon_days: horizonDays } },
+  );
+  return data;
+}
+
+/** A cartridge swap detected by polling (a level jumping up by a refill's worth). */
+export interface CartridgeReplacement {
+  id: string;
+  printer_id: string | null;
+  store_name: string;
+  printer_model: string | null;
+  toner_color: string;
+  cartridge_name: string | null;
+  level_before: number;
+  level_after: number;
+  page_count: number | null;
+  previous_replaced_at: string | null;
+  /** life of the cartridge that came out; null for the first swap seen */
+  lifetime_days: number | null;
+  pages_printed: number | null;
+  replaced_at: string;
+}
+
+export interface CartridgeLifeStats {
+  cartridge_name: string;
+  toner_color: string;
+  replacements: number;
+  median_lifetime_days: number | null;
+  median_pages: number | null;
+}
+
+export async function getCartridgeReplacements(params: { printerId?: string; days?: number; limit?: number } = {}) {
+  const { data } = await api.get<{ data: CartridgeReplacement[]; count: number; stats: CartridgeLifeStats[] }>(
+    "/printers/replacements",
+    { params: { printer_id: params.printerId, days: params.days, limit: params.limit } },
   );
   return data;
 }

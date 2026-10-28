@@ -16,6 +16,8 @@ class MLFeatureSnapshot(SQLModel, table=True):
     toner_color: str | None = Field(default=None, max_length=16, index=True)
     toner_level: int | None = Field(default=None)
     toner_model: str | None = Field(default=None, max_length=128, index=True)
+    # Lifetime pages, on the printer's own (colourless) snapshot row
+    page_count: int | None = Field(default=None)
     source: str = Field(default="poll", max_length=32, index=True)
     hour_of_day: int = Field(default=0, index=True)
     day_of_week: int = Field(default=0, index=True)

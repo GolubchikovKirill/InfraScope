@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.redis import REDIS_ERRORS, get_redis
+from app.domains.inventory.cartridge_journal import detect_swaps, record_swaps, toner_levels
 from app.domains.inventory.models import Printer
 from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint_async
 from app.domains.inventory.schemas import PrintersPublic
@@ -311,10 +312,10 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
                 printer.mac_status = "unavailable"
                 printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="offline").inc()
             else:
-                _apply_full_printer_result(printer, result, current_mac)
+                _apply_full_printer_result(printer, result, current_mac, session=session)
                 printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="online").inc()
         else:
-            _apply_full_printer_result(printer, result, current_mac)
+            _apply_full_printer_result(printer, result, current_mac, session=session)
             printer_polls_total.labels(mode="single", printer_type=printer.printer_type, result="online").inc()
 
     printer.last_polled_at = datetime.now(UTC)
@@ -443,7 +444,7 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
                     # resilience layer's decision (which, for a genuine
                     # success, is always effective_online=True anyway).
                     if full:
-                        _apply_full_printer_result(printer, result, current_mac)
+                        _apply_full_printer_result(printer, result, current_mac, session=session)
                     else:
                         _apply_light_printer_result(printer, result)
                 elif not effective_online:
@@ -495,7 +496,12 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
                 logger.debug("Could not release poll lock %s: %s", lock_key, exc)
 
 
-def _apply_full_printer_result(printer: Printer, result, current_mac: str | None) -> None:
+def _apply_full_printer_result(
+    printer: Printer, result, current_mac: str | None, *, session: Session | None = None
+) -> None:
+    """Copy a full poll onto the printer. With a session, a cartridge swap the
+    new levels reveal is written to the replacement journal as well."""
+    levels_before = toner_levels(printer)
     printer.is_online = result.is_online
     printer.status = result.status
     # Only called when result.is_online is True (see callers), so there is
@@ -507,7 +513,15 @@ def _apply_full_printer_result(printer: Printer, result, current_mac: str | None
     printer.toner_magenta = result.toner_magenta
     printer.toner_yellow = result.toner_yellow
     printer.toner_updated_at = datetime.now(UTC)
+    page_count = getattr(result, "page_count", None)
+    if page_count is not None:
+        printer.page_count = page_count
+        printer.page_count_updated_at = printer.toner_updated_at
     printer.mac_status = verify_printer_mac(printer, current_mac)
+    if session is not None:
+        swaps = detect_swaps(levels_before, toner_levels(printer))
+        if swaps:
+            record_swaps(session, printer, swaps, page_count=page_count)
 
 
 def _apply_light_printer_result(printer: Printer, result) -> None:
@@ -562,7 +576,7 @@ async def _relocate_offline_printers(session: Session, offline_with_mac: list[Pr
                 printer.status = "online"
                 printer.reachability_reason = None
             else:
-                _apply_full_printer_result(printer, new_result, new_mac)
+                _apply_full_printer_result(printer, new_result, new_mac, session=session)
             logger.info(
                 "Auto-relocated %s: %s -> %s (MAC %s)",
                 printer.store_name,

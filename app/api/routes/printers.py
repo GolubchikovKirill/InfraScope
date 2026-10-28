@@ -1,5 +1,6 @@
 import logging
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -10,7 +11,8 @@ from sqlmodel import Session, col, func, select
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import conflict, not_found
 from app.core.db import engine
-from app.domains.inventory.models import CartridgeStock, Printer
+from app.domains.inventory.cartridge_journal import lifetime_stats
+from app.domains.inventory.models import CartridgeReplacement, CartridgeStock, Printer
 from app.domains.inventory.printer_polling import (
     PrinterNotFoundError,
     UnsupportedPrinterPollError,
@@ -22,6 +24,9 @@ from app.domains.inventory.schemas import (
     CartridgeDemandPublic,
     CartridgeDemandsPublic,
     CartridgeIssueRequest,
+    CartridgeLifeStatsPublic,
+    CartridgeReplacementPublic,
+    CartridgeReplacementsPublic,
     CartridgeStockCreate,
     CartridgeStockMovementPublic,
     CartridgeStockMovementsPublic,
@@ -182,6 +187,29 @@ def read_cartridge_stock(
     del current_user
     rows = list_cartridge_stock(session, search=search, include_inactive=include_inactive)
     return CartridgeStocksPublic(data=cast(list[CartridgeStockPublic], list(rows)), count=len(rows))
+
+
+@router.get("/replacements", response_model=CartridgeReplacementsPublic)
+def read_cartridge_replacements(
+    session: SessionDep,
+    current_user: CurrentUser,
+    printer_id: uuid.UUID | None = None,
+    days: int = Query(default=180, ge=1, le=730),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> CartridgeReplacementsPublic:
+    """Cartridge swaps detected by polling, newest first, with the measured life
+    of each cartridge model over the same window."""
+    del current_user
+    since = datetime.now(UTC) - timedelta(days=days)
+    statement = select(CartridgeReplacement).where(CartridgeReplacement.replaced_at >= since)
+    if printer_id is not None:
+        statement = statement.where(CartridgeReplacement.printer_id == printer_id)
+    rows = session.exec(statement.order_by(col(CartridgeReplacement.replaced_at).desc())).all()
+    return CartridgeReplacementsPublic(
+        data=[CartridgeReplacementPublic.model_validate(row) for row in rows[:limit]],
+        count=len(rows),
+        stats=[CartridgeLifeStatsPublic(**asdict(stat)) for stat in lifetime_stats(list(rows))],
+    )
 
 
 @router.get("/cartridges/forecast", response_model=CartridgeDemandsPublic)

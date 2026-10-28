@@ -42,6 +42,9 @@ class Printer(SQLModel, table=True):
     toner_magenta_name: str | None = Field(default=None, max_length=128)
     toner_yellow_name: str | None = Field(default=None, max_length=128)
     toner_updated_at: datetime | None = Field(default=None)
+    # Lifetime pages from SNMP prtMarkerLifeCount; None where unsupported
+    page_count: int | None = Field(default=None)
+    page_count_updated_at: datetime | None = Field(default=None)
     last_polled_at: datetime | None = Field(default=None)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -60,6 +63,31 @@ class CartridgeStock(SQLModel, table=True):
     last_synced_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
     updated_at: datetime | None = Field(default=None)
+
+
+class CartridgeReplacement(SQLModel, table=True):
+    """A cartridge swap seen by polling: a colour's level jumping up by a refill's worth.
+
+    Detected, not entered: nobody has to log a swap for it to be here. The
+    lifetime and pages of the cartridge that came *out* are measured from the
+    previous swap on the same printer and colour, so the first swap seen for a
+    printer has them empty.
+    """
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # Kept when the printer is deleted: the history is about the store too
+    printer_id: uuid.UUID | None = Field(default=None, foreign_key="printer.id", index=True, ondelete="SET NULL")
+    store_name: str = Field(max_length=255, index=True)
+    printer_model: str | None = Field(default=None, max_length=255)
+    toner_color: str = Field(max_length=16, index=True)
+    cartridge_name: str | None = Field(default=None, max_length=128, index=True)
+    level_before: int
+    level_after: int
+    page_count: int | None = Field(default=None)
+    previous_replaced_at: datetime | None = Field(default=None)
+    lifetime_days: float | None = Field(default=None)
+    pages_printed: int | None = Field(default=None)
+    replaced_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
 
 
 class CartridgeStockMovement(SQLModel, table=True):

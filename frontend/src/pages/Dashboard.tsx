@@ -4,6 +4,7 @@ import { RefreshCw, Plus, Search, Printer as PrinterIcon, Tag, Check, Archive } 
 import {
   getCartridgeStockMovements,
   getCartridgeDemand,
+  getCartridgeReplacements,
   getCartridgeStocks,
   getPrinters,
   getOfflineRiskPredictions,
@@ -30,6 +31,7 @@ import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
 import { useQueryParamState } from "../hooks/useQueryParamState";
 import PrinterForm from "../components/PrinterForm";
 import CartridgeStockPanel from "../components/CartridgeStockPanel";
+import CartridgeJournalPanel from "../components/CartridgeJournalPanel";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useConfirm } from "../components/ConfirmDialog";
 import PathSuspectBanner from "../components/PathSuspectBanner";
@@ -88,6 +90,12 @@ export default function Dashboard() {
   const { data: demandData } = useQuery({
     queryKey: ["cartridge-demand", DEMAND_HORIZON_DAYS],
     queryFn: () => getCartridgeDemand(DEMAND_HORIZON_DAYS),
+    enabled: activeTab === "cartridges",
+    staleTime: 5 * 60_000,
+  });
+  const { data: journalData, isLoading: isJournalLoading } = useQuery({
+    queryKey: ["cartridge-replacements"],
+    queryFn: () => getCartridgeReplacements({ limit: 50 }),
     enabled: activeTab === "cartridges",
     staleTime: 5 * 60_000,
   });
@@ -386,25 +394,32 @@ export default function Dashboard() {
 
       {/* Printer grid */}
       {activeTab === "cartridges" ? (
-        <CartridgeStockPanel
-          rows={cartridgeStocks}
-          movements={selectedMovementsData?.data ?? []}
-          loading={isStockLoading}
-          savingId={savingStockId}
-          selectedId={selectedStockId}
-          isSuperuser={isSuperuser}
-          onSelect={(id) => setSelectedStockId((current) => (current === id ? null : id))}
-          onAdjust={(id, quantity, minimum) => updateStockMut.mutate({ id, quantity, minimum })}
-          onIssue={(id) => issueStockMut.mutate(id)}
-          showArchived={showArchivedStock}
-          onToggleArchived={setShowArchivedStock}
-          cardSaving={saveStockCardMut.isPending}
-          cardError={stockCardError}
-          onSaveCard={(id, data) => saveStockCardMut.mutateAsync({ id, data })}
-          onArchive={(id) => archiveStockMut.mutate(id)}
-          demand={demandData?.data}
-          horizonDays={DEMAND_HORIZON_DAYS}
-        />
+        <>
+          <CartridgeStockPanel
+            rows={cartridgeStocks}
+            movements={selectedMovementsData?.data ?? []}
+            loading={isStockLoading}
+            savingId={savingStockId}
+            selectedId={selectedStockId}
+            isSuperuser={isSuperuser}
+            onSelect={(id) => setSelectedStockId((current) => (current === id ? null : id))}
+            onAdjust={(id, quantity, minimum) => updateStockMut.mutate({ id, quantity, minimum })}
+            onIssue={(id) => issueStockMut.mutate(id)}
+            showArchived={showArchivedStock}
+            onToggleArchived={setShowArchivedStock}
+            cardSaving={saveStockCardMut.isPending}
+            cardError={stockCardError}
+            onSaveCard={(id, data) => saveStockCardMut.mutateAsync({ id, data })}
+            onArchive={(id) => archiveStockMut.mutate(id)}
+            demand={demandData?.data}
+            horizonDays={DEMAND_HORIZON_DAYS}
+          />
+          <CartridgeJournalPanel
+            rows={journalData?.data ?? []}
+            stats={journalData?.stats ?? []}
+            loading={isJournalLoading}
+          />
+        </>
       ) : isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, index) => (

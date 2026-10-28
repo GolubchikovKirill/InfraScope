@@ -21,6 +21,10 @@ OID_MARKER_MAX = "1.3.6.1.2.1.43.11.1.1.8"  # prtMarkerSuppliesMaxCapacity
 OID_MARKER_LEVEL = "1.3.6.1.2.1.43.11.1.1.9"  # prtMarkerSuppliesLevel
 OID_MARKER_COLORANT_IDX = "1.3.6.1.2.1.43.11.1.1.3"  # prtMarkerSuppliesColorantIndex
 OID_COLORANT_VALUE = "1.3.6.1.2.1.43.12.1.1.4"  # prtMarkerColorantValue
+# prtMarkerLifeCount: pages (impressions) the marker has printed in the
+# printer's life. Walked, not got: the marker index is .1.1 on most models but
+# not all.
+OID_MARKER_LIFE_COUNT = "1.3.6.1.2.1.43.10.2.1.4"
 
 # RFC 3805 prtMarkerSuppliesType values — consumable types we track
 _CONSUMABLE_SUPPLY_TYPES: frozenset[int] = frozenset(
@@ -146,6 +150,7 @@ class PrinterStatus:
     toner_yellow: int | None = None
     sys_description: str | None = None
     vendor: str | None = None
+    page_count: int | None = None
 
 
 # Regex patterns for cartridge model numbers ending with a color code.

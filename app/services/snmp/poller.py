@@ -11,6 +11,7 @@ from ._pysnmp_compat import CommunityData, SnmpEngine, UdpTransportTarget
 from .helpers import _detect_vendor
 from .http_scrape import _get_toners_via_http
 from .oids import (
+    OID_MARKER_LIFE_COUNT,
     OID_PRINTER_STATUS_BASE,
     OID_SYS_DESCR,
     PRINTER_STATUS_MAP,
@@ -125,6 +126,7 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
         toners=toners,
         sys_description=sys_descr,
         vendor=vendor,
+        page_count=await _read_page_count(engine, target, comm),
     )
     for toner in toners:
         match toner.color:
@@ -138,6 +140,27 @@ async def _poll_printer_async_inner(engine: SnmpEngine, ip_address: str, communi
                 result.toner_yellow = toner.level_pct
 
     return result
+
+
+async def _read_page_count(engine: SnmpEngine, target: UdpTransportTarget, comm: CommunityData) -> int | None:
+    """Lifetime page count (prtMarkerLifeCount), or None if the printer has none.
+
+    Pages are a steadier measure of use than toner percent - a cartridge model
+    yields roughly the same pages wherever it is, while percent comes in 1 or
+    10 % steps or as "some left" (-3) - so the counter is recorded alongside
+    the levels for the forecast to learn from.
+    """
+    rows = await _snmp_walk(engine, target, comm, OID_MARKER_LIFE_COUNT)
+    counts = []
+    for _oid, value in rows:
+        try:
+            counts.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    # Several markers (colour devices with separate engines) each count; the
+    # largest is the device's own total. 0 means the counter isn't supported.
+    best = max(counts, default=0)
+    return best if best > 0 else None
 
 
 async def _measured(operation: str, coro) -> PrinterStatus:

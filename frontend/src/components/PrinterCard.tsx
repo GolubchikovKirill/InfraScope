@@ -168,13 +168,19 @@ function PrinterCard({
 
         {/* Address line + warnings. The flapping hint used to sit under the
             status badge, where it squeezed the title down to "Brother …". */}
-        {(printer.ip_address || printer.host_pc) && (
+        {(printer.ip_address || printer.host_pc || printer.page_count != null) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 app-card-meta">
             {printer.ip_address && <span className="app-mono">{printer.ip_address}</span>}
             {printer.host_pc && (
               <span>
                 <span className="text-[var(--text-faint)]">ПК:</span>{" "}
                 <span className="app-mono text-[var(--text-muted)]">{printer.host_pc}</span>
+              </span>
+            )}
+            {printer.page_count != null && (
+              <span title="Отпечатано страниц за всё время (счётчик принтера)">
+                <span className="app-mono text-[var(--text-muted)]">{printer.page_count.toLocaleString("ru-RU")}</span>{" "}
+                <span className="text-[var(--text-faint)]">стр.</span>
               </span>
             )}
           </div>

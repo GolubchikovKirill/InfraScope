@@ -11,6 +11,9 @@ __all__ = [
     "CartridgeDemandPublic",
     "CartridgeDemandsPublic",
     "CartridgeIssueRequest",
+    "CartridgeLifeStatsPublic",
+    "CartridgeReplacementPublic",
+    "CartridgeReplacementsPublic",
     "CartridgeStockCreate",
     "CartridgeStockMovementPublic",
     "CartridgeStockMovementsPublic",
@@ -208,6 +211,8 @@ class PrinterPublic(BaseModel):
     toner_magenta_name: str | None = None
     toner_yellow_name: str | None = None
     toner_updated_at: datetime | None = None
+    page_count: int | None = None
+    page_count_updated_at: datetime | None = None
     last_polled_at: datetime | None = None
     offline_count_24h: int = 0
     created_at: datetime
@@ -251,6 +256,38 @@ class CartridgeDemandPublic(BaseModel):
     to_order: int
     next_due_days: float | None = None
     printers: list[str]
+
+
+class CartridgeReplacementPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    printer_id: uuid.UUID | None = None
+    store_name: str
+    printer_model: str | None = None
+    toner_color: str
+    cartridge_name: str | None = None
+    level_before: int
+    level_after: int
+    page_count: int | None = None
+    previous_replaced_at: datetime | None = None
+    lifetime_days: float | None = None
+    pages_printed: int | None = None
+    replaced_at: datetime
+
+
+class CartridgeLifeStatsPublic(BaseModel):
+    cartridge_name: str
+    toner_color: str
+    replacements: int
+    median_lifetime_days: float | None = None
+    median_pages: int | None = None
+
+
+class CartridgeReplacementsPublic(BaseModel):
+    data: list[CartridgeReplacementPublic]
+    count: int
+    stats: list[CartridgeLifeStatsPublic]
 
 
 class CartridgeDemandsPublic(BaseModel):
