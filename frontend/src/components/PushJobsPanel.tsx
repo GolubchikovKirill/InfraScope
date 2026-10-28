@@ -51,8 +51,8 @@ function JobRow({ job, onCancel, cancelling }: { job: PushJob; onCancel: (id: st
   );
 }
 
-/** The network-push queue: who is waiting, who is being done, how the last ones ended, and whether a
- *  runner (the script on a Windows admin machine that actually does the pushing) is connected. */
+/** The network-push queue: who is waiting, who is being done, how the last ones ended, and whether the
+ *  server is configured to run pushes itself (WinRM credentials set). */
 export default function PushJobsPanel() {
   const qc = useQueryClient();
   const [showHelp, setShowHelp] = useState(false);
@@ -77,7 +77,7 @@ export default function PushJobsPanel() {
   const jobs = data?.data ?? [];
   const waiting = jobs.filter((j) => j.state === "queued").length;
   const running = jobs.filter((j) => j.state === "running").length;
-  const runner = data?.runner;
+  const configured = data?.configured ?? true; // unknown yet - don't flash "not configured" on first load
 
   return (
     <section className="app-panel overflow-hidden" aria-label="Раскатка по сети">
@@ -94,19 +94,19 @@ export default function PushJobsPanel() {
           )}
         </div>
         <div className="flex items-center gap-3 text-xs">
-          {runner?.online ? (
+          {configured ? (
             <span className="inline-flex items-center gap-1.5 text-emerald-700">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              раннер {runner.name} на связи
+              сетевой push настроен
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-slate-600">
               <span className="h-2 w-2 rounded-full bg-slate-400" />
-              {runner?.name ? `раннер ${runner.name} не отвечает (${relTime(new Date(Date.now() - (runner.seconds_ago ?? 0) * 1000).toISOString())})` : "раннер не подключён"}
+              сетевой push не настроен
             </span>
           )}
           <button type="button" className="text-[var(--brand)] hover:underline" onClick={() => setShowHelp((v) => !v)} aria-expanded={showHelp}>
-            Как подключить раннер
+            Как это работает
           </button>
         </div>
       </div>
@@ -114,15 +114,13 @@ export default function PushJobsPanel() {
       {showHelp && (
         <div className="space-y-2 border-b border-slate-200 bg-sky-50 px-4 py-3 text-xs text-slate-700">
           <p>
-            Сервер сам ничего не запускает на машинах. Задания выполняет раннер: скрипт на Windows-машине админа (под учёткой с
-            правами локального админа на целевых машинах), он берёт задания отсюда и запускает <code className="app-mono">Push-RustDesk.ps1</code>.
+            Сервер сам подключается к машине по WinRM (под сервисной учёткой, заданной в <code className="app-mono">.env</code> как{" "}
+            <code className="app-mono">WINRM_ADMIN_USERNAME</code> / <code className="app-mono">WINRM_ADMIN_PASSWORD</code>) и
+            запускает ту же команду установки, что и при раскатке через GPO — никакой отдельный раннер не нужен.
           </p>
-          <pre className="app-mono whitespace-pre-wrap break-all rounded bg-white p-2 text-[11px]">
-            {`.\\deploy-runner\\Run-PushRunner.ps1 -Server ${typeof window !== "undefined" ? window.location.origin : "https://<сервер>"} -Token <RUSTDESK_RUNNER_TOKEN> -SkipCertCheck`}
-          </pre>
           <p>
-            Токен — <code className="app-mono">RUSTDESK_RUNNER_TOKEN</code> из <code className="app-mono">.env</code> сервера (если не задан, подходит{" "}
-            <code className="app-mono">RUSTDESK_DEPLOY_TOKEN</code>). Окно оставьте открытым, пока нужны раскатки. Подробности: docs/rustdesk-deployment.md.
+            На машине должен быть включён WinRM (по умолчанию выключен) — см.{" "}
+            <code className="app-mono">rustdesk-push/Enable-WinRM-GPO.ps1</code>. Подробности: docs/rustdesk-deployment.md.
           </p>
         </div>
       )}

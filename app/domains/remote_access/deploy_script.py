@@ -141,9 +141,13 @@ def deploy_command(api_prefix: str = "/api/v1") -> str:
         "$m=$_.Exception.Message; $hint='';"
         "if($m -match 'SecurityProtocolType'){"
         "$hint=' -- PowerShell/.NET here is too old for TLS1.2 (CLR '+[Environment]::Version+"
-        "'); roll out with rustdesk-ksc/Push-RustDesk.ps1 from an admin workstation instead, it makes no outbound HTTPS call'};"
+        "'); roll out with rustdesk-push/Push-RustDesk.ps1 from an admin workstation instead, it makes no outbound HTTPS call'};"
         "Add-Content (Join-Path $d 'rustdesk-configure.log') "
-        "((Get-Date -Format o)+'  BOOTSTRAP FAILED before config fetch: '+$m+$hint)"
+        "((Get-Date -Format o)+'  BOOTSTRAP FAILED before config fetch: '+$m+$hint);"
+        # A GPO startup script ignores this; a WinRM-triggered push (push_jobs.py)
+        # reads it as the command's own exit code to tell success from failure -
+        # without it this branch previously returned 0 either way.
+        "exit 1"
         '}"'
     )
 
@@ -353,7 +357,7 @@ try {
         # only) - Set-AppLockerPolicy validates the XML against that schema and
         # rejects the whole policy on a bad one. Caught live on VNA-MGR-15: the
         # earlier "...infrascope01" id has letters outside a-f, so every prior
-        # rollout (this script and the offline rustdesk-ksc/configure.ps1) that
+        # rollout (this script and the offline rustdesk-push/configure.ps1) that
         # asked for block_outgoing silently never got it - "AppLocker step
         # skipped" in the log, with no indication it was a fixable bug.
         try {

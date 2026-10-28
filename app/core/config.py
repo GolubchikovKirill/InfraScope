@@ -188,9 +188,6 @@ class Settings(BaseSettings):
     # Shared secret the endpoint script presents (X-InfraScope-Deploy-Token).
     # Empty disables every /remote-access/deploy/* route.
     RUSTDESK_DEPLOY_TOKEN: str = ""
-    # Secret the Windows push runner presents (X-InfraScope-Runner-Token). Falls back to the
-    # deploy token when unset, so an install that already rolls out keeps working.
-    RUSTDESK_RUNNER_TOKEN: str = ""
     # How an endpoint reaches this API, e.g. http://10.10.99.24:8000
     RUSTDESK_PUBLIC_URL: str = ""
     # SHA1 thumbprint (uppercase, no separators - .NET X509Certificate.GetCertHashString()
@@ -202,6 +199,25 @@ class Settings(BaseSettings):
     # silent bypass. Get the current one with:
     #   openssl s_client -connect <host>:443 -servername <host> </dev/null | openssl x509 -noout -fingerprint -sha1
     RUSTDESK_TLS_FINGERPRINT: str = "278E05F8AF0AEECE0002C52CFD378C170FF5E513"
+
+    # --- network push: the server rolls a managed device's install out itself over
+    # WinRM (PowerShell remoting) instead of a Windows admin host running the push kit
+    # over SMB admin-share + WMI/DCOM. The latter is the exact technique security
+    # tooling (and credential/lateral-movement toolkits such as impacket's wmiexec)
+    # is built around, and gets blocked on sight; WinRM is the sanctioned remote-admin
+    # protocol - the Windows equivalent of SSH, and what Ansible uses for the same job.
+    # It has to be switched on explicitly on each target (off by default); see
+    # rustdesk-push/Enable-WinRM-GPO.ps1. One fleet-wide service account, the same
+    # shape as RUSTDESK_ADMIN_USERNAME above - not per-device.
+    WINRM_ADMIN_USERNAME: str = ""
+    WINRM_ADMIN_PASSWORD: str = ""
+    WINRM_PORT: int = 5985
+    WINRM_USE_SSL: bool = False
+    WINRM_TRANSPORT: str = "ntlm"  # ntlm | kerberos | credssp
+    # Per-poll wait inside one WinRM call; pywinrm loops Receive requests until the
+    # remote command exits, so this bounds latency per poll, not the push as a whole.
+    # A RustDesk install (download + msiexec + configure) can run a few minutes.
+    WINRM_OPERATION_TIMEOUT_SECONDS: int = 60
 
     INTERNAL_HTTP_TIMEOUT_SECONDS: float = 30.0
     INTERNAL_HTTP_RETRIES: int = 1

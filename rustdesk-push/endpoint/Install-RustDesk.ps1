@@ -1,7 +1,7 @@
 # Install-RustDesk.ps1 - RustDesk install + configure for Windows 7 AND Windows 10/11.
 #
 # Runs ON the endpoint (elevated / SYSTEM). Normally started by Push-RustDesk.ps1,
-# which copies this file, the installer and rustdesk-ksc.json into one folder
+# which copies this file, the installer and rustdesk.json into one folder
 # and launches it over WMI. It can also be run by hand from that folder.
 #
 # NEVER REBOOTS AND NEVER REQUIRES A REBOOT:
@@ -18,8 +18,8 @@
 #   Windows 7 or 32-bit -> installer_exe32 (32-bit sciter build, --silent-install)
 #   Windows XP          -> unsupported by RustDesk, exits with code 3.
 #
-# Config: rustdesk-ksc.json next to this script (same file as the offline KSC
-# package, see rustdesk-ksc.example.json). Profiles are just the three flags:
+# Config: rustdesk.json next to this script (same file as the offline
+# package, see rustdesk.example.json). Profiles are just the three flags:
 #   client (kiosk/till):  hidden=true  unattended=true   (tray hidden, password only)
 #   admin (engineer PC):  hidden=false unattended=false  (tray visible, accept prompt)
 #
@@ -43,8 +43,8 @@ $rid = ($env:COMPUTERNAME -replace '[^A-Za-z0-9]', '_')
 if ($rid.Length -gt 32) { $rid = $rid.Substring(0, 32) }
 
 # ---- config (PS 2.0 has no ConvertFrom-Json: plain values are read by regex) ----
-$cfgPath = Join-Path $kit 'rustdesk-ksc.json'
-if (-not (Test-Path $cfgPath)) { Done 1 'FAIL rustdesk-ksc.json is missing next to the script' }
+$cfgPath = Join-Path $kit 'rustdesk.json'
+if (-not (Test-Path $cfgPath)) { Done 1 'FAIL rustdesk.json is missing next to the script' }
 $json = [IO.File]::ReadAllText($cfgPath)
 function Get-Str($name) {
     $m = [regex]::Match($json, '"' + $name + '"\s*:\s*"([^"]*)"')
@@ -63,10 +63,15 @@ $key = Get-Str 'key'
 $pw = Get-Str 'permanent_password'
 $hidden = Get-Bool 'hidden' $true
 $unattended = Get-Bool 'unattended' $true
-$msiName = Get-Str 'installer_msi'; if (-not $msiName) { $msiName = 'rustdesk-1.4.9-x86_64.msi' }
-$exeName = Get-Str 'installer_exe32'; if (-not $exeName) { $exeName = 'rustdesk-1.4.9-x86-sciter.exe' }
-if (-not $idServer -or -not $key) { Done 1 'FAIL id_server / key missing in rustdesk-ksc.json' }
-if ($unattended -and -not $pw) { Done 1 'FAIL unattended profile needs permanent_password in rustdesk-ksc.json' }
+$msiName = Get-Str 'installer_msi'; if (-not $msiName) { $msiName = 'rustdesk-1.5.0-x86_64.msi' }
+$exeName = Get-Str 'installer_exe32'; if (-not $exeName) { $exeName = 'rustdesk-1.5.0-x86-sciter.exe' }
+# upgrade_only: put the new RustDesk build over the installed one and touch nothing else -
+# ID, password, options and shortcuts stay exactly as they are (no key / password needed).
+$upgradeOnly = Get-Bool 'upgrade_only' $false
+if (-not $upgradeOnly) {
+    if (-not $idServer -or -not $key) { Done 1 'FAIL id_server / key missing in rustdesk.json' }
+    if ($unattended -and -not $pw) { Done 1 'FAIL unattended profile needs permanent_password in rustdesk.json' }
+}
 
 # ---- OS ----
 $os = Get-WmiObject Win32_OperatingSystem
@@ -108,6 +113,150 @@ function Wait-Svc($seconds) {
         if ($e -and (Test-Path $e)) { return $e }
     }
     return $null
+}
+
+function Get-ExeVersion($path) {
+    $m = [regex]::Match([string](Get-Item $path).VersionInfo.FileVersion, '^\d+(\.\d+){1,3}')
+    if ($m.Success) { return [version]$m.Value }
+    return $null
+}
+
+# ---- upgrade only: new build over the old one, configuration left alone ----
+if ($upgradeOnly) {
+    $exe = Get-SvcExe
+    if (-not $exe -or -not (Test-Path $exe)) { Done 5 'FAIL upgrade_only: RustDesk is not installed here, nothing to upgrade' }
+    $wantVerRaw = Get-Str 'installer_version'
+    if (-not $wantVerRaw) { Done 1 'FAIL upgrade_only needs installer_version in rustdesk.json' }
+    $wantVer = [version]$wantVerRaw
+    $haveVer = Get-ExeVersion $exe
+    L "upgrade_only: installed=$haveVer target=$wantVer exe=$exe"
+    if ($haveVer -and $haveVer -ge $wantVer) { Done 0 "OK already $haveVer, nothing to do" }
+
+    # snapshot the service configs (and where the shortcuts stand) so the upgrade can be checked
+    $cfgDirs = @("$env:WINDIR\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config",
+                 "$env:WINDIR\System32\config\systemprofile\AppData\Roaming\RustDesk\config")
+    $snap = @{}
+    $bakRoot = Join-Path $logDir ('rustdesk-preupgrade-' + (Get-Date).ToString('yyyyMMdd-HHmmss'))
+    $i = 0
+    foreach ($d in $cfgDirs) {
+        $i++
+        foreach ($n in @('RustDesk.toml', 'RustDesk2.toml')) {
+            $f = Join-Path $d $n
+            if (Test-Path $f) {
+                $snap[$f] = [IO.File]::ReadAllBytes($f)
+                $b = Join-Path $bakRoot ([string]$i)
+                if (-not (Test-Path $b)) { New-Item -ItemType Directory -Force -Path $b | Out-Null }
+                Copy-Item $f (Join-Path $b $n) -Force
+            }
+        }
+    }
+    function Get-Lnks {
+        $r = @()
+        Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $r += @(Get-ChildItem ($_.FullName + '\Desktop') -Filter 'RustDesk*.lnk' -ErrorAction SilentlyContinue)
+        }
+        $r += @(Get-ChildItem 'C:\Users\Public\Desktop' -Filter 'RustDesk*.lnk' -ErrorAction SilentlyContinue)
+        $r += @(Get-ChildItem ($env:ProgramData + '\Microsoft\Windows\Start Menu\Programs') -Filter 'RustDesk*' -ErrorAction SilentlyContinue)
+        return $r
+    }
+    $lnkBefore = @(Get-Lnks).Count
+    L "config snapshot: $($snap.Count) file(s) in $bakRoot, shortcuts before: $lnkBefore"
+
+    # An MSI refuses to go over a RustDesk that was put on by its own installer (it fails with
+    # 1603, "BlockSelfInstalledApp") and that kind has an "Uninstall\RustDesk" key of its own;
+    # such a machine gets the self-installing x64 exe instead, which updates in place.
+    $selfInstalled = $false
+    if (-not $legacy) {
+        foreach ($k in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\RustDesk',
+                         'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\RustDesk')) {
+            $u = Get-ItemProperty $k -ErrorAction SilentlyContinue
+            if ($u -and $u.WindowsInstaller -ne 1) { $selfInstalled = $true }
+        }
+    }
+    if ($selfInstalled) {
+        $exe64Name = Get-Str 'installer_exe64'; if (-not $exe64Name) { $exe64Name = 'rustdesk-1.5.0-x86_64.exe' }
+        $inst = Join-Path $kit $exe64Name
+        $instName = $exe64Name
+        if (-not (Test-Path $inst)) { Done 1 "FAIL installer $exe64Name is missing next to the script (this machine was not installed from an MSI)" }
+        $want64 = (Get-Str 'installer_exe64_sha256').ToLower()
+        if ($want64) {
+            $sha = [Security.Cryptography.SHA256]::Create(); $fs = [IO.File]::OpenRead($inst)
+            try { $have64 = ([BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-', '').ToLower() } finally { $fs.Close() }
+            if ($have64 -ne $want64) { Done 1 "FAIL installer sha256 mismatch: $have64" }
+        }
+        L "self-installed RustDesk: using $exe64Name instead of the msi"
+    }
+
+    Stop-RD
+    if ($legacy -or $selfInstalled) {
+        L "upgrading (self-installer): $instName --silent-install"
+        Start-Process -FilePath $inst -ArgumentList '--silent-install' | Out-Null
+    } else {
+        L "upgrading (msi): $instName /qn /norestart"
+        $msiArgs = @('/i', ('"' + $inst + '"'), '/qn', '/norestart', 'CREATESTARTMENUSHORTCUTS=N',
+                     'CREATEDESKTOPSHORTCUTS=N', 'INSTALLPRINTER=N', '/l*v', ('"' + (Join-Path $kit 'rustdesk-msi.log') + '"'))
+        $p = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+        if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { Done 2 "FAIL msiexec exit $($p.ExitCode)" }
+    }
+    # the legacy installer does not wait for itself: poll until the new build is on disk
+    $exe = $null
+    $now = $null
+    for ($k = 0; $k -lt 40; $k++) {
+        Start-Sleep 3
+        $exe = Get-SvcExe
+        if ($exe -and (Test-Path $exe)) {
+            $now = Get-ExeVersion $exe
+            if ($now -and $now -ge $wantVer) { break }
+        }
+    }
+    if (-not $exe -or -not $now -or $now -lt $wantVer) {
+        # MSI can leave the files without registering the service - register it
+        $cand = @("$env:ProgramFiles\RustDesk\RustDesk.exe", "${env:ProgramFiles(x86)}\RustDesk\RustDesk.exe") | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+        if ($cand -and -not (Get-SvcExe)) {
+            L "service missing after upgrade, registering: $cand --install-service"
+            Start-Process -FilePath $cand -ArgumentList '--install-service' -WindowStyle Hidden | Out-Null
+            Start-Sleep 10
+            $exe = Get-SvcExe
+            if ($exe -and (Test-Path $exe)) { $now = Get-ExeVersion $exe }
+        }
+    }
+    if (-not $exe -or -not $now -or $now -lt $wantVer) { Done 2 "FAIL upgrade did not take: version now=$now, wanted $wantVer" }
+    Start-Sleep 5
+
+    # the installer may have started the service / a UI: stop, put any changed config back, start
+    Stop-RD
+    $restored = 0
+    foreach ($f in @($snap.Keys)) {
+        $same = $false
+        if (Test-Path $f) {
+            $cur = [IO.File]::ReadAllBytes($f)
+            $same = ($cur.Length -eq $snap[$f].Length) -and ([BitConverter]::ToString($cur) -eq [BitConverter]::ToString($snap[$f]))
+        }
+        if (-not $same) { [IO.File]::WriteAllBytes($f, $snap[$f]); $restored++ }
+    }
+    L "config files restored after upgrade: $restored"
+    & sc.exe start RustDesk | Out-Null
+    Start-Sleep 8
+
+    # shortcuts: leave things as they were
+    if ($lnkBefore -eq 0) {
+        $n = 0
+        @(Get-Lnks) | ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue; $n++ }
+        L "shortcuts the installer created removed: $n"
+    }
+
+    # the session-0 UI/tray a WMI-started installer leaves behind: close it, keep the service
+    Get-WmiObject Win32_Process -Filter "Name='RustDesk.exe'" | Where-Object {
+        $_.SessionId -eq 0 -and $_.CommandLine -notmatch '--service|--server'
+    } | ForEach-Object { [void]$_.Terminate() }
+
+    $s = Get-WmiObject Win32_Service -Filter "Name='RustDesk'"
+    $enc = $false
+    $lsToml = Join-Path $cfgDirs[0] 'RustDesk.toml'
+    if ((Test-Path $lsToml) -and (Select-String -Path $lsToml -Pattern '^\s*(enc_id|id)\s*=' -Quiet)) { $enc = $true }
+    $state = "svc=$($s.State)/$($s.StartMode) version $haveVer -> $now, id kept=$enc, config untouched"
+    if ($s.State -eq 'Running') { Done 0 "OK upgraded $state" }
+    Done 4 "WARN upgraded but the service is not running: $state"
 }
 
 # ---- install (skipped when the service is already there) ----

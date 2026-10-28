@@ -17,9 +17,12 @@ machine is actually reachable right now.
   records the rollout state each endpoint reports.
 
 * `deploy_script` renders the PowerShell an endpoint runs to install and
-  configure itself. The endpoint pulls; the server never remote-executes on the
-  fleet itself - from a Linux box that is indistinguishable from lateral movement
-  and gets blocked. Pushing over the network is done from a Windows admin host with
-  the push kit; `push_jobs` is the queue the app fills and a runner script there works
-  off (`deploy-runner/Run-PushRunner.ps1`). See docs/rustdesk-deployment.md.
+  configure itself, for the GPO/pull rollout and (triggered remotely, see
+  below) for a network push alike.
+
+* `push_jobs` queues "roll this out to device X now" and runs it over WinRM
+  (`winrm_exec`) - the sanctioned Windows remote-admin protocol, not SMB
+  admin-share + WMI/DCOM execution (what the push kit historically used from a
+  separate Windows admin host; that technique is what EDR correlates with
+  lateral movement). See docs/rustdesk-deployment.md.
 """

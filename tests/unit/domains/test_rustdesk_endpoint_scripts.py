@@ -1,4 +1,4 @@
-"""Static guards for the operator-side RustDesk push tooling (rustdesk-ksc/).
+"""Static guards for the operator-side RustDesk push tooling (rustdesk-push/).
 
 The scripts are PowerShell and cannot run in CI, so these tests pin the two
 properties that matter and are easy to break by accident:
@@ -13,9 +13,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-KSC = Path(__file__).resolve().parents[3] / "rustdesk-ksc"
-ENDPOINT = (KSC / "endpoint" / "Install-RustDesk.ps1").read_text(encoding="utf-8")
-PUSH = (KSC / "Push-RustDesk.ps1").read_text(encoding="utf-8")
+KIT = Path(__file__).resolve().parents[3] / "rustdesk-push"
+ENDPOINT = (KIT / "endpoint" / "Install-RustDesk.ps1").read_text(encoding="utf-8")
+PUSH = (KIT / "Push-RustDesk.ps1").read_text(encoding="utf-8")
 
 
 def _code(text: str) -> str:

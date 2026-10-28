@@ -201,7 +201,7 @@ class AddressBookStatus(BaseModel):
 
 
 class PackageConfig(BaseModel):
-    """What an offline package or the push kit needs (`rustdesk-ksc/configure.ps1`)."""
+    """What an offline package or the push kit needs (`rustdesk-push/configure.ps1`)."""
 
     hostname: str
     rustdesk_id: str
@@ -350,7 +350,7 @@ class AddressBookEntry(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
-# push over the network (run by a Windows runner, never by this server)        #
+# push over the network (the backend itself, over WinRM - see push_jobs.py)   #
 # --------------------------------------------------------------------------- #
 class PushRequest(BaseModel):
     """Queue a network push for these devices."""
@@ -373,7 +373,6 @@ class PushJobPublic(BaseModel):
     state: str
     detail: str | None = None
     requested_by: str | None = None
-    runner: str | None = None
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -389,38 +388,8 @@ class PushEnqueueResult(BaseModel):
     skipped: list[PushSkipped]
 
 
-class RunnerStatus(BaseModel):
-    name: str | None = None
-    seconds_ago: int | None = None
-    online: bool = False
-
-
 class PushJobsPublic(BaseModel):
     data: list[PushJobPublic]
     count: int
-    runner: RunnerStatus
-
-
-class RunnerClaimRequest(BaseModel):
-    runner: str = Field(min_length=1, max_length=64)
-    limit: int = Field(default=3, ge=1, le=10)
-
-
-class RunnerJob(BaseModel):
-    id: uuid.UUID
-    hostname: str
-    profile: str
-    dry_run: bool
-    # what the kit's -ConfigPath file should hold for this machine (id, password, servers, key)
-    config: dict[str, Any]
-
-
-class RunnerClaimResponse(BaseModel):
-    jobs: list[RunnerJob]
-
-
-class RunnerReport(BaseModel):
-    job_id: uuid.UUID
-    result: Literal["ok", "warn", "failed", "skipped", "dry_run"]
-    detail: str | None = Field(default=None, max_length=4000)
-    os_caption: str | None = Field(default=None, max_length=128)
+    # WINRM_ADMIN_USERNAME/PASSWORD are set, i.e. /push would not 503
+    configured: bool
