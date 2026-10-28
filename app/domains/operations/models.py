@@ -8,7 +8,7 @@ from sqlmodel import Field, SQLModel
 
 
 class EventLog(SQLModel, table=True):
-    # Mirrors alembic d4e5f6a7b8c9: per-device status history lookups.
+    # Mirrors alembic cd71924bb6d0: per-device status history lookups.
     __table_args__ = (Index("ix_eventlog_kind_type_created", "device_kind", "event_type", "created_at", "device_name"),)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
