@@ -41,6 +41,27 @@ export interface HonestSignInitializeResult extends HonestSignTarget {
   checked_at: string;
 }
 
+export interface HonestSignCashRegisterLink {
+  cash_register_id: string;
+  target: HonestSignTarget;
+  status: HonestSignStatus | null;
+}
+
+export interface HonestSignCashRegistersResponse {
+  data: HonestSignCashRegisterLink[];
+  unmatched_targets: HonestSignTarget[];
+  ambiguous_hostnames: string[];
+  status_configured: boolean;
+  initialization_configured: boolean;
+  auto_check_enabled: boolean;
+  auto_check_interval_minutes: number;
+}
+
+export async function getHonestSignCashRegisters() {
+  const { data } = await api.get<HonestSignCashRegistersResponse>("/honest-sign/cash-registers");
+  return data;
+}
+
 export async function getHonestSignTargets() {
   const { data } = await api.get<HonestSignTargetsResponse>("/honest-sign/targets");
   return data;

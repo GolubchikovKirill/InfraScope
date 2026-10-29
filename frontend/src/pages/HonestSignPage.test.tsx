@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -24,7 +25,7 @@ import HonestSignPage from "./HonestSignPage";
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={queryClient}><HonestSignPage /></QueryClientProvider>);
+  return render(<MemoryRouter><QueryClientProvider client={queryClient}><HonestSignPage /></QueryClientProvider></MemoryRouter>);
 }
 
 describe("HonestSignPage", () => {

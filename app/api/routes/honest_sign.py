@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
 from app.domains.integrations.schemas import (
+    HonestSignCashRegisterLink,
+    HonestSignCashRegistersPublic,
     HonestSignInitializePublic,
     HonestSignStatusesPublic,
     HonestSignStatusPublic,
@@ -21,6 +23,7 @@ from app.services.honest_sign import (
     get_configured_target,
     initialization_configuration_ready,
     initialize_honest_sign_target,
+    link_cash_registers,
     set_target_ip_override,
     status_configuration_ready,
     stored_statuses,
@@ -34,6 +37,12 @@ def _target_or_404(session: SessionDep, host: str):
         return get_configured_target(session, host)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Honest Sign target not found") from exc
+
+
+def _target_public(target) -> HonestSignTargetPublic:
+    return HonestSignTargetPublic(
+        host=target.host, label=target.label, hostname=target.hostname, original_host=target.original_host
+    )
 
 
 def _configuration_error(exc: HonestSignConfigurationError) -> HTTPException:
@@ -52,6 +61,33 @@ def read_targets(session: SessionDep, current_user: CurrentUser) -> HonestSignTa
     return HonestSignTargetsPublic(
         data=rows,
         count=len(rows),
+        status_configured=status_configuration_ready(),
+        initialization_configured=initialization_configuration_ready(),
+        auto_check_enabled=settings.HONEST_SIGN_AUTO_CHECK_ENABLED,
+        auto_check_interval_minutes=max(settings.HONEST_SIGN_AUTO_CHECK_INTERVAL_MINUTES, 1),
+    )
+
+
+@router.get("/cash-registers", response_model=HonestSignCashRegistersPublic)
+def read_cash_register_links(session: SessionDep, current_user: CurrentUser) -> HonestSignCashRegistersPublic:
+    """Cash registers matched to their Honest Sign target, with the last stored status.
+
+    Contacts no register: the cash register cards read this, and run a live
+    check/activation through the per-host endpoints below."""
+    del current_user
+    linked = link_cash_registers(session)
+    status_by_original = {row.original_host: row for row in stored_statuses(session)}
+    return HonestSignCashRegistersPublic(
+        data=[
+            HonestSignCashRegisterLink(
+                cash_register_id=register_id,
+                target=_target_public(target),
+                status=status_by_original.get(target.original_host),
+            )
+            for register_id, target in linked.links
+        ],
+        unmatched_targets=[_target_public(target) for target in linked.unmatched],
+        ambiguous_hostnames=linked.ambiguous,
         status_configured=status_configuration_ready(),
         initialization_configured=initialization_configuration_ready(),
         auto_check_enabled=settings.HONEST_SIGN_AUTO_CHECK_ENABLED,

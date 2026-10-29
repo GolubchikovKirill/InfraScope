@@ -12,6 +12,7 @@ import {
   Printer,
   ReceiptText,
   RefreshCw,
+  ShieldAlert,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,8 @@ import { useAuth } from "../auth";
 import CashRegisterDrawer from "../components/overview/CashRegisterDrawer";
 import ComputerDrawer from "../components/overview/ComputerDrawer";
 import FleetMap from "../components/overview/FleetMap";
+import { isHonestSignProblem, isHonestSignStale } from "../components/HonestSignCashPanel";
+import { useHonestSignLinks } from "../hooks/useHonestSignLinks";
 import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
 import { isAttention } from "../lib/cashRegisters";
 import { buildStoreIndex, placeComputer } from "../lib/storeView";
@@ -131,6 +134,7 @@ export default function OverviewPage() {
   const { user } = useAuth();
   const isSuperuser = Boolean(user?.is_superuser);
   const { map: remoteMap } = useRemoteDeviceMap();
+  const honestSign = useHonestSignLinks();
   const [selected, setSelected] = useState<{ kind: "cash" | "computers"; id: string } | null>(null);
 
   const queryOptions = { staleTime: 30_000, refetchInterval: 60_000, placeholderData: keepPreviousData };
@@ -177,6 +181,18 @@ export default function OverviewPage() {
   const healthBase = totalOnline + totalOffline;
   const healthPercent = healthBase ? Math.round((totalOnline / healthBase) * 100) : 0;
 
+  // Honest Sign comes from the background check's stored results; the overview
+  // never contacts a register. Nothing is shown unless the integration is configured.
+  const honestSignMeta = honestSign.meta?.status_configured ? honestSign.meta : undefined;
+  const honestSignLinks = honestSignMeta ? [...honestSign.byCashId.values()] : [];
+  const honestSignProblemCount = honestSignLinks.filter((link) => isHonestSignProblem(link.status)).length;
+  const honestSignDownCount = honestSignLinks.filter((link) => link.status && !link.status.reachable).length;
+  const honestSignStaleCount = honestSignMeta
+    ? honestSignLinks.filter((link) => isHonestSignStale(link.status, honestSignMeta.auto_check_interval_minutes, honestSignMeta.auto_check_enabled)).length
+    : 0;
+  const honestSignUnmatched = honestSignMeta?.unmatched_targets.length ?? 0;
+  const honestSignAmbiguous = honestSignMeta?.ambiguous_hostnames ?? [];
+
   const priorities: Priority[] = (() => {
     const result: Priority[] = [];
     for (const fleet of fleets) {
@@ -193,6 +209,33 @@ export default function OverviewPage() {
     if (cashRegisterAttentionCount) {
       result.push({ id: "cash-attention", title: "Кассы требуют проверки", detail: `${cashRegisterAttentionCount} с проблемой терминала, ПИОТ или денежного ящика`, to: "/cash-registers", tone: "attention", icon: ReceiptText });
     }
+    if (honestSignProblemCount) {
+      result.push({
+        id: "honest-sign-problem",
+        title: `Честный знак не готов: ${honestSignProblemCount} ${pluralRu(honestSignProblemCount, ["касса", "кассы", "касс"])}`,
+        detail: honestSignDownCount ? `${honestSignDownCount} не отвечают, остальные не активированы или в другом состоянии` : "модуль не активирован или в другом состоянии",
+        to: "/cash-registers",
+        tone: honestSignDownCount ? "down" : "attention",
+        icon: ShieldAlert,
+      });
+    }
+    if (honestSignStaleCount) {
+      result.push({
+        id: "honest-sign-stale",
+        title: "Нет свежей проверки Честного знака",
+        detail: `${honestSignStaleCount} ${pluralRu(honestSignStaleCount, ["касса", "кассы", "касс"])} давно не обновлялись: проверьте фоновую проверку на сервере`,
+        to: "/honest-sign",
+        tone: "attention",
+        icon: Clock3,
+      });
+    }
+    if (honestSignUnmatched || honestSignAmbiguous.length) {
+      const parts = [
+        honestSignUnmatched ? `${honestSignUnmatched} ${pluralRu(honestSignUnmatched, ["цель", "цели", "целей"])} без кассы в списке` : "",
+        honestSignAmbiguous.length ? `неоднозначный hostname: ${honestSignAmbiguous.join(", ")}` : "",
+      ].filter(Boolean);
+      result.push({ id: "honest-sign-unlinked", title: "Честный знак: нет привязки к кассам", detail: `${parts.join("; ")}. Управление ими на странице «Честный знак»`, to: "/honest-sign", tone: "attention", icon: ShieldAlert });
+    }
     if (lowTonerCount) {
       result.push({ id: "toner", title: "Низкий уровень тонера", detail: `${lowTonerCount} принтеров с уровнем расходника 15% или ниже`, to: "/printers", tone: "attention", icon: Printer });
     }
@@ -202,7 +245,7 @@ export default function OverviewPage() {
     if (totalUnknown) {
       result.push({ id: "unknown", title: "Нет свежего статуса", detail: `${totalUnknown} устройств ещё не имеют результата опроса`, to: "/logs", tone: "attention", icon: Clock3 });
     }
-    return result.slice(0, 6);
+    return result.slice(0, 8);
   })();
 
   const dataUpdatedAt = Math.max(...allQueries.map((query) => query.dataUpdatedAt));

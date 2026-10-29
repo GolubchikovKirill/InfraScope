@@ -13,12 +13,14 @@ import {
   Plus,
   RefreshCw,
   Search,
+  ShieldCheck,
   Store,
   Trash2,
 } from "lucide-react";
 import { useAuth } from "../auth";
 import { describeOfflineReason } from "../lib/offlineReason";
 import {
+  checkAllHonestSignTargets,
   createCashRegister,
   deleteCashRegister,
   getCashRegisters,
@@ -27,6 +29,8 @@ import {
   pollCashRegister,
   updateCashRegister,
   type CashRegister,
+  type HonestSignCashRegisterLink,
+  type HonestSignCashRegistersResponse,
   type RemoteDevice,
 } from "../client";
 import { useEntityAutoPoll } from "../hooks/useEntityAutoPoll";
@@ -35,13 +39,15 @@ import { useQueryParamState } from "../hooks/useQueryParamState";
 import { useRowFocus } from "../hooks/useRowFocus";
 import { useRemoteDeviceMap } from "../hooks/useRemoteDeviceMap";
 import { useCredentialIndex } from "../hooks/useCredentialIndex";
+import { patchHonestSignStatuses, useHonestSignLinks } from "../hooks/useHonestSignLinks";
 import { credentialsHref, normalizeHostKey, rowDomId } from "../lib/deviceLinks";
 import { useConfirm } from "../components/ConfirmDialog";
+import HonestSignCashPanel, { isHonestSignProblem } from "../components/HonestSignCashPanel";
 import RemoteAccessButtons from "../components/RemoteAccessButtons";
 import { IconButton } from "../components/ui/IconButton";
 import { isAttention, isWindowsXp } from "../lib/cashRegisters";
 
-type StatusFilter = "all" | "online" | "offline" | "unknown" | "attention";
+type StatusFilter = "all" | "online" | "offline" | "unknown" | "attention" | "hs_problem";
 type ZoneFilter = "all" | "DF" | "DP";
 type CashForm = {
   location_zone: "" | "DF" | "DP";
@@ -100,6 +106,7 @@ export default function CashRegistersPage() {
   const isSuperuser = Boolean(user?.is_superuser);
   const { map: remoteMap } = useRemoteDeviceMap();
   const credIndex = useCredentialIndex();
+  const honestSign = useHonestSignLinks();
   const [q, setQ] = useQueryParamState("q");
   const [focus] = useQueryParamState("focus");
   const debouncedQ = useDebouncedValue(q, 300);
@@ -136,6 +143,7 @@ export default function CashRegistersPage() {
         if (statusFilter === "offline") return item.is_online === false;
         if (statusFilter === "unknown") return item.is_online === null;
         if (statusFilter === "attention") return isAttention(item);
+        if (statusFilter === "hs_problem") return isHonestSignProblem(honestSign.byCashId.get(item.id)?.status ?? null);
         return true;
       })
       .sort((a, b) => {
@@ -145,7 +153,7 @@ export default function CashRegistersPage() {
         if (store) return store;
         return (a.source_order ?? Number.MAX_SAFE_INTEGER) - (b.source_order ?? Number.MAX_SAFE_INTEGER) || compareText(a.kkm_number, b.kkm_number);
       });
-  }, [rows, statusFilter, storeFilter, zoneFilter]);
+  }, [honestSign.byCashId, rows, statusFilter, storeFilter, zoneFilter]);
   const groups = useMemo(() => {
     const result: Array<{ key: string; zone: string; store: string; rows: CashRegister[] }> = [];
     for (const item of visibleRows) {
@@ -197,6 +205,12 @@ export default function CashRegistersPage() {
     },
   });
   const pollAllMut = useMutation({ mutationFn: pollAllCashRegisters, onSuccess: refetchAll });
+  const honestSignAllMut = useMutation({
+    mutationFn: checkAllHonestSignTargets,
+    onSuccess: (result) => patchHonestSignStatuses(queryClient, result.data),
+  });
+  const honestSignMeta: HonestSignCashRegistersResponse | undefined = honestSign.meta;
+  const honestSignProblemCount = [...honestSign.byCashId.values()].filter((link) => isHonestSignProblem(link.status)).length;
 
   // Real device polling now runs on a schedule in the backend (Celery Beat),
   // so this no longer triggers a real poll from every open tab - it just
@@ -273,6 +287,11 @@ export default function CashRegistersPage() {
             <button onClick={() => pollAllMut.mutate()} disabled={pollAllMut.isPending} className="app-btn-primary inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-50">
               <RefreshCw className={`h-4 w-4 ${pollAllMut.isPending ? "animate-spin" : ""}`} /> Опросить все
             </button>
+            {honestSignMeta?.status_configured && (
+              <button onClick={() => honestSignAllMut.mutate()} disabled={honestSignAllMut.isPending} className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-50">
+                <ShieldCheck className={`h-4 w-4 ${honestSignAllMut.isPending ? "animate-pulse" : ""}`} /> Проверить Честный знак
+              </button>
+            )}
             {isSuperuser && (
               <button onClick={openCreate} className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm">
                 <Plus className="h-4 w-4" /> Добавить кассу
@@ -289,7 +308,7 @@ export default function CashRegistersPage() {
             {storeOptions.map((store) => <option key={store} value={store}>{store}</option>)}
           </FilterSelect>
           <FilterSelect label="Состояние" value={statusFilter} onChange={(value) => setStatusFilter(value as StatusFilter)}>
-            <option value="all">Все состояния</option><option value="online">Онлайн</option><option value="offline">Оффлайн</option><option value="unknown">Не опрошены</option><option value="attention">Требуют внимания</option>
+            <option value="all">Все состояния</option><option value="online">Онлайн</option><option value="offline">Оффлайн</option><option value="unknown">Не опрошены</option><option value="attention">Требуют внимания</option>{honestSignMeta?.status_configured && <option value="hs_problem">Честный знак не готов{honestSignProblemCount ? ` (${honestSignProblemCount})` : ""}</option>}
           </FilterSelect>
         </div>
       </div>
@@ -333,6 +352,8 @@ export default function CashRegistersPage() {
                     isPolling={pollingIds.has(item.id)}
                     remote={item.hostname ? remoteMap.get(item.hostname) : undefined}
                     credCount={item.hostname ? (credIndex.get(normalizeHostKey(item.hostname)) ?? 0) : 0}
+                    honestSign={honestSignMeta?.status_configured ? honestSign.byCashId.get(item.id) : undefined}
+                    honestSignMeta={honestSignMeta}
                     onCopy={copyText}
                     onPoll={() => pollMut.mutate(item.id)}
                     onEdit={() => openEdit(item)}
@@ -383,7 +404,7 @@ export default function CashRegistersPage() {
   );
 }
 
-function CashRow({ item, isSuperuser, isPolling, remote, credCount, onCopy, onPoll, onEdit, onDelete }: { item: CashRegister; isSuperuser: boolean; isPolling: boolean; remote?: RemoteDevice; credCount: number; onCopy: (value: string | null) => void; onPoll: () => void; onEdit: () => void; onDelete: () => void }) {
+function CashRow({ item, isSuperuser, isPolling, remote, credCount, honestSign, honestSignMeta, onCopy, onPoll, onEdit, onDelete }: { item: CashRegister; isSuperuser: boolean; isPolling: boolean; remote?: RemoteDevice; credCount: number; honestSign?: HonestSignCashRegisterLink; honestSignMeta?: HonestSignCashRegistersResponse;onCopy: (value: string | null) => void; onPoll: () => void; onEdit: () => void; onDelete: () => void }) {
   return (
     <article id={item.hostname ? rowDomId(item.hostname) : undefined} className={`grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1.05fr)_minmax(15rem,1.35fr)_minmax(13rem,1fr)_auto] ${isAttention(item) ? "bg-amber-50/40" : ""}`}>
       <div className="space-y-2">
@@ -399,6 +420,18 @@ function CashRow({ item, isSuperuser, isPolling, remote, credCount, onCopy, onPo
       <div className="space-y-2 text-sm"><SectionLabel>Оснащение</SectionLabel><div className="flex flex-wrap gap-1.5"><Badge tone={piotTone(item.piot_status)}>ПИОТ: {item.piot_status || "—"}</Badge><Badge tone={drawerTone(item.cash_drawer)}>Ящик: {item.cash_drawer || "—"}</Badge>{item.second_screen && <Badge tone="sky">2-й экран: {item.second_screen}</Badge>}<Badge tone={isWindowsXp(item.windows_version) ? "amber" : "default"}>Windows {item.windows_version || "—"}</Badge></div>{item.comment && <div className="rounded-lg bg-white/80 px-2.5 py-2 text-xs text-slate-600 ring-1 ring-slate-200">{item.comment}</div>}</div>
 
       <div className="flex flex-wrap content-start items-start gap-1.5 lg:w-[5.25rem] lg:justify-end"><IconButton label="Скопировать hostname" onClick={() => onCopy(item.hostname)}><Copy className="h-4 w-4" /></IconButton><IconButton label="Обновить кассу" onClick={onPoll} disabled={isPolling}><RefreshCw className={`h-4 w-4 ${isPolling ? "animate-spin" : ""}`} /></IconButton>{isSuperuser && item.hostname && <Link to={credentialsHref(item.hostname)} aria-label="Пароли этой кассы" title={`Пароли этой кассы${credCount ? ` (${credCount})` : ""}`} className="app-btn-secondary relative inline-flex h-9 w-9 items-center justify-center"><KeyRound className="h-4 w-4" />{credCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--brand-fill)] px-1 text-[10px] font-semibold text-white">{credCount}</span>}</Link>}{isSuperuser && <><IconButton label="Редактировать кассу" onClick={onEdit}><Pencil className="h-4 w-4" /></IconButton><IconButton label="Удалить кассу" onClick={onDelete} danger><Trash2 className="h-4 w-4" /></IconButton></>}</div>
+
+      {honestSign && honestSignMeta && (
+        <div className="border-t border-slate-200 pt-3 lg:col-span-full">
+          <HonestSignCashPanel
+            link={honestSign}
+            canManage={isSuperuser}
+            initializationConfigured={honestSignMeta.initialization_configured}
+            autoCheck={honestSignMeta.auto_check_enabled}
+            intervalMinutes={honestSignMeta.auto_check_interval_minutes}
+          />
+        </div>
+      )}
     </article>
   );
 }
