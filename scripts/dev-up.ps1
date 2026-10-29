@@ -10,12 +10,14 @@
 .EXAMPLE
   .\scripts\dev-up.ps1                    # start / update
   .\scripts\dev-up.ps1 -FromProdBackup    # also load last night's prod backup
+  .\scripts\dev-up.ps1 -ResetAdmin        # local admin password back to the one in .env
   .\scripts\dev-up.ps1 -Logs              # follow backend + worker logs
   .\scripts\dev-up.ps1 -Down              # stop (data kept)
   .\scripts\dev-up.ps1 -Reset             # stop and wipe the local database
 #>
 param(
     [switch]$FromProdBackup,
+    [switch]$ResetAdmin,
     [switch]$Logs,
     [switch]$Down,
     [switch]$Reset
@@ -47,6 +49,11 @@ if ($LASTEXITCODE -ne 0) { throw "Docker is installed but not running. Start Doc
 
 if ($Down) { Invoke-Compose @("down"); return }
 if ($Reset) { Invoke-Compose @("down", "-v"); Write-Host "Local stack stopped, local volumes removed."; return }
+function Reset-Admin {
+    Get-Content -Raw scripts\dev_reset_admin.py | & docker @Compose exec -T backend python -
+    if ($LASTEXITCODE -ne 0) { throw "Admin password reset failed ($LASTEXITCODE)" }
+}
+if ($ResetAdmin) { Reset-Admin; return }
 if ($Logs) { Invoke-Compose @("logs", "-f", "--tail", "100", "backend", "worker"); return }
 
 # --- .env ---------------------------------------------------------------------
@@ -95,8 +102,10 @@ if ($FromProdBackup) {
     # --no-owner: the dump's roles may not exist here; -c --if-exists: replace what migrations created
     & docker @Compose exec -T db sh -c "pg_restore -U postgres -d infrascope -c --if-exists --no-owner /tmp/prod.dump; rm -f /tmp/prod.dump"
     Invoke-Compose @("start", "backend", "worker", "beat")
+    # the dump brought the prod admin hash; give the admin the local password back
+    Reset-Admin
     Write-Host "Restored $latest. Switch and vault passwords stay encrypted with the prod key and are unreadable here, by design."
-    Write-Host "Prod user accounts came with the dump: log in with your prod login."
+    Write-Host "Log in with the local admin below, or with your own prod login."
 }
 
 $envText = Get-Content .env -Raw

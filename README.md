@@ -139,7 +139,7 @@ worker, beat и Vite с hot reload. Из корня репозитория:
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1
 ```
 
-macOS/Linux: `./scripts/dev-up.sh` (ключи `--from-prod-backup`, `--logs`, `--down`,
+macOS/Linux: `./scripts/dev-up.sh` (ключи `--from-prod-backup`, `--reset-admin`, `--logs`, `--down`,
 `--reset`). Нужен только запущенный Docker Desktop. Для `--from-prod-backup` /
 `-FromProdBackup` на машине должен быть SSH-alias `infrascope-server` (`~/.ssh/config`).
 Первый запуск создаёт `.env` из `.env.local.example` со свежими ключами и
@@ -152,6 +152,7 @@ macOS/Linux: `./scripts/dev-up.sh` (ключи `--from-prod-backup`, `--logs`, `
 | Ключ | Что делает |
 |---|---|
 | `-FromProdBackup` | подтягивает последний ночной дамп с `infrascope-server` и восстанавливает в локальную БД |
+| `-ResetAdmin` | вернуть админу пароль из `.env` (после прод-дампа делается сам) |
 | `-Logs` | логи backend и worker |
 | `-Down` | остановить (данные остаются) |
 | `-Reset` | остановить и стереть локальную БД |

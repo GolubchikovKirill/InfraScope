@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local development stack in Docker (docker-compose.local.yml) - the Linux/macOS
-# twin of scripts/dev-up.ps1 (bash 3.2 as shipped with macOS is enough). Usage: ./scripts/dev-up.sh [--from-prod-backup|--logs|--down|--reset]
+# twin of scripts/dev-up.ps1 (bash 3.2 as shipped with macOS is enough). Usage: ./scripts/dev-up.sh [--from-prod-backup|--reset-admin|--logs|--down|--reset]
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -13,6 +13,7 @@ case "${1:-}" in
   --down) "${COMPOSE[@]}" down; exit 0 ;;
   --reset) "${COMPOSE[@]}" down -v; echo "Local stack stopped, local volumes removed."; exit 0 ;;
   --logs) exec "${COMPOSE[@]}" logs -f --tail 100 backend worker ;;
+  --reset-admin) "${COMPOSE[@]}" exec -T backend python - < scripts/dev_reset_admin.py; exit 0 ;;
 esac
 
 # URL-safe base64 of N random bytes (for 32 bytes that is exactly a Fernet key).
@@ -52,7 +53,10 @@ if [ "${1:-}" = "--from-prod-backup" ]; then
   "${COMPOSE[@]}" cp backups/local/prod-latest.dump db:/tmp/prod.dump
   "${COMPOSE[@]}" exec -T db sh -c "pg_restore -U postgres -d infrascope -c --if-exists --no-owner /tmp/prod.dump; rm -f /tmp/prod.dump"
   "${COMPOSE[@]}" start backend worker beat
-  echo "Restored $latest. Encrypted passwords stay unreadable here, by design; log in with your prod login."
+  # the dump brought the prod admin hash; give the admin the local password back
+  "${COMPOSE[@]}" exec -T backend python - < scripts/dev_reset_admin.py
+  echo "Restored $latest. Encrypted passwords stay unreadable here, by design."
+  echo "Log in with the local admin below, or with your own prod login."
 fi
 
 email="$(grep -E '^FIRST_SUPERUSER_EMAIL=' .env | cut -d= -f2-)"
