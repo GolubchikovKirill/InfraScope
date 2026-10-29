@@ -38,6 +38,7 @@ import { useCredentialIndex } from "../hooks/useCredentialIndex";
 import { credentialsHref, normalizeHostKey, rowDomId } from "../lib/deviceLinks";
 import { useConfirm } from "../components/ConfirmDialog";
 import RemoteAccessButtons from "../components/RemoteAccessButtons";
+import { IconButton } from "../components/ui/IconButton";
 import { isAttention, isWindowsXp } from "../lib/cashRegisters";
 
 type StatusFilter = "all" | "online" | "offline" | "unknown" | "attention";
@@ -397,7 +398,7 @@ function CashRow({ item, isSuperuser, isPolling, remote, credCount, onCopy, onPo
 
       <div className="space-y-2 text-sm"><SectionLabel>Оснащение</SectionLabel><div className="flex flex-wrap gap-1.5"><Badge tone={piotTone(item.piot_status)}>ПИОТ: {item.piot_status || "—"}</Badge><Badge tone={drawerTone(item.cash_drawer)}>Ящик: {item.cash_drawer || "—"}</Badge>{item.second_screen && <Badge tone="sky">2-й экран: {item.second_screen}</Badge>}<Badge tone={isWindowsXp(item.windows_version) ? "amber" : "default"}>Windows {item.windows_version || "—"}</Badge></div>{item.comment && <div className="rounded-lg bg-white/80 px-2.5 py-2 text-xs text-slate-600 ring-1 ring-slate-200">{item.comment}</div>}</div>
 
-      <div className="flex flex-wrap items-start gap-1.5 lg:w-28 lg:justify-end"><IconButton label="Скопировать hostname" onClick={() => onCopy(item.hostname)}><Copy className="h-4 w-4" /></IconButton><IconButton label="Обновить кассу" onClick={onPoll} disabled={isPolling}><RefreshCw className={`h-4 w-4 ${isPolling ? "animate-spin" : ""}`} /></IconButton>{isSuperuser && item.hostname && <Link to={credentialsHref(item.hostname)} aria-label="Пароли этой кассы" title={`Пароли этой кассы${credCount ? ` (${credCount})` : ""}`} className="app-btn-secondary relative inline-flex h-9 w-9 items-center justify-center"><KeyRound className="h-4 w-4" />{credCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--brand-fill)] px-1 text-[10px] font-semibold text-white">{credCount}</span>}</Link>}{isSuperuser && <><IconButton label="Редактировать кассу" onClick={onEdit}><Pencil className="h-4 w-4" /></IconButton><IconButton label="Удалить кассу" onClick={onDelete} danger><Trash2 className="h-4 w-4" /></IconButton></>}</div>
+      <div className="flex flex-wrap content-start items-start gap-1.5 lg:w-[5.25rem] lg:justify-end"><IconButton label="Скопировать hostname" onClick={() => onCopy(item.hostname)}><Copy className="h-4 w-4" /></IconButton><IconButton label="Обновить кассу" onClick={onPoll} disabled={isPolling}><RefreshCw className={`h-4 w-4 ${isPolling ? "animate-spin" : ""}`} /></IconButton>{isSuperuser && item.hostname && <Link to={credentialsHref(item.hostname)} aria-label="Пароли этой кассы" title={`Пароли этой кассы${credCount ? ` (${credCount})` : ""}`} className="app-btn-secondary relative inline-flex h-9 w-9 items-center justify-center"><KeyRound className="h-4 w-4" />{credCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--brand-fill)] px-1 text-[10px] font-semibold text-white">{credCount}</span>}</Link>}{isSuperuser && <><IconButton label="Редактировать кассу" onClick={onEdit}><Pencil className="h-4 w-4" /></IconButton><IconButton label="Удалить кассу" onClick={onDelete} danger><Trash2 className="h-4 w-4" /></IconButton></>}</div>
     </article>
   );
 }
@@ -433,8 +434,6 @@ function SectionLabel({ children }: { children: string }) { return <div classNam
 type BadgeTone = "default" | "green" | "red" | "amber" | "sky" | "violet";
 const badgeTone: Record<BadgeTone, string> = { default: "bg-slate-100 text-slate-600", green: "bg-emerald-100 text-emerald-700", red: "bg-rose-100 text-rose-700", amber: "bg-amber-100 text-amber-800", sky: "bg-sky-100 text-sky-700", violet: "bg-violet-100 text-violet-700" };
 function Badge({ children, tone = "default" }: { children: ReactNode; tone?: BadgeTone }) { return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${badgeTone[tone]}`}>{children}</span>; }
-
-function IconButton({ label, onClick, children, disabled = false, danger = false }: { label: string; onClick: () => void; children: ReactNode; disabled?: boolean; danger?: boolean }) { return <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={label} className={`app-btn-secondary inline-flex h-9 w-9 items-center justify-center disabled:opacity-40 ${danger ? "text-[var(--danger-fg)]" : ""}`}>{children}</button>; }
 
 function FilterSelect({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode }) { return <label className="text-xs text-slate-500"><span className="mb-1 block">{label}</span><select className="app-input w-full px-3 py-2 text-sm text-slate-700" value={value} onChange={(event) => onChange(event.target.value)}>{children}</select></label>; }
 

@@ -83,7 +83,7 @@ export default function ConsoleAccountsPanel({ isSuperuser }: { isSuperuser: boo
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <div className="app-stat px-4 py-3">
           <div className="text-2xl font-bold text-gray-900">{rows.filter((a) => a.active).length}</div>
           <div className="mt-0.5 text-xs text-gray-500">Активных учёток</div>

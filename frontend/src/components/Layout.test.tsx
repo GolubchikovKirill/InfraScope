@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -85,10 +85,7 @@ describe("Layout account block", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 
-  it("can bring the sidebar back after hiding it", async () => {
-    // Regression: the restore button used to sit under .app-topbar in the
-    // stacking order (z-10 vs the topbar's z-20), so it rendered but ate no
-    // clicks - once hidden, the sidebar had no way back.
+  it("folds the sidebar to an icon rail and back", () => {
     authState.user = {
       email: "admin@infrascope.dev",
       full_name: "Admin",
@@ -97,20 +94,24 @@ describe("Layout account block", () => {
 
     renderLayout("/");
 
-    expect(screen.queryByTitle("Показать меню")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Развернуть меню")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTitle("Свернуть/развернуть меню"));
+    fireEvent.click(screen.getByTitle("Свернуть меню"));
     expect(localStorage.getItem("infrascope_sidebar_hidden")).toBe("1");
 
-    const restoreButton = await screen.findByTitle("Показать меню");
-    fireEvent.click(restoreButton);
+    // Navigation stays reachable on the rail, named for screen readers
+    const rail = screen.getByRole("complementary");
+    expect(within(rail).getByRole("link", { name: "Кассы" })).toHaveAttribute("href", "/cash-registers");
+    expect(within(rail).queryByText("Кассы")).not.toBeInTheDocument();
 
+    // ...and hovering an icon names it
+    fireEvent.mouseEnter(within(rail).getByRole("link", { name: "Кассы" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Кассы");
+
+    fireEvent.click(screen.getByTitle("Развернуть меню"));
     expect(localStorage.getItem("infrascope_sidebar_hidden")).toBe("0");
-    // The button unmounts via an AnimatePresence exit transition rather than
-    // instantly, so give it a moment instead of asserting synchronously.
-    await waitFor(() => {
-      expect(screen.queryByTitle("Показать меню")).not.toBeInTheDocument();
-    });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(within(rail).getByText("Кассы")).toBeInTheDocument();
   });
 
   it("shows Honest Sign to any authenticated user", () => {

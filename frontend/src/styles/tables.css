@@ -25,13 +25,21 @@
   padding: 0.5rem 0.875rem;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border-subtle);
-  text-align: left;
   font-size: 0.6875rem;
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-faint);
   white-space: nowrap;
+}
+
+/* The default alignment sits in a cascade layer below Tailwind's utilities.
+   Unlayered, it beat every <th className="text-right"> on the page - the
+   "Действия" headers hung left over right-aligned buttons. */
+@layer base {
+  .app-table thead th {
+    text-align: left;
+  }
 }
 
 .app-table tbody td {

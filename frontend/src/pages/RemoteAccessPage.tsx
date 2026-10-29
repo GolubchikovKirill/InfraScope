@@ -363,7 +363,7 @@ export default function RemoteAccessPage() {
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: "Устройств", value: summary.total },
               { label: "Готово к подключению", value: summary.ready },

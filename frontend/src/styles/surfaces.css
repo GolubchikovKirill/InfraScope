@@ -84,8 +84,20 @@
   border-color: var(--border-strong);
 }
 
+/* Content spans the whole main column. It used to stop at 1680px and sit
+   centred, which on a 2560px screen left ~300px of empty page either side;
+   card lists use .app-card-grid to gain columns instead of stretching. */
 .app-main-frame {
-  max-width: 1680px;
+  width: 100%;
+}
+
+/* Device card lists: as many ~20rem columns as fit. A fixed three left cards
+   cramped on a laptop and 700px wide on a big monitor. min() keeps a single
+   column from overflowing a phone narrower than 20rem. */
+.app-card-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
 }
 
 /* ============================================================================

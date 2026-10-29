@@ -221,7 +221,7 @@ export default function HonestSignPage() {
         <div className="text-xs text-slate-500">Показано: {visibleTargets.length} из {targets.length}</div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2 min-[1920px]:grid-cols-3">
         {visibleTargets.map((target) => {
           const status = byHost.get(target.host);
           const checkingThis = checkOneMutation.isPending && checkOneMutation.variables === target.host;

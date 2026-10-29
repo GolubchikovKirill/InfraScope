@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   RefreshCw, Pencil, Trash2, Network, Wifi, Clock, Cpu,
@@ -25,6 +25,8 @@ interface Props {
   onOpenPorts: (sw: NetworkSwitch) => void;
   isPolling: boolean;
   isSuperuser: boolean;
+  /** Rendered in the footer next to the poll / actions buttons */
+  footerExtra?: ReactNode;
 }
 
 function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: string; isSuperuser: boolean }) {
@@ -153,7 +155,7 @@ function APRow({ ap, switchId, isSuperuser }: { ap: AccessPoint; switchId: strin
   );
 }
 
-export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, isPolling, isSuperuser }: Props) {
+export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, isPolling, isSuperuser, footerExtra }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement | null>(null);
@@ -200,8 +202,8 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
   useEscapeKey(isActionsOpen, closeActions);
 
   return (
-    <div className={`app-panel app-card rounded-xl border shadow-sm hover:shadow-md transition flex flex-col ${isActionsOpen ? "relative z-30" : ""}`}>
-      <div className="p-5 flex flex-col gap-3">
+    <div className={`app-panel app-card h-full rounded-xl border shadow-sm hover:shadow-md transition flex flex-col ${isActionsOpen ? "relative z-30" : ""}`}>
+      <div className="p-5 flex flex-1 flex-col gap-3">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -361,11 +363,12 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             and by time window rather than only one switch at a time. */}
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div className="mt-auto flex items-center justify-between pt-2 border-t border-gray-100">
           <span className="text-[11px] text-gray-400">
             {polledAt ? `Обновлено: ${polledAt}` : "Ещё не опрашивался"}
           </span>
           <div ref={actionsRef} className="relative flex items-center gap-1">
+            {footerExtra}
             <button
               onClick={() => onPoll(sw.id)}
               disabled={isPolling}
