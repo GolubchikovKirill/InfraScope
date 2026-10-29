@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import re
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -13,6 +14,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.domains.integrations.models import HonestSignStatusRecord, HonestSignTargetOverride
 from app.domains.integrations.schemas import HonestSignInitializePublic, HonestSignStatusPublic
+from app.domains.operations.models import CashRegister
 from app.services.event_log import write_event_log
 
 
@@ -263,6 +265,55 @@ async def check_all_honest_sign_targets(session: Session | None = None) -> list[
                 return await _check_target(client, target)
 
         return list(await asyncio.gather(*(check_one(target) for target in targets)))
+
+
+@dataclass(frozen=True, slots=True)
+class HonestSignCashLinks:
+    links: list[tuple[uuid.UUID, HonestSignTarget]]
+    unmatched: list[HonestSignTarget]
+    ambiguous: list[str]
+
+
+def _hostname_key(value: str | None) -> str:
+    """Comparable form of a hostname: case-insensitive, without the DNS domain."""
+    if not value:
+        return ""
+    return value.strip().rstrip(".").split(".")[0].casefold()
+
+
+def link_cash_registers(session: Session) -> HonestSignCashLinks:
+    """Match Honest Sign targets to inventory cash registers by hostname.
+
+    A target is linked only when exactly one target and exactly one register
+    carry that hostname. Anything shared is reported as ambiguous and left
+    unlinked: activating the wrong register's Local Module is worse than
+    showing no controls on a card.
+    """
+    targets = configured_targets(session=session)
+    registers = session.exec(select(CashRegister.id, CashRegister.hostname)).all()
+    targets_by_key: dict[str, list[HonestSignTarget]] = defaultdict(list)
+    registers_by_key: dict[str, list[uuid.UUID]] = defaultdict(list)
+    for target in targets:
+        if key := _hostname_key(target.hostname):
+            targets_by_key[key].append(target)
+    for register_id, hostname in registers:
+        if key := _hostname_key(hostname):
+            registers_by_key[key].append(register_id)
+
+    links: list[tuple[uuid.UUID, HonestSignTarget]] = []
+    ambiguous: list[str] = []
+    claimed: set[str] = set()
+    for key, key_targets in targets_by_key.items():
+        key_registers = registers_by_key.get(key, [])
+        if not key_registers:
+            continue
+        claimed.add(key)
+        if len(key_targets) == 1 and len(key_registers) == 1:
+            links.append((key_registers[0], key_targets[0]))
+        else:
+            ambiguous.append(key)
+    unmatched = [target for target in targets if _hostname_key(target.hostname) not in claimed]
+    return HonestSignCashLinks(links=links, unmatched=unmatched, ambiguous=sorted(ambiguous))
 
 
 def _as_utc(value: datetime) -> datetime:

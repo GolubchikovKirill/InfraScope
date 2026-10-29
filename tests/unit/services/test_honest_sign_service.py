@@ -9,7 +9,7 @@ from sqlmodel import select
 from app.core.config import settings
 from app.domains.integrations.models import HonestSignStatusRecord
 from app.domains.integrations.schemas import HonestSignStatusPublic
-from app.domains.operations.models import EventLog
+from app.domains.operations.models import CashRegister, EventLog
 from app.services import honest_sign
 
 
@@ -209,3 +209,55 @@ def test_stored_statuses_follow_configured_targets_and_skip_stale_ip(monkeypatch
 
     honest_sign.set_target_ip_override(db_session, "172.23.8.21", "172.23.8.6")
     assert honest_sign.stored_statuses(db_session) == []  # the stored status was for the old IP
+
+
+def _register(db_session, hostname: str, kkm: str = "1") -> CashRegister:
+    cash = CashRegister(kkm_number=kkm, hostname=hostname)
+    db_session.add(cash)
+    db_session.commit()
+    db_session.refresh(cash)
+    return cash
+
+
+def test_link_cash_registers_matches_by_hostname_ignoring_case_and_domain(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(
+        settings,
+        "HONEST_SIGN_TARGETS",
+        "172.23.8.21|A15|VNK-KKM-1501,172.23.8.22|A15|vnk-kkm-1502.corp.local,172.23.8.23|A16",
+    )
+    first = _register(db_session, "vnk-kkm-1501.regstaer.local", "1501")
+    second = _register(db_session, "VNK-KKM-1502", "1502")
+
+    result = honest_sign.link_cash_registers(db_session)
+
+    assert {(rid, t.host) for rid, t in result.links} == {(first.id, "172.23.8.21"), (second.id, "172.23.8.22")}
+    # A target without a hostname can never be tied to a register.
+    assert [t.host for t in result.unmatched] == ["172.23.8.23"]
+    assert result.ambiguous == []
+
+
+def test_link_cash_registers_leaves_shared_hostnames_unlinked(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(
+        settings,
+        "HONEST_SIGN_TARGETS",
+        "172.23.8.21|A15|VNK-KKM-1501,172.23.8.22|A15|VNK-KKM-1502,172.23.8.23|A15|VNK-KKM-1502",
+    )
+    _register(db_session, "VNK-KKM-1501", "1")
+    _register(db_session, "VNK-KKM-1501", "2")  # duplicate register row
+    _register(db_session, "VNK-KKM-1502", "3")  # two targets claim this hostname
+
+    result = honest_sign.link_cash_registers(db_session)
+
+    assert result.links == []
+    assert result.ambiguous == ["vnk-kkm-1501", "vnk-kkm-1502"]
+    assert result.unmatched == []
+
+
+def test_link_cash_registers_follows_ip_override(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_TARGETS", "172.23.8.21|A15|VNK-KKM-1501")
+    cash = _register(db_session, "VNK-KKM-1501")
+    honest_sign.set_target_ip_override(db_session, "172.23.8.21", "172.23.8.6")
+
+    (register_id, target), = honest_sign.link_cash_registers(db_session).links
+
+    assert (register_id, target.host, target.original_host) == (cash.id, "172.23.8.6", "172.23.8.21")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
@@ -221,3 +222,23 @@ class HonestSignInitializePublic(HonestSignTargetPublic):
     result: str
     message: str
     checked_at: str
+
+
+class HonestSignCashRegisterLink(BaseModel):
+    """A cash register matched to its Honest Sign target, with the last stored status."""
+
+    cash_register_id: uuid.UUID
+    target: HonestSignTargetPublic
+    status: HonestSignStatusPublic | None = None
+
+
+class HonestSignCashRegistersPublic(BaseModel):
+    data: list[HonestSignCashRegisterLink]
+    # Targets no cash register claims by hostname (no hostname in the target, or no such register).
+    unmatched_targets: list[HonestSignTargetPublic]
+    # Hostnames shared by several registers or targets: left unlinked so no action can hit the wrong one.
+    ambiguous_hostnames: list[str]
+    status_configured: bool
+    initialization_configured: bool
+    auto_check_enabled: bool
+    auto_check_interval_minutes: int

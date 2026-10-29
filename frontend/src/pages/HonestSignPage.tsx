@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -286,7 +287,7 @@ export default function HonestSignPage() {
                       <StatusBadge status={status} />
                     </div>
                     <p className="mt-1 text-sm text-slate-500">{target.label}</p>
-                    {target.hostname && <p className="mt-1 font-mono text-xs font-medium text-slate-700">{target.hostname}</p>}
+                    {target.hostname && <p className="mt-1 font-mono text-xs font-medium text-slate-700">{target.hostname} <Link to={`/cash-registers?q=${encodeURIComponent(target.hostname)}`} className="ml-2 font-sans text-sky-700 underline">в кассах</Link></p>}
                     <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
                       <Field label="Версия" value={status?.version || "—"} />
                       <Field label="API" value="v2 :5995" />
