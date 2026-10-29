@@ -1,6 +1,19 @@
 import { useState, type FormEvent } from "react";
+import axios from "axios";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth";
+
+// Only the API's own credential answer means a wrong password; anything else
+// (proxy, host check, server down) used to be reported as one too.
+function loginErrorMessage(err: unknown): string {
+  if (!axios.isAxiosError(err) || !err.response) return "Сервер недоступен, вход не выполнен";
+  const { status, data } = err.response;
+  const detail = typeof data === "object" && data !== null ? (data as { detail?: unknown }).detail : undefined;
+  if (detail === "Incorrect email or password") return "Неверный email или пароль";
+  if (detail === "Inactive user") return "Учётная запись отключена";
+  if (status === 429) return "Слишком много попыток входа, подождите минуту";
+  return `Ошибка сервера при входе (HTTP ${status})`;
+}
 
 export default function Login() {
   const { user, login } = useAuth();
@@ -17,8 +30,8 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-    } catch {
-      setError("Неверный email или пароль");
+    } catch (err) {
+      setError(loginErrorMessage(err));
     } finally {
       setLoading(false);
     }

@@ -12,7 +12,11 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: process.env.VITE_PROXY_TARGET ?? "http://localhost:8000",
-        changeOrigin: true,
+        // Keep the browser's Host (localhost:5173). Rewriting it to the target
+        // sent "backend:8000" in the Docker stack, which the API's
+        // TrustedHostMiddleware answers with 400 before any route runs - every
+        // login failed as "wrong password".
+        changeOrigin: false,
         // the realtime channel (/api/v1/realtime/ws) is a WebSocket
         ws: true,
       },
