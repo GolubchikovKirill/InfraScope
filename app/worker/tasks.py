@@ -507,7 +507,7 @@ def camera_reboot_all_task(self, switch_id: str) -> dict:
             if switch is None:
                 return _Failed({"status": "switch_not_found", "switch_id": switch_id})
             result = _run_async(reboot_all_cameras(session, switch))
-        if result["status"] in {"busy", "unreachable", "failed", "no_camera_vlans"}:
+        if result["status"] in {"busy", "unreachable", "failed", "no_camera_vlans", "hardware_writes_disabled"}:
             return _Failed(result)
         return result
     finally:

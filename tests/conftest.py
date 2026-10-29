@@ -29,6 +29,10 @@ os.environ.setdefault("OTEL_ENABLED", "false")
 # Likewise the media-service switch: with the developer's .env it points requests
 # at a media service that does not exist here.
 os.environ.setdefault("MEDIA_SERVICE_ENABLED", "false")
+# The suite drives the switch-write, AP-reboot and DHCP-cleanup paths against
+# fakes, so it runs as an instance that may write. The guard that keeps a
+# development stack off real equipment has its own tests (test_hardware_write_guard).
+os.environ.setdefault("ALLOW_HARDWARE_WRITES", "true")
 
 import app.domains.registry
 from app.api import deps

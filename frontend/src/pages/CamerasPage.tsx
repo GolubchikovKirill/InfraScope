@@ -194,6 +194,8 @@ function sweepMessage(switchName: string, result: CameraSweepResult): [string, b
       return [`${switchName}: на свитче уже идёт другая операция — попробуйте позже`, false];
     case "unreachable":
       return [`${switchName}: свитч не ответил по SSH, камеры не перезагружены`, false];
+    case "hardware_writes_disabled":
+      return [`${switchName}: на этом экземпляре запись в оборудование выключена`, false];
     case "no_cameras":
       return [`${switchName}: камер для перезагрузки нет`, true];
     case "done":

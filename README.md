@@ -130,7 +130,47 @@ BLOCKING_IO_THREADS=48
 
 ---
 
-## Dev-режим
+## Локальная разработка в Docker
+
+Весь стек на ноутбуке одной командой: БД, Redis, API с автоперезагрузкой,
+worker, beat и Vite с hot reload. Из корня репозитория:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1
+```
+
+macOS/Linux: `./scripts/dev-up.sh` (ключи `--from-prod-backup`, `--logs`, `--down`,
+`--reset`). Нужен только запущенный Docker Desktop. Для `--from-prod-backup` /
+`-FromProdBackup` на машине должен быть SSH-alias `infrascope-server` (`~/.ssh/config`).
+Первый запуск создаёт `.env` из `.env.local.example` со свежими ключами и
+собирает образы (несколько минут), дальше — секунды.
+
+- Приложение: http://localhost:5173 (правки в `frontend/src` видны сразу)
+- API: http://localhost:8000/docs (правки в `app/` перезапускают uvicorn)
+- Логин: `FIRST_SUPERUSER_EMAIL` / `FIRST_SUPERUSER_PASSWORD` из `.env`
+
+| Ключ | Что делает |
+|---|---|
+| `-FromProdBackup` | подтягивает последний ночной дамп с `infrascope-server` и восстанавливает в локальную БД |
+| `-Logs` | логи backend и worker |
+| `-Down` | остановить (данные остаются) |
+| `-Reset` | остановить и стереть локальную БД |
+
+**Безопасность.** Ноутбук в той же сети, что магазины, поэтому
+`docker-compose.local.yml` принудительно ставит `ENVIRONMENT=development` и
+`ALLOW_HARDWARE_WRITES=false`: автоперезагрузка точек доступа, очистка DHCP и
+RustDesk выключены, запись на свитчи отвечает 403. Плановый опрос устройств
+(только чтение) выключен, пока в `.env` нет `AUTO_POLL_ENABLED=true`. Скрипт
+отказывается работать с прод-`.env`. Пароли свитчей в прод-дампе зашифрованы
+прод-ключом и локально не читаются — так задумано.
+
+Worker без автоперезагрузки: после правок в задачах —
+`docker compose -p infrascope-local restart worker`.
+
+Порядок работы: ветка от `dev` → правки и проверка на локалке →
+`scripts/quality-gate.sh` → PR в `dev` → PR `dev → main` → деплой на сервер.
+
+## Dev-режим без Docker
 
 ```bash
 docker compose up db redis -d

@@ -1,8 +1,13 @@
-from pydantic import PostgresDsn, computed_field, model_validator
+from pydantic import PostgresDsn, PrivateAttr, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PLACEHOLDERS = {"changethis", "change_me", "change-me", "change me"}
 _PLACEHOLDER = "changethis"
+
+
+#: Settings that make this instance act on real equipment or external systems
+#: on its own; guard_hardware_writes turns them off outside production.
+_HARDWARE_WRITE_SWITCHES = ("AUTO_REBOOT_AP_ENABLED", "DHCP_CLEAR_ENABLED", "REMOTE_ACCESS_ENABLED")
 
 
 class Settings(BaseSettings):
@@ -15,6 +20,14 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "InfraScope"
     ENVIRONMENT: str = "development"
+    # Whether this instance may act on real equipment and external systems:
+    # scheduled AP reboots, DHCP cleanup, RustDesk console writes, and manual
+    # switch port / PoE operations from the UI. None (the default) means "only
+    # in production". A development stack on a laptop sits in the same network
+    # as the stores, and with a copied .env it would otherwise reboot the same
+    # access points prod does - two instances whose locks know nothing about
+    # each other. Set true only to work against a lab switch on purpose.
+    ALLOW_HARDWARE_WRITES: bool | None = None
 
     SECRET_KEY: str = _PLACEHOLDER
 
@@ -47,6 +60,31 @@ class Settings(BaseSettings):
         if self.ENVIRONMENT == "production" and self._is_weak_bootstrap_password(self.FIRST_SUPERUSER_PASSWORD):
             raise ValueError("FIRST_SUPERUSER_PASSWORD must be explicitly set to a strong value in production.")
         return self
+
+    @model_validator(mode="after")
+    def guard_hardware_writes(self) -> "Settings":
+        """Outside production, switch off everything that acts on real equipment
+        unless ALLOW_HARDWARE_WRITES says otherwise - see that setting."""
+        if self.hardware_writes_allowed:
+            return self
+        for name in _HARDWARE_WRITE_SWITCHES:
+            if getattr(self, name):
+                setattr(self, name, False)
+                self._hardware_writes_disabled.append(name)
+        return self
+
+    @property
+    def hardware_writes_allowed(self) -> bool:
+        if self.ALLOW_HARDWARE_WRITES is not None:
+            return self.ALLOW_HARDWARE_WRITES
+        return self.ENVIRONMENT == "production"
+
+    @property
+    def hardware_writes_disabled(self) -> list[str]:
+        """The switches guard_hardware_writes turned off, for the startup log."""
+        return list(self._hardware_writes_disabled)
+
+    _hardware_writes_disabled: list[str] = PrivateAttr(default_factory=list)
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days

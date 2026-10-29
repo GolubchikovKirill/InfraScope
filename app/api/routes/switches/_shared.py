@@ -48,7 +48,23 @@ def _validate_switch_port(port: str) -> str:
     return value
 
 
+def _require_hardware_writes() -> None:
+    """Refuse a switch write on an instance that must not touch real equipment
+    (ALLOW_HARDWARE_WRITES). Every write takes the lease below, which calls
+    this first; a write queued for the worker (camera reboot-all) calls it
+    before queueing."""
+    if not settings.hardware_writes_allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Switch writes are disabled on this instance "
+                f"(ENVIRONMENT={settings.ENVIRONMENT}; set ALLOW_HARDWARE_WRITES=true to allow them)"
+            ),
+        )
+
+
 async def _acquire_switch_write_lock(switch_id: uuid.UUID) -> SwitchWriteLease:
+    _require_hardware_writes()
     try:
         lease = await acquire_switch_write_lease(switch_id)
     except Exception as exc:

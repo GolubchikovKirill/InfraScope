@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_ready
 
 from app.core.config import settings
+from app.core.safety import log_hardware_write_guard
 from app.worker import metrics_bootstrap  # noqa: F401
 
 DEFAULT_QUEUE = "infrascope"
@@ -169,3 +172,10 @@ if settings.DNS_DISCOVERY_ENABLED:
     )
 
 celery_app.conf.beat_schedule = _beat_schedule
+
+
+@worker_ready.connect
+def _announce_hardware_write_guard(**_kwargs) -> None:
+    # The worker is what runs the scheduled AP reboots and DHCP cleanups, so
+    # its log is where a missing ENVIRONMENT=production must be visible.
+    log_hardware_write_guard(logging.getLogger("app.worker"), "worker")

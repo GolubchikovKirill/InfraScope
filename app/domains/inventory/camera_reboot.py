@@ -88,6 +88,10 @@ async def reboot_all_cameras(session: Session, switch: NetworkSwitch) -> dict:
     Holds the switch's write lease throughout, like any write from the UI, so
     a single-camera reboot or port change cannot interleave with the sweep.
     """
+    # Checked again here, not only in the route that queued it: the worker
+    # may run with a different .env than the API (ALLOW_HARDWARE_WRITES).
+    if not settings.hardware_writes_allowed:
+        return {"status": "hardware_writes_disabled", "switch": switch.name}
     vlans = camera_vlans()
     if not vlans:
         return {"status": "no_camera_vlans", "switch": switch.name}

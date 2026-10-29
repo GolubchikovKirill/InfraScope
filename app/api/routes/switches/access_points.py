@@ -32,6 +32,7 @@ from ._shared import (
     _enforce_switch_cooldown,
     _get_switch_or_404,
     _release_switch_write_lock,
+    _require_hardware_writes,
     _validate_switch_port,
 )
 
@@ -178,6 +179,7 @@ async def reboot_all_camera_ports(switch_id: uuid.UUID, session: SessionDep) -> 
         raise HTTPException(status_code=400, detail="Camera reboot is available for Cisco switches")
     if not camera_vlans():
         raise HTTPException(status_code=400, detail="No camera VLANs configured")
+    _require_hardware_writes()
     if await switch_write_lease_held(switch_id):
         raise HTTPException(status_code=409, detail="Another switch write operation is already running")
     await _enforce_switch_cooldown(switch_id=switch_id, port="*", operation="reboot_cameras_bulk")

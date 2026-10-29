@@ -125,3 +125,15 @@ def test_reboot_all_releases_the_switch_afterwards(db_session, switch, monkeypat
     asyncio.run(camera_reboot.reboot_all_cameras(db_session, switch))
 
     assert lease_redis.values == {}
+
+
+def test_reboot_all_refuses_where_hardware_writes_are_off(db_session, switch, monkeypatch, lease_redis) -> None:
+    monkeypatch.setattr(settings, "ALLOW_HARDWARE_WRITES", False)
+
+    def _must_not_cycle(*_a):
+        raise AssertionError("no equipment writes on this instance")
+
+    monkeypatch.setattr(camera_reboot, "poe_cycle_ports_bulk", _must_not_cycle)
+
+    assert asyncio.run(camera_reboot.reboot_all_cameras(db_session, switch))["status"] == "hardware_writes_disabled"
+    assert lease_redis.values == {}

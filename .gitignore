@@ -14,6 +14,9 @@ wheels/
 
 # Database dumps (may contain PII/secrets; keep backups outside the repo)
 *.sql
+*.dump
+backups/
+.env.prod-copy*
 !alembic/**/*.sql
 
 # SSL certificates (keep directory, ignore contents)

@@ -100,7 +100,14 @@ validate_production_env() {
   local errors
 
   environment="$(env_value ENVIRONMENT)"
-  [ "${environment:-development}" = "production" ] || return 0
+  if [ "${environment:-development}" != "production" ]; then
+    # Outside production the app switches off AP auto-reboot, DHCP cleanup,
+    # RustDesk writes and manual switch writes (Settings.ALLOW_HARDWARE_WRITES).
+    # Deploying a prod stack with ENVIRONMENT unset would do that silently.
+    echo ".env: ENVIRONMENT must be 'production' for this deploy (found '${environment:-<unset>}')."
+    echo "      Without it the stack runs with hardware writes disabled: no AP auto-reboot, no DHCP cleanup."
+    exit 1
+  fi
 
   secret_key="$(env_value SECRET_KEY)"
   postgres_password="$(env_value POSTGRES_PASSWORD)"

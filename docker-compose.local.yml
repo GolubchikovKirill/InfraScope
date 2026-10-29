@@ -1,0 +1,77 @@
+# A development stack on a laptop: database, Redis, the API with auto-reload,
+# the Celery worker and beat, and the Vite dev server - nothing else.
+#
+#   Windows:      .\scripts\dev-up.ps1
+#   Linux/macOS:  ./scripts/dev-up.sh
+#
+# or by hand:
+#   docker compose -p infrascope-local -f docker-compose.yml -f docker-compose.local.yml \
+#     up -d --build db redis backend worker beat frontend-dev
+#
+# App:      http://localhost:5173   (Vite, hot reload; /api goes to the backend)
+# API:      http://localhost:8000/docs
+# Postgres: localhost:5432          (from docker-compose.yml)
+#
+# This machine sits in the same network as the stores. The settings below keep
+# the stack off real equipment whatever .env says: ENVIRONMENT is development,
+# so the app switches off AP auto-reboot, DHCP cleanup and RustDesk writes and
+# refuses manual switch writes (Settings.ALLOW_HARDWARE_WRITES). Scheduled
+# device polling (read-only) is off unless AUTO_POLL_ENABLED=true in .env.
+
+x-local-app-env: &local-app-env
+  ENVIRONMENT: development
+  ALLOW_HARDWARE_WRITES: "false"
+  AUTO_POLL_ENABLED: ${AUTO_POLL_ENABLED:-false}
+  # Bind-mounted sources on Docker Desktop for Windows don't deliver file
+  # events into the container; poll so --reload notices a save.
+  WATCHFILES_FORCE_POLLING: "true"
+
+services:
+  backend:
+    command: >
+      sh -c "/app/scripts/prestart.sh &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
+    environment: *local-app-env
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    environment: *local-app-env
+    volumes:
+      - ./app:/app/app
+
+  beat:
+    environment: *local-app-env
+
+  frontend-dev:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: sh -c "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_PROXY_TARGET: http://backend:8000
+      VITE_USE_POLLING: "1"
+    volumes:
+      - ./frontend:/app
+      # Linux node_modules inside the container, not the Windows ones on disk
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - internal
+
+# Volumes of their own, so the local database never shares a name with one a
+# production-style stack on the same Docker host would use.
+volumes:
+  postgres_data:
+    name: infrascope_local_postgres_data
+  redis_data:
+    name: infrascope_local_redis_data
+  media_library:
+    name: infrascope_local_media_library
+  frontend_node_modules:
+    name: infrascope_local_frontend_node_modules
