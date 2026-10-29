@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.config import settings
 from app.domains.integrations.schemas import (
     HonestSignInitializePublic,
     HonestSignStatusesPublic,
@@ -22,6 +23,7 @@ from app.services.honest_sign import (
     initialize_honest_sign_target,
     set_target_ip_override,
     status_configuration_ready,
+    stored_statuses,
 )
 
 router = APIRouter(tags=["honest-sign"])
@@ -52,7 +54,17 @@ def read_targets(session: SessionDep, current_user: CurrentUser) -> HonestSignTa
         count=len(rows),
         status_configured=status_configuration_ready(),
         initialization_configured=initialization_configuration_ready(),
+        auto_check_enabled=settings.HONEST_SIGN_AUTO_CHECK_ENABLED,
+        auto_check_interval_minutes=max(settings.HONEST_SIGN_AUTO_CHECK_INTERVAL_MINUTES, 1),
     )
+
+
+@router.get("/statuses", response_model=HonestSignStatusesPublic)
+def read_stored_statuses(session: SessionDep, current_user: CurrentUser) -> HonestSignStatusesPublic:
+    """Last results of the scheduled check; contacts no register."""
+    del current_user
+    rows = stored_statuses(session)
+    return HonestSignStatusesPublic(data=rows, count=len(rows))
 
 
 @router.post("/check-all", response_model=HonestSignStatusesPublic)

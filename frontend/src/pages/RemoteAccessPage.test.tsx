@@ -189,7 +189,7 @@ describe("RemoteAccessPage", () => {
       ],
       count: 2,
     });
-    api.getPushJobs.mockResolvedValue({ data: [], count: 0, runner: { name: null, seconds_ago: null, online: false } });
+    api.getPushJobs.mockResolvedValue({ data: [], count: 0, configured: true });
     api.pushDevices.mockResolvedValue({ queued: [{ hostname: "VNA-KKM-701" }, { hostname: "VNA-KKM-702" }], skipped: [] });
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderPage();
@@ -204,7 +204,7 @@ describe("RemoteAccessPage", () => {
 
   it("queues nothing when the confirmation is declined", async () => {
     api.getRemoteDevices.mockResolvedValue({ data: [makeDevice({ id: "d1", hostname: "VNA-KKM-701", type_tag: "KKM" })], count: 1 });
-    api.getPushJobs.mockResolvedValue({ data: [], count: 0, runner: { name: null, seconds_ago: null, online: false } });
+    api.getPushJobs.mockResolvedValue({ data: [], count: 0, configured: true });
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     renderPage();
     await screen.findByText("VNA-KKM-701");
@@ -218,7 +218,7 @@ describe("RemoteAccessPage", () => {
 
   it("shows the network push queue for a superuser", async () => {
     api.getRemoteDevices.mockResolvedValue({ data: [makeDevice()], count: 1 });
-    api.getPushJobs.mockResolvedValue({ data: [], count: 0, runner: { name: null, seconds_ago: null, online: false } });
+    api.getPushJobs.mockResolvedValue({ data: [], count: 0, configured: true });
     renderPage();
 
     expect(await screen.findByRole("region", { name: "Раскатка по сети" })).toBeInTheDocument();

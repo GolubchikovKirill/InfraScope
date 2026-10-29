@@ -52,22 +52,6 @@
   animation: toast-in 150ms ease-out;
 }
 
-/* The "show menu" button appearing once the sidebar is hidden */
-@keyframes slide-in-left {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.slide-in-left {
-  animation: slide-in-left 200ms ease-out;
-}
-
 /* Briefly flags the row a cross-link (?focus=) landed on - see useRowFocus. */
 @keyframes app-row-flash {
   0%,
@@ -110,4 +94,14 @@
 
 .app-compact-scroll::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Swipeable chip strips (the mobile nav): the swipe is the affordance, a
+   scrollbar under every strip was a grey bar between the rows */
+.app-scroll-x-hidden {
+  scrollbar-width: none;
+}
+
+.app-scroll-x-hidden::-webkit-scrollbar {
+  display: none;
 }

@@ -19,17 +19,16 @@ const job = (hostname: string, over: Partial<PushJob> = {}): PushJob => ({
   state: "queued",
   detail: null,
   requested_by: "admin@x",
-  runner: null,
   created_at: new Date().toISOString(),
   started_at: null,
   finished_at: null,
   ...over,
 });
 
-const response = (data: PushJob[], runner: Partial<PushJobsResponse["runner"]> = {}): PushJobsResponse => ({
+const response = (data: PushJob[], configured = true): PushJobsResponse => ({
   data,
   count: data.length,
-  runner: { name: null, seconds_ago: null, online: false, ...runner },
+  configured,
 });
 
 const renderPanel = () =>
@@ -45,33 +44,26 @@ beforeEach(() => {
 });
 
 describe("PushJobsPanel", () => {
-  it("says the runner is not connected when none has ever claimed, and tells how to start one", async () => {
-    api.getPushJobs.mockResolvedValue(response([]));
+  it("says network push is not configured, and explains how it works", async () => {
+    api.getPushJobs.mockResolvedValue(response([], false));
     renderPanel();
 
-    expect(await screen.findByText("раннер не подключён")).toBeInTheDocument();
+    expect(await screen.findByText("сетевой push не настроен")).toBeInTheDocument();
     expect(screen.getByText(/Заданий пока нет/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Как подключить раннер" }));
-    expect(screen.getByText(/Run-PushRunner\.ps1/)).toBeInTheDocument();
-    expect(screen.getByText(/Сервер сам ничего не запускает на машинах/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Как это работает" }));
+    expect(screen.getByText(/WINRM_ADMIN_USERNAME/)).toBeInTheDocument();
+    expect(screen.getByText(/Сервер сам подключается к машине по WinRM/)).toBeInTheDocument();
   });
 
-  it("shows a connected runner by name", async () => {
-    api.getPushJobs.mockResolvedValue(response([job("VNA-KKM-701")], { name: "ADMIN-PC", seconds_ago: 5, online: true }));
+  it("shows network push as configured", async () => {
+    api.getPushJobs.mockResolvedValue(response([job("VNA-KKM-701")]));
     renderPanel();
 
-    expect(await screen.findByText("раннер ADMIN-PC на связи")).toBeInTheDocument();
+    expect(await screen.findByText("сетевой push настроен")).toBeInTheDocument();
   });
 
-  it("says a runner that stopped claiming is not answering", async () => {
-    api.getPushJobs.mockResolvedValue(response([], { name: "ADMIN-PC", seconds_ago: 600, online: false }));
-    renderPanel();
-
-    expect(await screen.findByText(/раннер ADMIN-PC не отвечает/)).toBeInTheDocument();
-  });
-
-  it("lists each job with its state in words and the runner's detail", async () => {
+  it("lists each job with its state in words and its own detail", async () => {
     api.getPushJobs.mockResolvedValue(
       response([
         job("VNA-KKM-701", { state: "running" }),

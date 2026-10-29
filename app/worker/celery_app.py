@@ -74,6 +74,17 @@ if settings.AUTO_POLL_ENABLED:
         }
     )
 
+if settings.HONEST_SIGN_AUTO_CHECK_ENABLED:
+    # Read-only /api/v2/status of every register's Honest Sign Local Module.
+    _beat_schedule.update(
+        {
+            "honest-sign-check": {
+                "task": "tasks.honest_sign_check_cycle",
+                "schedule": timedelta(minutes=max(settings.HONEST_SIGN_AUTO_CHECK_INTERVAL_MINUTES, 1)),
+            },
+        }
+    )
+
 if settings.AUTO_REBOOT_AP_ENABLED:
     # 07:30 and 19:30 Moscow time. Moscow is a fixed UTC+3 offset (no DST),
     # so this is just 04:30 and 16:30 UTC - no timezone library needed.

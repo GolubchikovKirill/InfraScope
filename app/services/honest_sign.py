@@ -11,8 +11,9 @@ import httpx
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.domains.integrations.models import HonestSignTargetOverride
+from app.domains.integrations.models import HonestSignStatusRecord, HonestSignTargetOverride
 from app.domains.integrations.schemas import HonestSignInitializePublic, HonestSignStatusPublic
+from app.services.event_log import write_event_log
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,6 +263,117 @@ async def check_all_honest_sign_targets(session: Session | None = None) -> list[
                 return await _check_target(client, target)
 
         return list(await asyncio.gather(*(check_one(target) for target in targets)))
+
+
+def _as_utc(value: datetime) -> datetime:
+    # PostgreSQL hands back the naive value that was stored (always UTC here).
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def record_check_results(session: Session, rows: list[HonestSignStatusPublic]) -> None:
+    """Store a scheduled check's results and log state changes to the event log.
+
+    A register is reported once after it has not been "ready" for
+    HONEST_SIGN_ALERT_AFTER_FAILURES checks in a row (one missed check is
+    usually a reboot or a network blip), and once more when it recovers.
+    Records of registers that are no longer configured are dropped.
+    """
+    threshold = max(1, settings.HONEST_SIGN_ALERT_AFTER_FAILURES)
+    existing = {row.original_host: row for row in session.exec(select(HonestSignStatusRecord)).all()}
+    for row in rows:
+        checked_at = datetime.fromisoformat(row.checked_at)
+        record = existing.get(row.original_host)
+        if record is None:
+            record = HonestSignStatusRecord(
+                original_host=row.original_host,
+                host=row.host,
+                reachable=row.reachable,
+                status=row.status,
+                ready=row.ready,
+                checked_at=checked_at,
+                state_since=checked_at,
+            )
+            session.add(record)
+        elif record.host != row.host:
+            # The register moved to another IP: what we knew about the old one
+            # (failure streak, alert latch) says nothing about the new one.
+            record.host = row.host
+            record.state_since = checked_at
+            record.consecutive_failures = 0
+            record.problem_reported = False
+        elif record.ready != row.ready:
+            record.state_since = checked_at
+        record.reachable = row.reachable
+        record.status = row.status
+        record.version = row.version
+        record.ready = row.ready
+        record.message = row.message[:255]
+        record.checked_at = checked_at
+
+        if row.ready:
+            record.consecutive_failures = 0
+            if record.problem_reported:
+                record.problem_reported = False
+                write_event_log(
+                    session,
+                    event_type="honest_sign_recovered",
+                    category="honest_sign",
+                    severity="info",
+                    message=f"Честный знак: Local Module на кассе '{row.label}' снова готов",
+                    device_kind="cash_register",
+                    device_name=row.label,
+                    ip_address=row.host,
+                )
+            continue
+
+        record.consecutive_failures += 1
+        if record.problem_reported or record.consecutive_failures < threshold:
+            continue
+        record.problem_reported = True
+        detail = row.message or f"статус {row.status}"
+        write_event_log(
+            session,
+            event_type="honest_sign_down" if not row.reachable else "honest_sign_not_ready",
+            category="honest_sign",
+            severity="error" if not row.reachable else "warning",
+            message=f"Честный знак: Local Module на кассе '{row.label}' не готов ({detail})",
+            device_kind="cash_register",
+            device_name=row.label,
+            ip_address=row.host,
+        )
+
+    checked = {row.original_host for row in rows}
+    for original_host, record in existing.items():
+        if original_host not in checked:
+            session.delete(record)
+    session.commit()
+
+
+def stored_statuses(session: Session) -> list[HonestSignStatusPublic]:
+    """Last results of the scheduled check, for the registers configured now."""
+    records = {row.original_host: row for row in session.exec(select(HonestSignStatusRecord)).all()}
+    rows: list[HonestSignStatusPublic] = []
+    for target in configured_targets(session=session):
+        record = records.get(target.original_host)
+        if record is None or record.host != target.host:
+            continue
+        rows.append(
+            HonestSignStatusPublic(
+                host=target.host,
+                label=target.label,
+                hostname=target.hostname,
+                original_host=target.original_host,
+                reachable=record.reachable,
+                status=record.status,
+                version=record.version,
+                ready=record.ready,
+                message=record.message,
+                checked_at=_as_utc(record.checked_at).isoformat(),
+                state_since=_as_utc(record.state_since).isoformat(),
+                consecutive_failures=record.consecutive_failures,
+            )
+        )
+    return rows
 
 
 async def initialize_honest_sign_target(target: HonestSignTarget) -> HonestSignInitializePublic:

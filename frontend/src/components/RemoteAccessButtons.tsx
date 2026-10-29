@@ -61,11 +61,11 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
     onError: () => showToast("Не удалось запросить развёртывание", "error"),
   });
 
-  // queue a network push: a runner on a Windows admin machine does the actual work
+  // queue a network push: the backend runs it itself over WinRM, right away
   const pushMut = useMutation({
     mutationFn: (id: string) => pushDevices({ device_ids: [id] }),
     onSuccess: (r) => {
-      if (r.queued.length) showToast(`${hostname}: поставлено в очередь, раннер выполнит`, "success");
+      if (r.queued.length) showToast(`${hostname}: поставлено в очередь`, "success");
       else showToast(`${hostname}: ${r.skipped[0]?.reason ?? "не поставлено"}`, "info");
       qc.invalidateQueries({ queryKey: ["remote-push-jobs"] });
     },
@@ -295,7 +295,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="app-panel w-full max-w-lg space-y-3 p-5">
             <div className="flex items-start justify-between">
-              <h2 className="text-base font-semibold text-slate-900">rustdesk-ksc.json · {hostname}</h2>
+              <h2 className="text-base font-semibold text-slate-900">rustdesk.json · {hostname}</h2>
               <button onClick={() => setPkgOpen(false)} className="text-slate-400 hover:text-slate-700">
                 <X className="h-5 w-5" />
               </button>

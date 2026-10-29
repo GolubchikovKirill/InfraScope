@@ -80,7 +80,7 @@ services:
       - media_library:/var/lib/infrascope/media-library
       # the pinned RustDesk installer endpoints download from /remote-access/deploy/installer;
       # host-mounted (not a named volume) so it can be dropped in without a rebuild
-      - ${RUSTDESK_PACKAGE_HOST_DIR:-./rustdesk-ksc/packages}:/var/lib/infrascope/rustdesk:ro
+      - ${RUSTDESK_PACKAGE_HOST_DIR:-./rustdesk-push/packages}:/var/lib/infrascope/rustdesk:ro
     depends_on:
       db:
         condition: service_healthy

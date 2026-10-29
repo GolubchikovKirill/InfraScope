@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from app.api.routes import honest_sign as honest_sign_routes
 from app.core.config import settings
 from app.domains.integrations.schemas import HonestSignInitializePublic, HonestSignStatusPublic
+from app.services.honest_sign import record_check_results
 
 
 def test_honest_sign_targets_visible_to_any_authenticated_user(client, user_token: str, monkeypatch):
@@ -115,3 +116,37 @@ def test_honest_sign_ip_update_redirects_target(client, admin_token: str, monkey
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert listed.json()["data"][0]["host"] == "172.23.8.6"
+
+
+def test_honest_sign_stored_statuses_come_from_the_background_check(client, user_token: str, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "HONEST_SIGN_TARGETS", "172.23.8.21|Касса")
+    row = HonestSignStatusPublic(
+        host="172.23.8.21",
+        label="Касса",
+        original_host="172.23.8.21",
+        reachable=True,
+        status="ready",
+        version="2.5.1",
+        ready=True,
+        checked_at=datetime.now(UTC).isoformat(),
+    )
+    record_check_results(db_session, [row])
+
+    response = client.get("/api/v1/honest-sign/statuses", headers={"Authorization": f"Bearer {user_token}"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["data"][0]["ready"] is True
+    assert body["data"][0]["state_since"] is not None
+
+
+def test_honest_sign_targets_report_auto_check_settings(client, user_token: str, monkeypatch):
+    monkeypatch.setattr(settings, "HONEST_SIGN_TARGETS", "172.23.8.21|Касса")
+    monkeypatch.setattr(settings, "HONEST_SIGN_AUTO_CHECK_ENABLED", True)
+    monkeypatch.setattr(settings, "HONEST_SIGN_AUTO_CHECK_INTERVAL_MINUTES", 10)
+
+    body = client.get("/api/v1/honest-sign/targets", headers={"Authorization": f"Bearer {user_token}"}).json()
+
+    assert body["auto_check_enabled"] is True
+    assert body["auto_check_interval_minutes"] == 10

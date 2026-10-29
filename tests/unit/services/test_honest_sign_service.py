@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import httpx
 import pytest
+from sqlmodel import select
 
 from app.core.config import settings
+from app.domains.integrations.models import HonestSignStatusRecord
+from app.domains.integrations.schemas import HonestSignStatusPublic
+from app.domains.operations.models import EventLog
 from app.services import honest_sign
 
 
@@ -101,3 +107,105 @@ def test_ip_override_rejects_collision_with_another_target(monkeypatch, db_sessi
 
     with pytest.raises(ValueError):
         honest_sign.set_target_ip_override(db_session, "172.23.8.21", "172.23.8.36")
+
+
+def _row(original_host="172.23.8.21", *, host=None, ready=True, reachable=True, status=None, minute=0):
+    return HonestSignStatusPublic(
+        host=host or original_host,
+        label="A15",
+        original_host=original_host,
+        reachable=reachable,
+        status=status or ("ready" if ready else "ERROR" if not reachable else "not_initialized"),
+        ready=ready,
+        message="" if reachable else "Нет соединения с Local Module",
+        checked_at=datetime(2026, 10, 29, 10, minute, tzinfo=UTC).isoformat(),
+    )
+
+
+def _events(db_session) -> list[str]:
+    return [e.event_type for e in db_session.exec(select(EventLog).order_by(EventLog.created_at)).all()]
+
+
+def test_record_results_alerts_once_after_threshold_and_logs_recovery(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_ALERT_AFTER_FAILURES", 2)
+
+    honest_sign.record_check_results(db_session, [_row(ready=False, reachable=False, minute=0)])
+    assert _events(db_session) == []  # one miss is still a blip
+
+    honest_sign.record_check_results(db_session, [_row(ready=False, reachable=False, minute=15)])
+    honest_sign.record_check_results(db_session, [_row(ready=False, reachable=False, minute=30)])
+    assert _events(db_session) == ["honest_sign_down"]  # reported once, not every cycle
+
+    honest_sign.record_check_results(db_session, [_row(ready=True, minute=45)])
+    assert _events(db_session) == ["honest_sign_down", "honest_sign_recovered"]
+
+    record = db_session.exec(select(HonestSignStatusRecord)).one()
+    assert record.consecutive_failures == 0
+    assert record.problem_reported is False
+
+
+def test_record_results_reports_reachable_but_not_ready_as_warning(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_ALERT_AFTER_FAILURES", 1)
+
+    honest_sign.record_check_results(db_session, [_row(ready=False, minute=0)])
+
+    event = db_session.exec(select(EventLog)).one()
+    assert (event.event_type, event.severity, event.device_name, event.ip_address) == (
+        "honest_sign_not_ready",
+        "warning",
+        "A15",
+        "172.23.8.21",
+    )
+
+
+def test_record_results_does_not_alert_a_register_that_never_failed(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_ALERT_AFTER_FAILURES", 1)
+
+    honest_sign.record_check_results(db_session, [_row(ready=True, minute=0)])
+    honest_sign.record_check_results(db_session, [_row(ready=True, minute=15)])
+
+    assert _events(db_session) == []
+
+
+def test_record_results_tracks_state_since_only_on_change(db_session) -> None:
+    honest_sign.record_check_results(db_session, [_row(ready=True, minute=0)])
+    honest_sign.record_check_results(db_session, [_row(ready=True, minute=15)])
+    honest_sign.record_check_results(db_session, [_row(ready=False, reachable=False, minute=30)])
+
+    record = db_session.exec(select(HonestSignStatusRecord)).one()
+    assert record.state_since.minute == 30
+    assert record.checked_at.minute == 30
+
+
+def test_record_results_resets_streak_when_register_moves_to_another_ip(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_ALERT_AFTER_FAILURES", 2)
+    honest_sign.record_check_results(db_session, [_row(ready=False, reachable=False, minute=0)])
+
+    # Second failure, but against a new IP: the old IP's streak must not count.
+    honest_sign.record_check_results(
+        db_session, [_row(host="172.23.8.6", ready=False, reachable=False, minute=15)]
+    )
+
+    assert _events(db_session) == []
+    assert db_session.exec(select(HonestSignStatusRecord)).one().consecutive_failures == 1
+
+
+def test_record_results_drops_registers_that_are_no_longer_configured(db_session) -> None:
+    honest_sign.record_check_results(db_session, [_row("172.23.8.21"), _row("172.23.8.36")])
+    honest_sign.record_check_results(db_session, [_row("172.23.8.21")])
+
+    assert [r.original_host for r in db_session.exec(select(HonestSignStatusRecord)).all()] == ["172.23.8.21"]
+
+
+def test_stored_statuses_follow_configured_targets_and_skip_stale_ip(monkeypatch, db_session) -> None:
+    monkeypatch.setattr(settings, "HONEST_SIGN_TARGETS", "172.23.8.21|A15|VNK-KKM-1501,172.23.8.36|A16")
+    honest_sign.record_check_results(db_session, [_row("172.23.8.21", minute=5)])
+
+    rows = honest_sign.stored_statuses(db_session)
+    assert [(r.host, r.hostname, r.ready, r.consecutive_failures) for r in rows] == [
+        ("172.23.8.21", "VNK-KKM-1501", True, 0)
+    ]
+    assert rows[0].checked_at == "2026-10-29T10:05:00+00:00"
+
+    honest_sign.set_target_ip_override(db_session, "172.23.8.21", "172.23.8.6")
+    assert honest_sign.stored_statuses(db_session) == []  # the stored status was for the old IP

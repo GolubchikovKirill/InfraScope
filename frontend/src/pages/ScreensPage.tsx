@@ -80,7 +80,7 @@ export default function ScreensPage() {
 
   return (
     <div className="space-y-5">
-      <section className="grid gap-3 sm:grid-cols-3" aria-label="Статистика экранов">
+      <section className="grid grid-cols-3 gap-2 sm:gap-3" aria-label="Статистика экранов">
         <Stat label="Экранов" value={all.length} />
         <Stat label="Активных" value={active.length} detail={all.length ? `${all.length - active.length} не в сети` : undefined} />
         <Stat label="На связи в RustDesk" value={all.filter((s) => screenState(s) === "online").length} detail="к ним можно подключиться" />
@@ -125,7 +125,7 @@ export default function ScreensPage() {
               <h3 className="text-sm font-semibold text-slate-800">{zone.label}</h3>
               <span className="text-xs text-slate-500">{zone.total} экранов · {zone.active} активны</span>
             </div>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-2 min-[1920px]:grid-cols-3">
               {zone.stores.map((store) => (
                 <div key={store.key} data-testid={`store-${store.key}`} className="app-panel p-4">
                   <div className="mb-1 flex items-center justify-between gap-2">

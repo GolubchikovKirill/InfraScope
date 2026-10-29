@@ -18,6 +18,7 @@ import {
   checkAllHonestSignTargets,
   checkHonestSignTarget,
   getHonestSignTargets,
+  getStoredHonestSignStatuses,
   initializeHonestSignTarget,
   updateHonestSignTargetIp,
   type HonestSignInitializeResult,
@@ -46,9 +47,19 @@ export default function HonestSignPage() {
     queryKey: ["honest-sign", "targets"],
     queryFn: getHonestSignTargets,
   });
+  const autoCheckEnabled = targetsQuery.data?.auto_check_enabled === true;
+  // The server re-checks every register in the background, so opening the page
+  // reads what it last saw; a live scan runs only before the first background
+  // check has happened or when automatic checks are off.
   const statusesQuery = useQuery({
     queryKey: STATUS_QUERY_KEY,
-    queryFn: checkAllHonestSignTargets,
+    queryFn: async () => {
+      if (autoCheckEnabled) {
+        const stored = await getStoredHonestSignStatuses();
+        if (stored.count > 0) return stored;
+      }
+      return checkAllHonestSignTargets();
+    },
     enabled: targetsQuery.data?.status_configured === true,
     retry: false,
   });
@@ -65,23 +76,29 @@ export default function HonestSignPage() {
     mutationFn: checkHonestSignTarget,
     onSuccess: updateOneStatus,
   });
+  const checkAllMutation = useMutation({
+    mutationFn: checkAllHonestSignTargets,
+    onSuccess: (data) => queryClient.setQueryData<HonestSignStatusesResponse>(STATUS_QUERY_KEY, data),
+  });
   const initializeMutation = useMutation({
     mutationFn: initializeHonestSignTarget,
-    onSuccess: async (result) => {
+    onSuccess: (result) => {
       setLastResult(result);
       setTargetToInitialize(null);
-      await statusesQuery.refetch();
+      checkOneMutation.mutate(result.host);
     },
   });
   const updateIpMutation = useMutation({
     mutationFn: ({ originalHost, newIp }: { originalHost: string; newIp: string }) =>
       updateHonestSignTargetIp(originalHost, newIp),
-    onSuccess: async () => {
+    onSuccess: async (target) => {
       setEditingIpFor(null);
       setNewIpValue("");
       showToast("IP кассы обновлён", "success");
       await targetsQuery.refetch();
       await statusesQuery.refetch();
+      // The stored status belongs to the old IP; look at the new one right away.
+      checkOneMutation.mutate(target.host);
     },
     onError: (error) => showToast(apiErrorMessage(error, "Не удалось изменить IP"), "error"),
   });
@@ -119,7 +136,7 @@ export default function HonestSignPage() {
   const readyCount = statuses.filter((status) => status.ready).length;
   const initializingCount = statuses.filter((status) => status.status.toLocaleLowerCase("ru-RU") === "initialization").length;
   const errorCount = statuses.filter((status) => !status.reachable || status.status.startsWith("HTTP_")).length;
-  const isCheckingAll = statusesQuery.isFetching;
+  const isCheckingAll = statusesQuery.isFetching || checkAllMutation.isPending;
 
   if (targetsQuery.isLoading) {
     return <div className="app-panel h-48 app-skeleton" />;
@@ -137,11 +154,12 @@ export default function HonestSignPage() {
             <div>
               <h2 className="font-semibold text-slate-900">Локальный модуль «Честный знак»</h2>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">Проверка API v2 на кассах и безопасный запуск удалённой инициализации. Готовый модуль повторно не активируется.</p>
+              {autoCheckEnabled && <p className="mt-1 text-xs text-slate-500">Сервер сам проверяет кассы каждые {targetsQuery.data?.auto_check_interval_minutes} мин; неготовые модули попадают в журнал событий.</p>}
             </div>
           </div>
           <button
             type="button"
-            onClick={() => statusesQuery.refetch()}
+            onClick={() => checkAllMutation.mutate()}
             disabled={!targetsQuery.data?.status_configured || isCheckingAll}
             className="app-btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm disabled:opacity-50"
           >
@@ -203,7 +221,7 @@ export default function HonestSignPage() {
         <div className="text-xs text-slate-500">Показано: {visibleTargets.length} из {targets.length}</div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2 min-[1920px]:grid-cols-3">
         {visibleTargets.map((target) => {
           const status = byHost.get(target.host);
           const checkingThis = checkOneMutation.isPending && checkOneMutation.variables === target.host;
@@ -274,6 +292,7 @@ export default function HonestSignPage() {
                       <Field label="API" value="v2 :5995" />
                       <Field label="Проверено" value={status ? new Date(status.checked_at).toLocaleString("ru-RU") : "—"} />
                       <Field label="Состояние" value={status?.status || "не проверено"} />
+                      {status?.state_since && <Field label={status.ready ? "Готов с" : "Не готов с"} value={new Date(status.state_since).toLocaleString("ru-RU")} />}
                     </div>
                     {status?.message && <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{status.message}</div>}
                   </div>

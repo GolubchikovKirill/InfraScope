@@ -12,6 +12,8 @@ export interface HonestSignTargetsResponse {
   count: number;
   status_configured: boolean;
   initialization_configured: boolean;
+  auto_check_enabled: boolean;
+  auto_check_interval_minutes: number;
 }
 
 export interface HonestSignStatus extends HonestSignTarget {
@@ -21,6 +23,9 @@ export interface HonestSignStatus extends HonestSignTarget {
   ready: boolean;
   message: string;
   checked_at: string;
+  // Only present on results read back from the scheduled check's store.
+  state_since?: string | null;
+  consecutive_failures?: number;
 }
 
 export interface HonestSignStatusesResponse {
@@ -38,6 +43,11 @@ export interface HonestSignInitializeResult extends HonestSignTarget {
 
 export async function getHonestSignTargets() {
   const { data } = await api.get<HonestSignTargetsResponse>("/honest-sign/targets");
+  return data;
+}
+
+export async function getStoredHonestSignStatuses() {
+  const { data } = await api.get<HonestSignStatusesResponse>("/honest-sign/statuses");
   return data;
 }
 

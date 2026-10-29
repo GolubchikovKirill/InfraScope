@@ -200,7 +200,7 @@ describe("RemoteAccessButtons", () => {
     renderButtons();
 
     fireEvent.click(screen.getByTitle("Оффлайн-пакет (для машин без сети до InfraScope)"));
-    expect(await screen.findByText("rustdesk-ksc.json · VNK-MGR-D1")).toBeInTheDocument();
+    expect(await screen.findByText("rustdesk.json · VNK-MGR-D1")).toBeInTheDocument();
     await waitFor(() => expect(api.getDevicePackage).toHaveBeenCalledWith("dev-1"));
   });
 

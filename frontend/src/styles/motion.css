@@ -44,14 +44,13 @@
     scroll-behavior: auto !important;
   }
 
-  .app-card:hover,
-  .app-logo-btn:hover {
+  .app-card:hover {
     transform: none;
   }
 
   .route-fade,
   .toast-in,
-  .slide-in-left,
+  .app-rail-tip,
   .row-flash {
     animation: none;
   }

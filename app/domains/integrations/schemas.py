@@ -179,6 +179,8 @@ class HonestSignTargetsPublic(BaseModel):
     count: int
     status_configured: bool
     initialization_configured: bool
+    auto_check_enabled: bool = False
+    auto_check_interval_minutes: int = 0
 
 
 class HonestSignTargetIpUpdate(BaseModel):
@@ -203,6 +205,9 @@ class HonestSignStatusPublic(HonestSignTargetPublic):
     ready: bool
     message: str = ""
     checked_at: str
+    # Only set for results read back from the scheduled check's store.
+    state_since: str | None = None
+    consecutive_failures: int = 0
 
 
 class HonestSignStatusesPublic(BaseModel):

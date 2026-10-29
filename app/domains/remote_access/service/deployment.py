@@ -21,7 +21,7 @@ logger = logging.getLogger("app.domains.remote_access.service")
 def package_config(dev: RemoteAccessDevice) -> dict:
     """Everything an offline package needs for this machine.
 
-    `rustdesk-ksc/configure.ps1` consumes exactly these keys. The online path
+    `rustdesk-push/configure.ps1` consumes exactly these keys. The online path
     (`deployment_config`) is richer and should be preferred.
     """
     return {
