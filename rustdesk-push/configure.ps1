@@ -1,25 +1,25 @@
 <#
     configure.ps1 - RustDesk post-install step for the OFFLINE rollout path,
-    run ON the endpoint by Kaspersky Security Center ("Run after install").
+    run ON the endpoint after RustDesk is installed (startup script, scheduled task or by hand).
 
     Prefer the online path when the machine can reach InfraScope over HTTP: it
     fetches the same config at run time and reports the result back, so a
-    password rotation needs no new package. See docs/rustdesk-ksc-deployment.md.
+    password rotation needs no new package. See docs/rustdesk-deployment.md.
     This script exists for machines that cannot.
 
     Points an already-installed RustDesk at the self-hosted server, sets the
     hostname-based ID, applies the permanent password, and (optionally) the
     lockdown (hide tray + strip shortcuts + AppLocker deny non-admin launch).
 
-    Config comes from rustdesk-ksc.json placed next to this script inside the KSC
-    package, OR from -Param overrides. InfraScope renders the per-machine values:
+    Config comes from rustdesk.json placed next to this script inside the
+    offline package, OR from -Param overrides. InfraScope renders the per-machine values:
     GET /api/v1/remote-access/devices/{id}/package  ->  those keys 1:1.
 
-    Idempotent: safe to run on every KSC deployment / repair.
+    Idempotent: safe to run on every deployment / repair.
 #>
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot 'rustdesk-ksc.json'),
+    [string]$ConfigPath = (Join-Path $PSScriptRoot 'rustdesk.json'),
     [string]$RustdeskId,          # overrides config; default = hostname sanitised to [A-Za-z0-9_]
     [string]$Password,            # overrides config
     [switch]$NoLockdown
@@ -49,7 +49,7 @@ if (-not $idServer -or -not $key) { throw "config incomplete: need id_server and
 Log "=== configure: id=$rid server=$idServer hidden=$hidden block=$block ==="
 
 $exe = 'C:\Program Files\RustDesk\rustdesk.exe'
-if (-not (Test-Path $exe)) { throw "RustDesk not installed at $exe - the KSC package must install it first" }
+if (-not (Test-Path $exe)) { throw "RustDesk not installed at $exe - the offline package must install it first" }
 if (-not (Get-Service RustDesk -EA SilentlyContinue)) {
     Start-Process $exe -ArgumentList '--install-service' -Wait; Start-Sleep 3
 }

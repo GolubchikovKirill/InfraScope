@@ -1,0 +1,41 @@
+# Машины, у которых RustDesk ID всё ещё цифровой (заводской), а не имя хоста.
+# Источник: живая консоль rustdesk-api (/api/admin/peer/list), срез 2026-09-19.
+# Хосты, у которых рядом уже есть пир с именным ID (старые цифровые дубли),
+# сюда не входят. MACBOOK-PRO (личный ноутбук) исключён.
+# Лечение на конечной машине: set-id.ps1 -UseHostname -Force (от SYSTEM/админа),
+# либо повторный запуск Install-RustDesk.ps1 - оба ставят ID = имя хоста.
+# Формат: одно имя хоста в строке; # - комментарий.
+VNA-TSC-1101	# ONLINE
+VNA-TSC-1102	# ONLINE
+VNA-TSC-2201	# ONLINE
+VNA-TSC-3101	# ONLINE
+VNA-TV-1101	# ONLINE
+VNA-TV-903	# ONLINE
+VNK-EGAISA25	# ONLINE
+VNK-ITD-SA04	# ONLINE
+VNK-KCO-01	# ONLINE
+VNK-KCO-02	# ONLINE
+VNK-KCO-03	# ONLINE
+VNK-SEC-02	# ONLINE
+VNK-SEC-12	# ONLINE
+VNK-SEC-22	# ONLINE
+VNK-SEC-OKO	# ONLINE
+VNK-SKD-06	# ONLINE
+VNK-SKD-TAM01	# ONLINE
+VNK-SRV-VIDEO13	# ONLINE
+VNK-SRV-VIDEO16	# ONLINE
+
+# --- кассы (ККМ): отложены, добавлять в группу позже ---
+VN3-KKM-005	# ONLINE
+VNK-KKM-102	# ONLINE
+VNK-KKM-103	# ONLINE
+VNK-KKM-1101	# ONLINE
+VNK-KKM-1511	# ONLINE
+VNK-KKM-2201	# ONLINE
+VNK-KKM-2701	# ONLINE
+VNK-KKM-2902	# ONLINE
+VNK-KKM-3003	# ONLINE
+VNK-KKM-3301	# ONLINE
+VNK-KKM-3302	# ONLINE
+VNK-KKM-3303	# ONLINE
+VNK-KKM-TEST02	# ONLINE

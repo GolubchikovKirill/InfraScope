@@ -133,9 +133,10 @@ PUSH_JOB_FINAL = ("succeeded", "failed", "skipped", "cancelled")
 class RemoteAccessPushJob(SQLModel, table=True):
     """One request to push RustDesk to a machine over the network.
 
-    The server never executes anything on the fleet - it only keeps this queue. A runner
-    on a Windows admin host claims queued jobs, runs the push kit there and reports the
-    outcome, which is what moves the device's rollout state.
+    Run by a Celery task over WinRM (`push_jobs.execute_push_job`), dispatched right
+    after the job is queued. `state`/`detail` describe the push trigger itself; the
+    device's own `deploy_state` only ever moves through its self-report, exactly as
+    for the GPO/pull rollout - see `push_jobs`'s module docstring.
     """
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -147,7 +148,6 @@ class RemoteAccessPushJob(SQLModel, table=True):
     state: str = Field(default="queued", max_length=16, index=True)
     detail: str | None = Field(default=None, max_length=1024)
     requested_by: str | None = Field(default=None, max_length=255)
-    runner: str | None = Field(default=None, max_length=64)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
     started_at: datetime | None = Field(default=None)
     finished_at: datetime | None = Field(default=None)

@@ -35,8 +35,10 @@ from app.domains.inventory.dhcp_clear import (
 from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
 from app.domains.inventory.port_snapshot import capture_switch_port_snapshot, get_switches_for_snapshot
 from app.domains.operations.models import CashRegister
+from app.domains.remote_access import push_jobs as _remote_access_push_jobs
 from app.domains.remote_access import rustdesk_client as _rustdesk_client
 from app.domains.remote_access import service as _remote_access_service
+from app.domains.remote_access.models import RemoteAccessPushJob
 from app.ml.pipeline import run_scoring_cycle, run_training_cycle
 from app.ml.retention import run_retention_cycle
 from app.observability.metrics import (
@@ -631,3 +633,20 @@ def remote_access_sync_task(self) -> dict:
         "statuses_from_polling": statuses,
         "console_error": console_error,
     }
+
+
+# No retries: a WinRM push either reaches the machine and runs to completion or it
+# doesn't (device off, WinRM not enabled, bad creds) - auto-retrying would mask a
+# real failure as transient. An operator re-queues from the UI instead, same as a
+# failed switch action elsewhere in this module.
+@_task("remote_access_push_job")
+def remote_access_push_job_task(self, job_id: str) -> dict:
+    """Run one queued RustDesk push job over WinRM. Dispatched right after the job
+    is queued (see the `/remote-access/push` route) - see `push_jobs.execute_push_job`
+    for what this does and does not change on the device."""
+    with Session(engine) as session:
+        job = session.get(RemoteAccessPushJob, uuid.UUID(job_id))
+        if job is None:
+            return _Skipped({"status": "job_not_found", "job_id": job_id})
+        job = _remote_access_push_jobs.execute_push_job(session, job)
+    return {"job_id": job_id, "hostname": job.hostname, "state": job.state}

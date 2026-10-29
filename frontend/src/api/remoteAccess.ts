@@ -157,7 +157,7 @@ export async function dismissConsolePeer(hostname: string) {
 }
 
 // --------------------------------------------------------------------------- //
-// network push: queued here, executed by a runner on a Windows admin machine   //
+// network push: queued here, run by the backend itself over WinRM             //
 // --------------------------------------------------------------------------- //
 export type PushJobState = "queued" | "running" | "succeeded" | "failed" | "skipped" | "cancelled";
 
@@ -170,7 +170,6 @@ export interface PushJob {
   state: PushJobState;
   detail: string | null;
   requested_by: string | null;
-  runner: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -181,20 +180,14 @@ export interface PushEnqueueResult {
   skipped: Array<{ hostname: string; reason: string }>;
 }
 
-export interface RunnerStatus {
-  name: string | null;
-  seconds_ago: number | null;
-  /** claimed within the last ~90 seconds */
-  online: boolean;
-}
-
 export interface PushJobsResponse {
   data: PushJob[];
   count: number;
-  runner: RunnerStatus;
+  /** WINRM_ADMIN_USERNAME/PASSWORD are set on the server, i.e. a push would not 503 */
+  configured: boolean;
 }
 
-/** Queue a network push. Nothing runs on the server: a runner on a Windows admin machine picks it up. */
+/** Queue a network push: the backend runs it itself over WinRM, right away. */
 export async function pushDevices(payload: { device_ids: string[]; profile?: DeployProfile; dry_run?: boolean }) {
   const { data } = await api.post<PushEnqueueResult>("/remote-access/push", payload);
   return data;
