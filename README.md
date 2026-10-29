@@ -139,7 +139,9 @@ worker, beat и Vite с hot reload. Из корня репозитория:
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-up.ps1
 ```
 
-(Linux/macOS: `./scripts/dev-up.sh`.) Нужен только запущенный Docker Desktop.
+macOS/Linux: `./scripts/dev-up.sh` (ключи `--from-prod-backup`, `--logs`, `--down`,
+`--reset`). Нужен только запущенный Docker Desktop. Для `--from-prod-backup` /
+`-FromProdBackup` на машине должен быть SSH-alias `infrascope-server` (`~/.ssh/config`).
 Первый запуск создаёт `.env` из `.env.local.example` со свежими ключами и
 собирает образы (несколько минут), дальше — секунды.
 

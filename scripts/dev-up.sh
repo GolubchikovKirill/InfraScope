@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local development stack in Docker (docker-compose.local.yml) - the Linux/macOS
-# twin of scripts/dev-up.ps1. Usage: ./scripts/dev-up.sh [--from-prod-backup|--logs|--down|--reset]
+# twin of scripts/dev-up.ps1 (bash 3.2 as shipped with macOS is enough). Usage: ./scripts/dev-up.sh [--from-prod-backup|--logs|--down|--reset]
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -15,7 +15,9 @@ case "${1:-}" in
   --logs) exec "${COMPOSE[@]}" logs -f --tail 100 backend worker ;;
 esac
 
-secret() { python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom($1)).decode())"; }
+# URL-safe base64 of N random bytes (for 32 bytes that is exactly a Fernet key).
+# openssl ships with macOS; python3 there may be only the Xcode-install stub.
+secret() { openssl rand -base64 "$1" | tr -d '\n' | tr '+/' '-_'; }
 
 if [ -f .env ]; then
   if grep -Eq "^[[:space:]]*ENVIRONMENT[[:space:]]*=[[:space:]]*['\"]?production" .env; then
