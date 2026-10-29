@@ -12,7 +12,41 @@ const api = vi.hoisted(() => ({
   getPrinters: vi.fn(),
   getSwitches: vi.fn(),
   getRemoteDevices: vi.fn(),
+  getHonestSignCashRegisters: vi.fn(),
 }));
+
+function honestSign(overrides: Record<string, unknown> = {}) {
+  return {
+    data: [],
+    unmatched_targets: [],
+    ambiguous_hostnames: [],
+    status_configured: true,
+    initialization_configured: true,
+    auto_check_enabled: true,
+    auto_check_interval_minutes: 15,
+    ...overrides,
+  };
+}
+
+function honestSignLink(cashId: string, host: string, status: Record<string, unknown> | null) {
+  return {
+    cash_register_id: cashId,
+    target: { host, label: "A2", hostname: "VNA-KKM-201", original_host: host },
+    status: status && {
+      host,
+      label: "A2",
+      hostname: "VNA-KKM-201",
+      original_host: host,
+      reachable: true,
+      status: "ready",
+      version: "2.5.1",
+      ready: true,
+      message: "",
+      checked_at: new Date().toISOString(),
+      ...status,
+    },
+  };
+}
 
 vi.mock("../auth", () => ({ useAuth: () => ({ user: { email: "a@b.c", is_superuser: true } }) }));
 
@@ -52,6 +86,7 @@ describe("OverviewPage", () => {
       count: 2,
     });
     api.getRemoteDevices.mockResolvedValue({ data: [], count: 0 });
+    api.getHonestSignCashRegisters.mockResolvedValue(honestSign());
     api.getComputers.mockResolvedValue({
       data: [
         { id: "pc-1", hostname: "VNA-MGR-205", location: null, comment: null, is_online: true },
@@ -73,6 +108,43 @@ describe("OverviewPage", () => {
     expect(screen.getByText("Нужно пополнить склад")).toBeInTheDocument();
     expect(screen.getByText("Свитч A1 недоступен")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /недоступно: 1 свитч/i })).toHaveAttribute("href", "/switches");
+  });
+
+  it("lists Honest Sign problems, stale checks and unlinked targets among the priorities", async () => {
+    api.getHonestSignCashRegisters.mockResolvedValue(
+      honestSign({
+        data: [
+          honestSignLink("cash-1", "172.23.8.21", { ready: false, reachable: false, status: "ERROR" }),
+          honestSignLink("cash-2", "172.23.8.22", { ready: true, checked_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() }),
+        ],
+        unmatched_targets: [{ host: "172.23.8.30", label: "A2", hostname: null, original_host: "172.23.8.30" }],
+        ambiguous_hostnames: ["vna-kkm-205"],
+      }),
+    );
+    renderOverview();
+
+    expect(await screen.findByText("Честный знак не готов: 1 касса")).toBeInTheDocument();
+    expect(screen.getByText("Нет свежей проверки Честного знака")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Честный знак не готов/ })).toHaveAttribute("href", "/cash-registers");
+    const unlinked = screen.getByRole("link", { name: /нет привязки к кассам/ });
+    expect(unlinked).toHaveAttribute("href", "/honest-sign");
+    expect(unlinked).toHaveTextContent("1 цель без кассы в списке");
+    expect(unlinked).toHaveTextContent("неоднозначный hostname: vna-kkm-205");
+  });
+
+  it("says nothing about Honest Sign when the integration is not configured or all is well", async () => {
+    api.getHonestSignCashRegisters.mockResolvedValue(
+      honestSign({ status_configured: false, unmatched_targets: [{ host: "1.1.1.1", label: "x", hostname: null, original_host: "1.1.1.1" }] }),
+    );
+    const { unmount } = renderOverview();
+    await screen.findByText("Недоступно: 1 свитч");
+    expect(screen.queryByText(/Честный знак/)).not.toBeInTheDocument();
+    unmount();
+
+    api.getHonestSignCashRegisters.mockResolvedValue(honestSign({ data: [honestSignLink("cash-1", "172.23.8.21", { ready: true })] }));
+    renderOverview();
+    await screen.findByText("Недоступно: 1 свитч");
+    expect(screen.queryByText(/Честный знак/)).not.toBeInTheDocument();
   });
 
   it("puts the stock summary next to the general statistics, above the cash map", async () => {

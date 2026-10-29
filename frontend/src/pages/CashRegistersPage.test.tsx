@@ -129,7 +129,7 @@ describe("CashRegistersPage Honest Sign", () => {
     });
   });
 
-  it("shows the Honest Sign block only on the linked register and warns about unmatched targets", async () => {
+  it("shows the Honest Sign block only on the linked register and keeps page-level notices off this page", async () => {
     api.getHonestSignCashRegisters.mockResolvedValue(
       honestSignLinks([hsLink("k-1", "172.23.8.21", hsStatus("172.23.8.21"))], {
         unmatched_targets: [{ host: "172.23.8.30", label: "A12", hostname: null, original_host: "172.23.8.30" }],
@@ -140,7 +140,9 @@ describe("CashRegistersPage Honest Sign", () => {
     await screen.findByText("ККМ №1501");
     expect(await screen.findAllByTestId("honest-sign-panel")).toHaveLength(1);
     expect(screen.getByText("готов")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("1 целей без кассы в списке");
+    // Unmatched targets are reported on the overview page, not here.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/без кассы в списке/)).not.toBeInTheDocument();
   });
 
   it("shows no Honest Sign UI when the integration is not configured", async () => {

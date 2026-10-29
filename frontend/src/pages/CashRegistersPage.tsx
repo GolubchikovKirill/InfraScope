@@ -313,18 +313,6 @@ export default function CashRegistersPage() {
         </div>
       </div>
 
-      {honestSignMeta?.status_configured && (honestSignMeta.unmatched_targets.length > 0 || honestSignMeta.ambiguous_hostnames.length > 0) && (
-        <div className="app-panel flex flex-wrap items-center gap-x-2 gap-y-1 border-l-4 border-amber-400 px-4 py-3 text-sm text-amber-900" role="status">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>
-            Честный знак: {honestSignMeta.unmatched_targets.length > 0 && `${honestSignMeta.unmatched_targets.length} целей без кассы в списке`}
-            {honestSignMeta.unmatched_targets.length > 0 && honestSignMeta.ambiguous_hostnames.length > 0 && ", "}
-            {honestSignMeta.ambiguous_hostnames.length > 0 && `неоднозначный hostname: ${honestSignMeta.ambiguous_hostnames.join(", ")}`}
-            . Управление ими остаётся на странице <Link to="/honest-sign" className="font-medium underline">«Честный знак»</Link>.
-          </span>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Stat label="Всего" value={data?.count ?? rows.length} active={statusFilter === "all" && zoneFilter === "all"} onClick={() => { setStatusFilter("all"); setZoneFilter("all"); }} />
         <Stat label="Duty Free" value={dfCount} active={zoneFilter === "DF"} onClick={() => setZoneFilter("DF")} tone="sky" />
