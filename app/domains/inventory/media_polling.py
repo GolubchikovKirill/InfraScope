@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import uuid
 from dataclasses import dataclass
@@ -8,12 +9,12 @@ from datetime import UTC, datetime
 from time import perf_counter
 from typing import cast
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.redis import REDIS_ERRORS, get_redis
 from app.domains.inventory.models import MediaPlayer
-from app.domains.inventory.reachability import probe_tcp_endpoint_async
+from app.domains.inventory.reachability import build_dns_search_suffixes, probe_tcp_endpoint_async, resolve_hostname
 from app.domains.inventory.schemas import MediaPlayersPublic
 from app.domains.inventory.schemas.media_players import MediaPlayerPublic
 from app.observability.metrics import (
@@ -24,9 +25,9 @@ from app.observability.metrics import (
     set_device_counts,
 )
 from app.services.cache import invalidate_entity_cache
-from app.services.device_poll import DeviceStatus, poll_device
+from app.services.device_poll import DeviceStatus, arp_mac_for_ip, poll_device
 from app.services.event_log import write_event_log
-from app.services.mac_rediscovery import MacRediscoveryTarget, resolve_devices_by_mac
+from app.services.mac_rediscovery import MacRediscoveryTarget, normalize_mac, resolve_devices_by_mac
 from app.services.ml_snapshots import write_media_player_snapshot
 from app.services.poll_resilience import apply_poll_outcome, is_circuit_open, poll_jitter_async
 
@@ -154,45 +155,10 @@ async def poll_single_media_player_local(*, session: Session, player_id: uuid.UU
         result="online" if player.is_online else "offline",
     ).inc()
 
-    if not player.is_online and player.mac_address:
-        matches = await resolve_devices_by_mac([_media_player_mac_target(player)], session=session)
-        new_ip = matches[0].new_ip if matches else None
-        if new_ip and new_ip != player.ip_address:
-            conflict = session.exec(
-                select(MediaPlayer).where(
-                    MediaPlayer.ip_address == new_ip,
-                    MediaPlayer.id != player.id,
-                )
-            ).first()
-            if conflict:
-                new_ip = None
-        if new_ip and new_ip != player.ip_address:
-            logger.info(
-                "Device %s moved: %s -> %s (MAC %s)",
-                player.name,
-                player.ip_address,
-                new_ip,
-                player.mac_address,
-            )
-            old_ip = player.ip_address
-            player.ip_address = new_ip
-            write_event_log(
-                session,
-                category="network",
-                event_type="ip_changed",
-                severity="warning",
-                device_kind="media_player",
-                device_name=player.name,
-                ip_address=new_ip,
-                message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
-            )
-            _, result = await poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(64))
-            apply_media_poll_result(player, result)
-            media_player_polls_total.labels(
-                mode="single",
-                device_type=player.device_type,
-                result="online" if player.is_online else "offline",
-            ).inc()
+    if player.is_online:
+        await _backfill_missing_macs([player])
+    else:
+        await _relocate_media_players(session, [player], mode="single", snapshot_source="single_poll_relocated")
 
     player.last_polled_at = datetime.now(UTC)
     record_media_player_status_change(session, player, was_online)
@@ -242,9 +208,15 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
             poll_targets.append(player)
 
         results = await poll_media_player_batch(poll_targets) if poll_targets else {}
-        offline_with_mac: list[MediaPlayer] = []
+        offline: list[MediaPlayer] = []
         for player in players:
             if player.id in skipped_ids:
+                # An open circuit stops probing the old address, not looking
+                # for the new one - a player that took a new lease is exactly
+                # what trips the breaker, and would otherwise stay lost for as
+                # long as the breaker keeps reopening.
+                if not player.is_online:
+                    offline.append(player)
                 session.add(player)
                 continue
 
@@ -265,14 +237,15 @@ async def poll_all_media_players_local(*, session: Session, device_type: str | N
                 device_type=player.device_type,
                 result="online" if effective_online else "offline",
             ).inc()
-            if (not effective_online) and player.mac_address:
-                offline_with_mac.append(player)
+            if not effective_online:
+                offline.append(player)
             player.last_polled_at = datetime.now(UTC)
             record_media_player_status_change(session, player, previous_online)
             write_media_player_snapshot(session, player, source="bulk_poll")
             session.add(player)
 
-        await _relocate_offline_media_players(session, offline_with_mac)
+        await _backfill_missing_macs([player for player in players if player.is_online])
+        await _relocate_media_players(session, offline, mode="all", snapshot_source="bulk_poll_relocated")
 
         session.commit()
         success_count = sum(1 for player in players if player.is_online)
@@ -326,53 +299,14 @@ async def poll_media_player_batch(
 
 async def rediscover_media_players_local(*, session: Session) -> MediaPlayersPublic:
     started = perf_counter()
-    players = session.exec(select(MediaPlayer).where(col(MediaPlayer.mac_address).isnot(None))).all()
-    if not players:
-        return MediaPlayersPublic(data=[], count=0)
-
-    updated = 0
-    matches = await resolve_devices_by_mac(
-        [_media_player_mac_target(player) for player in players], session=session
-    )
-    matches_by_id = {match.target.entity_id: match for match in matches}
-    for player in players:
-        match = matches_by_id.get(str(player.id))
-        new_ip = match.new_ip if match else None
-        if new_ip and new_ip != player.ip_address:
-            conflict = session.exec(
-                select(MediaPlayer).where(
-                    MediaPlayer.ip_address == new_ip,
-                    MediaPlayer.id != player.id,
-                )
-            ).first()
-            if conflict:
-                continue
-            logger.info(
-                "Rediscovery: %s moved %s -> %s (MAC %s)",
-                player.name,
-                player.ip_address,
-                new_ip,
-                player.mac_address,
-            )
-            old_ip = player.ip_address
-            player.ip_address = new_ip
-            updated += 1
-            write_event_log(
-                session,
-                category="network",
-                event_type="ip_changed",
-                severity="warning",
-                device_kind="media_player",
-                device_name=player.name,
-                ip_address=new_ip,
-                message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
-            )
-            _, result = await poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(64))
-            apply_media_poll_result(player, result)
-            player.last_polled_at = datetime.now(UTC)
-            write_media_player_snapshot(session, player, source="rediscover")
-            session.add(player)
-
+    # A player answering at its address has not moved; looking for it anyway
+    # would only buy a ping sweep of every subnet.
+    players = [
+        player
+        for player in session.exec(select(MediaPlayer)).all()
+        if not player.is_online and (player.mac_address or _dns_name(player))
+    ]
+    updated = await _relocate_media_players(session, players, mode="rediscover", snapshot_source="rediscover")
     if updated:
         session.commit()
         await invalidate_media_player_cache()
@@ -390,55 +324,138 @@ async def rediscover_media_players_local(*, session: Session) -> MediaPlayersPub
     return MediaPlayersPublic(data=cast(list[MediaPlayerPublic], all_players), count=len(all_players))
 
 
-async def _relocate_offline_media_players(session: Session, offline_with_mac: list[MediaPlayer]) -> None:
-    if not offline_with_mac:
-        return
+def _is_ip_address(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return True
 
-    logger.info("Trying MAC rediscovery for %d offline devices...", len(offline_with_mac))
-    matches = await resolve_devices_by_mac(
-        [_media_player_mac_target(player) for player in offline_with_mac], session=session
+
+def _dns_name(player: MediaPlayer) -> str | None:
+    """The name the player registers in DNS. Nettops are Windows machines that
+    update their own record on every new lease (VNA-MUZ-901); iconbit/twix run
+    Android and register none. Some rows were entered with that name typed
+    into the IP field, which counts too."""
+    if player.hostname and player.hostname.strip():
+        return player.hostname.strip()
+    if player.ip_address and not _is_ip_address(player.ip_address):
+        return player.ip_address
+    return None
+
+
+def _ip_taken(session: Session, player: MediaPlayer, ip_address: str) -> bool:
+    other = session.exec(
+        select(MediaPlayer).where(MediaPlayer.ip_address == ip_address, MediaPlayer.id != player.id)
+    ).first()
+    return other is not None
+
+
+def _record_move(session: Session, player: MediaPlayer, old_ip: str, new_ip: str, how: str) -> None:
+    logger.info("Media player %s moved: %s -> %s (%s)", player.name, old_ip, new_ip, how)
+    write_event_log(
+        session,
+        category="network",
+        event_type="ip_changed",
+        severity="warning",
+        device_kind="media_player",
+        device_name=player.name,
+        ip_address=new_ip,
+        message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip} ({how})",
     )
+
+
+async def _backfill_missing_macs(players: list[MediaPlayer]) -> None:
+    """Fill in the MAC of reachable players that have none on record.
+
+    A poll that just reached a player leaves it in the ARP table, so this costs
+    no extra traffic. Without a MAC an iconbit could never be found again after
+    a new lease, and a nettop only by its DNS name.
+    """
+    for player in players:
+        if player.mac_address or not _is_ip_address(player.ip_address):
+            continue
+        if mac := normalize_mac(await asyncio.to_thread(arp_mac_for_ip, player.ip_address)):
+            player.mac_address = mac
+
+
+async def _relocate_by_dns(session: Session, player: MediaPlayer, *, mode: str, snapshot_source: str) -> bool:
+    name = _dns_name(player)
+    if not name:
+        return False
+    new_ip = await asyncio.to_thread(
+        resolve_hostname,
+        name,
+        dns_search_suffixes=build_dns_search_suffixes(settings.DNS_SEARCH_SUFFIXES, settings.DOMAIN),
+        dns_server=settings.DNS_SERVER,
+    )
+    if not new_ip or new_ip == player.ip_address or _ip_taken(session, player, new_ip):
+        return False
+
+    # A DNS record can outlive the lease it was made for: move only once the
+    # player actually answers at the new address.
+    old_ip = player.ip_address
+    player.ip_address = new_ip
+    _, result = await poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(64))
+    if result is None or not result.is_online:
+        player.ip_address = old_ip
+        return False
+
+    apply_media_poll_result(player, result)
+    # Found by name, so the MAC answering there is this player's own; the one
+    # on record may be wrong (and is then why the MAC search kept missing it).
+    if mac := normalize_mac(await asyncio.to_thread(arp_mac_for_ip, new_ip)):
+        player.mac_address = mac
+    _record_move(session, player, old_ip, new_ip, f"DNS {name}")
+    media_player_polls_total.labels(mode=mode, device_type=player.device_type, result="online").inc()
+    player.last_polled_at = datetime.now(UTC)
+    write_media_player_snapshot(session, player, source=snapshot_source)
+    session.add(player)
+    return True
+
+
+async def _relocate_media_players(
+    session: Session, players: list[MediaPlayer], *, mode: str, snapshot_source: str
+) -> int:
+    """Look for players that are no longer at their recorded address.
+
+    By DNS name first (nettops), then by MAC for the rest - the switches' ARP
+    tables, then the host's own after a ping sweep. Returns how many moved.
+    """
+    if not players:
+        return 0
+    logger.info("Looking for %d media players at a new address...", len(players))
+
+    moved = 0
+    by_mac: list[MediaPlayer] = []
+    for player in players:
+        if await _relocate_by_dns(session, player, mode=mode, snapshot_source=snapshot_source):
+            moved += 1
+        elif player.mac_address:
+            by_mac.append(player)
+    if not by_mac:
+        return moved
+
+    matches = await resolve_devices_by_mac([_media_player_mac_target(player) for player in by_mac], session=session)
     matches_by_id = {match.target.entity_id: match for match in matches}
-    for player in offline_with_mac:
+    for player in by_mac:
         match = matches_by_id.get(str(player.id))
         new_ip = match.new_ip if match else None
-        if not new_ip or new_ip == player.ip_address:
-            continue
-        conflict = session.exec(
-            select(MediaPlayer).where(
-                MediaPlayer.ip_address == new_ip,
-                MediaPlayer.id != player.id,
-            )
-        ).first()
-        if conflict:
+        if not new_ip or new_ip == player.ip_address or _ip_taken(session, player, new_ip):
             continue
 
-        logger.info(
-            "Device %s moved: %s -> %s (MAC %s)",
-            player.name,
-            player.ip_address,
-            new_ip,
-            player.mac_address,
-        )
         old_ip = player.ip_address
         player.ip_address = new_ip
-        write_event_log(
-            session,
-            category="network",
-            event_type="ip_changed",
-            severity="warning",
-            device_kind="media_player",
-            device_name=player.name,
-            ip_address=new_ip,
-            message=f"Media player '{player.name}' moved IP: {old_ip} -> {new_ip}",
-        )
+        _record_move(session, player, old_ip, new_ip, f"MAC {player.mac_address}")
+        moved += 1
         _, result = await poll_one_media_player_async(player, port_scan_semaphore=asyncio.Semaphore(64))
         apply_media_poll_result(player, result)
         media_player_polls_total.labels(
-            mode="all",
+            mode=mode,
             device_type=player.device_type,
             result="online" if player.is_online else "offline",
         ).inc()
         player.last_polled_at = datetime.now(UTC)
-        write_media_player_snapshot(session, player, source="bulk_poll_relocated")
+        write_media_player_snapshot(session, player, source=snapshot_source)
         session.add(player)
+    return moved

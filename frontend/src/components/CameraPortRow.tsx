@@ -5,6 +5,7 @@ import type { CameraPort } from "../client";
 import { rebootCameraPort } from "../client";
 import { useConfirm } from "./ConfirmDialog";
 import { showToast } from "../lib/toastBus";
+import { apiErrorMessage } from "../lib/apiError";
 
 interface Props {
   cam: CameraPort;
@@ -16,7 +17,8 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [rebooting, setRebooting] = useState(false);
-  const isDown = cam.oper_status !== "connected";
+  const isEmpty = Boolean(cam.empty);
+  const isDown = !isEmpty && cam.oper_status !== "connected";
 
   const rebootMut = useMutation({
     mutationFn: () => rebootCameraPort(switchId, cam.port),
@@ -27,6 +29,8 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
         showToast(`Камера на порту ${cam.port} перезагружена и вернулась онлайн`, "success");
       }
     },
+    // a 409/429/502 used to end the spinner with no word of why
+    onError: (error) => showToast(apiErrorMessage(error, `Не удалось перезагрузить камеру на порту ${cam.port}`), "error"),
     onSettled: () => {
       setRebooting(false);
       queryClient.invalidateQueries({ queryKey: ["switch-camera-ports", switchId] });
@@ -46,8 +50,8 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
   };
 
   return (
-    <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group text-xs ${isDown ? "bg-[var(--danger-bg)]" : "hover:bg-[var(--surface-2)]"}`}>
-      <Camera className={`h-3.5 w-3.5 shrink-0 ${isDown ? "text-[var(--danger-fg)]" : "text-sky-500"}`} />
+    <div className={`flex items-center gap-3 py-2 px-3 rounded-lg group text-xs ${isDown ? "bg-[var(--danger-bg)]" : isEmpty ? "opacity-60" : "hover:bg-[var(--surface-2)]"}`}>
+      <Camera className={`h-3.5 w-3.5 shrink-0 ${isDown ? "text-[var(--danger-fg)]" : isEmpty ? "text-gray-300" : "text-sky-500"}`} />
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className={`font-medium ${isDown ? "text-[var(--danger-fg)]" : "text-gray-800"}`}>{cam.description || cam.port}</span>
@@ -55,6 +59,14 @@ export default function CameraPortRow({ cam, switchId, isSuperuser }: Props) {
           {isDown && (
             <span className="text-[11px] text-[var(--danger-fg)] bg-[var(--danger-bg)] px-1.5 py-0.5 rounded font-medium">
               нет линка
+            </span>
+          )}
+          {isEmpty && (
+            <span
+              className="text-[11px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded"
+              title="Нет линка и нет потребления PoE — к порту ничего не подключено"
+            >
+              порт пуст
             </span>
           )}
         </div>

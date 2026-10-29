@@ -309,6 +309,9 @@ class CameraPortInfo(BaseModel):
     description: str | None = None
     poe_power: str | None = None
     poe_status: str | None = None
+    # no link and no PoE draw: nothing plugged in (a hung camera still draws
+    # power) - not counted as a camera, and skipped by "reboot all"
+    empty: bool = False
 
 
 class DhcpPoolInfo(BaseModel):

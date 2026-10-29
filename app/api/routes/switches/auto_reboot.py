@@ -43,8 +43,8 @@ async def run_switch_auto_reboot_now(switch_id: uuid.UUID, session: SessionDep) 
         raise HTTPException(status_code=400, detail=f"Switch not eligible for auto-reboot: {skip_reason}")
 
     lock_key = await _acquire_switch_write_lock(switch_id)
-    await _enforce_switch_cooldown(switch_id=switch_id, port="*", operation="auto_reboot_manual_run")
     try:
+        await _enforce_switch_cooldown(switch_id=switch_id, port="*", operation="auto_reboot_manual_run")
         return await run_ap_reboot_for_switch(session, switch)
     finally:
         await _release_switch_write_lock(lock_key)

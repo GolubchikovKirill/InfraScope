@@ -156,4 +156,16 @@ if settings.REMOTE_ACCESS_ENABLED:
         }
     )
 
+if settings.DNS_DISCOVERY_ENABLED:
+    # One zone transfer an hour; a new screen then reaches remote access on the
+    # next 2-minute sync. Offset off the :00 polling burst.
+    _beat_schedule.update(
+        {
+            "network-discovery": {
+                "task": "tasks.network_discovery",
+                "schedule": crontab(minute=12),
+            },
+        }
+    )
+
 celery_app.conf.beat_schedule = _beat_schedule

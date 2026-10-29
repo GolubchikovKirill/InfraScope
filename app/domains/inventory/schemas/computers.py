@@ -5,7 +5,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-__all__ = ["ComputerCreate", "ComputerPublic", "ComputerUpdate", "ComputersPublic", "StaleComputerPublic", "StaleComputersPublic"]
+__all__ = [
+    "ComputerCreate",
+    "ComputerPublic",
+    "ComputerUpdate",
+    "ComputersPublic",
+    "DnsDiscoveryPublic",
+    "StaleComputerPublic",
+    "StaleComputersPublic",
+]
 
 
 class ComputerCreate(BaseModel):
@@ -99,3 +107,11 @@ class StaleComputersPublic(BaseModel):
     console_reachable: bool
     count: int
     data: list[StaleComputerPublic]
+
+
+class DnsDiscoveryPublic(BaseModel):
+    zone: str
+    # A records in the zone / of those, names with a discovered role (TV)
+    seen: int
+    matched: int
+    added: list[str]

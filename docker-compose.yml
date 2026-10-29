@@ -81,6 +81,11 @@ services:
       # the pinned RustDesk installer endpoints download from /remote-access/deploy/installer;
       # host-mounted (not a named volume) so it can be dropped in without a rebuild
       - ${RUSTDESK_PACKAGE_HOST_DIR:-./rustdesk-push/packages}:/var/lib/infrascope/rustdesk:ro
+      # The host's ARP table (PID 1 is in the host network namespace; plain
+      # /proc/net/arp would resolve to the container's own, which only lists
+      # the Docker gateway). MAC-based rediscovery of media players and
+      # printers that took a new DHCP lease reads it - see device_poll.
+      - /proc/1/net/arp:/host-proc/net/arp:ro
     depends_on:
       db:
         condition: service_healthy
@@ -120,6 +125,9 @@ services:
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-infrascope}
+    volumes:
+      # See backend: the scheduled media/printer polls run here.
+      - /proc/1/net/arp:/host-proc/net/arp:ro
     depends_on:
       db:
         condition: service_healthy

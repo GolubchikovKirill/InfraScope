@@ -18,12 +18,14 @@ from app.domains.inventory.ap_registry import (
     recover_missing_macs_from_registry,
     set_ap_excluded,
 )
-from app.domains.inventory.models import NetworkSwitch
+from app.domains.inventory.camera_reboot import camera_vlans, is_empty_port, verify_camera_ports_back_online
 from app.domains.inventory.schemas import AccessPointInfo, CameraPortInfo, SetApExcludedRequest
+from app.domains.inventory.switch_write_lock import switch_write_lease_held
 from app.domains.shared.schemas import Message
 from app.observability.metrics import switch_ops_total
 from app.services.cisco_ssh import get_access_points, get_camera_ports, poe_cycle_ap, poe_cycle_ports_bulk, reboot_ap
 from app.services.event_log import write_event_log
+from app.worker.tasks import camera_reboot_all_task
 
 from ._shared import (
     _acquire_switch_write_lock,
@@ -101,8 +103,8 @@ async def get_switch_camera_ports(
     if switch.vendor != "cisco":
         raise HTTPException(status_code=400, detail="Camera port lookup is available for Cisco switches")
 
-    camera_vlans = {int(v) for v in settings.CAMERA_VLANS.split(",") if v.strip().isdigit()}
-    if not camera_vlans:
+    vlans = camera_vlans()
+    if not vlans:
         return []
 
     ports = await asyncio.to_thread(
@@ -112,7 +114,7 @@ async def get_switch_camera_ports(
         switch.ssh_password,
         switch.enable_password,
         switch.ssh_port,
-        camera_vlans,
+        vlans,
     )
     if ports is None:
         raise HTTPException(status_code=503, detail="Could not reach switch via SSH")
@@ -125,43 +127,10 @@ async def get_switch_camera_ports(
             description=p.description,
             poe_power=p.poe_power,
             poe_status=p.poe_status,
+            empty=is_empty_port(p),
         )
         for p in ports
     ]
-
-
-async def _verify_camera_ports_back_online(
-    switch: NetworkSwitch, ports: list[str], camera_vlans: set[int]
-) -> dict[str, bool]:
-    """Poll for the given camera ports' link to come back up after a PoE
-    cycle - the switch accepting the power-cycle command doesn't mean the
-    camera actually reconnected, same reasoning as AP reboot verification.
-    """
-    max_wait = settings.AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS
-    interval = max(settings.AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS, 1)
-    remaining = set(ports)
-    back_online: dict[str, bool] = dict.fromkeys(ports, False)
-    elapsed = 0
-    while elapsed < max_wait and remaining:
-        await asyncio.sleep(interval)
-        elapsed += interval
-        current = await asyncio.to_thread(
-            get_camera_ports,
-            switch.ip_address,
-            switch.ssh_username,
-            switch.ssh_password,
-            switch.enable_password,
-            switch.ssh_port,
-            camera_vlans,
-        )
-        if not current:
-            continue
-        status_by_port = {c.port: c.oper_status for c in current}
-        for p in list(remaining):
-            if status_by_port.get(p) == "connected":
-                back_online[p] = True
-                remaining.discard(p)
-    return back_online
 
 
 @router.post("/{switch_id}/camera-ports/{port:path}/reboot", dependencies=[Depends(get_current_active_superuser)])
@@ -171,13 +140,16 @@ async def reboot_camera_port(switch_id: uuid.UUID, port: str, session: SessionDe
     if switch.vendor != "cisco":
         raise HTTPException(status_code=400, detail="Camera reboot is available for Cisco switches")
 
-    camera_vlans = {int(v) for v in settings.CAMERA_VLANS.split(",") if v.strip().isdigit()}
-    if not camera_vlans:
+    vlans = camera_vlans()
+    if not vlans:
         raise HTTPException(status_code=400, detail="No camera VLANs configured")
 
     lock_key = await _acquire_switch_write_lock(switch_id)
-    await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="reboot_camera")
     try:
+        # Inside the try: a 429 from here used to skip the release, and the
+        # lease's renewal task then kept the switch locked (409 on every
+        # write) until the backend restarted.
+        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation="reboot_camera")
         ok = await asyncio.to_thread(
             poe_cycle_ports_bulk,
             switch.ip_address,
@@ -191,7 +163,7 @@ async def reboot_camera_port(switch_id: uuid.UUID, port: str, session: SessionDe
             switch_ops_total.labels(operation="reboot_camera", result="error").inc()
             raise HTTPException(status_code=502, detail="Failed to reboot camera port")
         switch_ops_total.labels(operation="reboot_camera", result="success").inc()
-        back_online_map = await _verify_camera_ports_back_online(switch, [safe_port], camera_vlans)
+        back_online_map = await verify_camera_ports_back_online(switch, [safe_port], vlans)
         return {"status": "rebooting", "port": safe_port, "back_online": back_online_map.get(safe_port, False)}
     finally:
         await _release_switch_write_lock(lock_key)
@@ -199,70 +171,20 @@ async def reboot_camera_port(switch_id: uuid.UUID, port: str, session: SessionDe
 
 @router.post("/{switch_id}/camera-ports/reboot-all", dependencies=[Depends(get_current_active_superuser)])
 async def reboot_all_camera_ports(switch_id: uuid.UUID, session: SessionDep) -> dict:
+    """Queue the whole-store sweep; the worker runs it (see camera_reboot) and
+    the UI follows it through /tasks/{task_id}."""
     switch = _get_switch_or_404(session, switch_id)
     if switch.vendor != "cisco":
         raise HTTPException(status_code=400, detail="Camera reboot is available for Cisco switches")
-
-    camera_vlans = {int(v) for v in settings.CAMERA_VLANS.split(",") if v.strip().isdigit()}
-    if not camera_vlans:
+    if not camera_vlans():
         raise HTTPException(status_code=400, detail="No camera VLANs configured")
-
-    lock_key = await _acquire_switch_write_lock(switch_id)
+    if await switch_write_lease_held(switch_id):
+        raise HTTPException(status_code=409, detail="Another switch write operation is already running")
     await _enforce_switch_cooldown(switch_id=switch_id, port="*", operation="reboot_cameras_bulk")
-    try:
-        ports = await asyncio.to_thread(
-            get_camera_ports,
-            switch.ip_address,
-            switch.ssh_username,
-            switch.ssh_password,
-            switch.enable_password,
-            switch.ssh_port,
-            camera_vlans,
-        )
-        if ports is None:
-            raise HTTPException(status_code=503, detail="Could not reach switch via SSH")
-        if not ports:
-            return {"status": "no_cameras", "rebooted_count": 0}
 
-        # One camera at a time, with a pause between each - powering every
-        # camera port off at once (even briefly) would drop a store's whole
-        # video coverage to zero for that window. Losing one camera while
-        # the rest keep recording is a much smaller risk than losing all of
-        # them simultaneously.
-        stagger = max(settings.CAMERA_REBOOT_STAGGER_SECONDS, 0)
-        cycled_ports: list[str] = []
-        failed_ports: list[str] = []
-        for index, cam in enumerate(ports):
-            ok = await asyncio.to_thread(
-                poe_cycle_ports_bulk,
-                switch.ip_address,
-                switch.ssh_username,
-                switch.ssh_password,
-                switch.enable_password,
-                switch.ssh_port,
-                [cam.port],
-            )
-            (cycled_ports if ok else failed_ports).append(cam.port)
-            if index < len(ports) - 1:
-                await asyncio.sleep(stagger)
-
-        if not cycled_ports:
-            switch_ops_total.labels(operation="reboot_cameras_bulk", result="error").inc()
-            raise HTTPException(status_code=502, detail="Failed to reboot any camera port")
-        switch_ops_total.labels(operation="reboot_cameras_bulk", result="success").inc()
-        if failed_ports:
-            switch_ops_total.labels(operation="reboot_cameras_bulk", result="partial").inc()
-
-        back_online_map = await _verify_camera_ports_back_online(switch, cycled_ports, camera_vlans)
-        back_online_count = sum(1 for v in back_online_map.values() if v)
-        return {
-            "status": "rebooting",
-            "rebooted_count": len(cycled_ports),
-            "failed_count": len(failed_ports),
-            "back_online_count": back_online_count,
-        }
-    finally:
-        await _release_switch_write_lock(lock_key)
+    task = camera_reboot_all_task.apply_async(args=[str(switch_id)])
+    switch_ops_total.labels(operation="reboot_cameras_bulk", result="queued").inc()
+    return {"status": "queued", "task_id": task.id}
 
 
 @router.patch("/{switch_id}/access-points/{mac_address}/exclude", dependencies=[Depends(get_current_active_superuser)])
@@ -305,8 +227,8 @@ async def reboot_access_point(
         raise HTTPException(status_code=400, detail="AP reboot is available for Cisco switches")
 
     lock_key = await _acquire_switch_write_lock(switch_id)
-    await _enforce_switch_cooldown(switch_id=switch_id, port=interface, operation=f"reboot_ap_{method}")
     try:
+        await _enforce_switch_cooldown(switch_id=switch_id, port=interface, operation=f"reboot_ap_{method}")
         if method == "poe":
             ok = await asyncio.to_thread(
                 poe_cycle_ap,

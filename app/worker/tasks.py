@@ -27,12 +27,14 @@ from app.domains.inventory.ap_auto_reboot import (
     run_ap_reboot_for_switch,
     switch_eligible_for_auto_reboot,
 )
+from app.domains.inventory.camera_reboot import reboot_all_cameras
 from app.domains.inventory.dhcp_clear import (
     get_eligible_switches_for_dhcp_clear,
     run_dhcp_clear_for_switch,
     switch_eligible_for_dhcp_clear,
 )
 from app.domains.inventory.models import Computer, MediaPlayer, NetworkSwitch, Printer
+from app.domains.inventory.network_discovery import discover_and_probe
 from app.domains.inventory.port_snapshot import capture_switch_port_snapshot, get_switches_for_snapshot
 from app.domains.operations.models import CashRegister
 from app.domains.remote_access import push_jobs as _remote_access_push_jobs
@@ -483,6 +485,40 @@ def dhcp_clear_switch_task(self, switch_id: str, cycle_id: str | None = None) ->
             lease.close()
 
 
+# Started by a person from the cameras page; no retries, same as every other
+# task here that power-cycles hardware. 90 cameras at ~15 s each plus the
+# link check runs close to half an hour, hence the limits. The lease's done
+# marker keeps a broker redelivery (acks_late) from sweeping the store twice.
+@_task("camera_reboot_all", soft_time_limit=3300, time_limit=3600)
+def camera_reboot_all_task(self, switch_id: str) -> dict:
+    run_id = self.request.id or f"manual:{uuid.uuid4()}"
+    lease, skipped_reason = _acquire_switch_lease(
+        scope="camera-reboot-all",
+        switch_id=switch_id,
+        cycle_id=run_id,
+        lock_seconds=3700,
+        dedup_seconds=settings.CELERY_VISIBILITY_TIMEOUT_SECONDS,
+    )
+    if lease is None:
+        return _Skipped({"switch_id": switch_id, "status": skipped_reason})
+    try:
+        with Session(engine) as session:
+            switch = session.get(NetworkSwitch, uuid.UUID(switch_id))
+            if switch is None:
+                return _Failed({"status": "switch_not_found", "switch_id": switch_id})
+            result = _run_async(reboot_all_cameras(session, switch))
+        if result["status"] in {"busy", "unreachable", "failed", "no_camera_vlans"}:
+            return _Failed(result)
+        return result
+    finally:
+        try:
+            lease.mark_attempted()
+        except RedisError:
+            pass
+        finally:
+            lease.close()
+
+
 @_task("switch_port_snapshot_cycle", soft_time_limit=120, time_limit=300)
 def switch_port_snapshot_cycle_task(self) -> dict:
     """Dispatcher: one independent, staggered task per switch, same reasoning
@@ -600,6 +636,16 @@ def ml_daily_cycle_task(self) -> dict:
 def ml_score_cycle_task(self) -> dict:
     """Scheduled every ML_SCORE_INTERVAL_MINUTES: refresh predictions only."""
     return _run_ml_cycle(train=False, prune=False)
+
+
+@_task("network_discovery", retries=1)
+def network_discovery_task(self) -> dict:
+    """Add machines of a discovered role (the store screens) from the AD DNS zone."""
+    if not settings.DNS_DISCOVERY_ENABLED:
+        return _Skipped({"status": "disabled"})
+    with Session(engine) as session:
+        result = _run_async(discover_and_probe(session))
+    return {"zone": result.zone, "seen": result.seen, "matched": result.matched, "added": result.added}
 
 
 @_task("remote_access_sync", retries=2)

@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import conflict, not_found
+from app.core.config import settings
 from app.domains.inventory.computer_polling import (
     invalidate_computer_cache,
     poll_all_computers_local,
@@ -18,11 +19,13 @@ from app.domains.inventory.computer_polling import (
 )
 from app.domains.inventory.computer_stale import find_stale_computers
 from app.domains.inventory.models import Computer
+from app.domains.inventory.network_discovery import discover_and_probe
 from app.domains.inventory.schemas import (
     ComputerCreate,
     ComputerPublic,
     ComputersPublic,
     ComputerUpdate,
+    DnsDiscoveryPublic,
     StaleComputerPublic,
     StaleComputersPublic,
 )
@@ -125,6 +128,19 @@ async def update_computer(session: SessionDep, computer_id: uuid.UUID, payload: 
     session.refresh(row)
     await invalidate_computer_cache()
     return row
+
+
+@router.post("/discover", response_model=DnsDiscoveryPublic, dependencies=[Depends(get_current_active_superuser)])
+async def discover_computers(session: SessionDep) -> DnsDiscoveryPublic:
+    """Add the machines of a discovered role (DNS_DISCOVERY_ROLES, the store
+    screens) that DNS knows and the inventory does not. The worker does the same
+    every hour; this is the "find on the network" button on the screens page."""
+    result = await discover_and_probe(session)
+    if result.added and settings.REMOTE_ACCESS_ENABLED:
+        # straight into remote access too, rather than on the next 2-minute sync
+        await run_in_threadpool(remote_access_service.seed_from_inventory, session)
+        await run_in_threadpool(remote_access_service.refresh_status_from_inventory, session)
+    return DnsDiscoveryPublic(zone=result.zone, seen=result.seen, matched=result.matched, added=result.added)
 
 
 @router.get("/stale", response_model=StaleComputersPublic, dependencies=[Depends(get_current_active_superuser)])

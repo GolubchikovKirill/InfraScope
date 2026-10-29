@@ -186,3 +186,34 @@ def test_poll_all_computers_skips_duplicate_network_scan(client, admin_token: st
     assert poll_all.status_code == 200
     assert poll_all.json()["count"] == 1
     assert poll_all.json()["data"][0]["hostname"] == "VNK-MGR-BUSY"
+
+
+def test_discover_adds_screens_from_dns_and_probes_them(client, admin_token: str, user_token: str, monkeypatch):
+    from app.core.config import settings
+    from app.domains.inventory import network_discovery
+
+    async def _noop_invalidate():
+        return None
+
+    async def _probe(hostname):
+        return ReachabilityResult(is_online=hostname == "VNA-TV-1301", reason=None if hostname == "VNA-TV-1301" else "port_closed")
+
+    monkeypatch.setattr(network_discovery, "invalidate_computer_cache", _noop_invalidate)
+    monkeypatch.setattr(computer_polling, "probe_computer", _probe)
+    monkeypatch.setattr(settings, "DNS_DISCOVERY_ROLES", "TV")
+    monkeypatch.setattr(settings, "REMOTE_ACCESS_ENABLED", False)
+    monkeypatch.setattr(
+        network_discovery,
+        "zone_a_records",
+        lambda server, zone: {"vna-tv-1301": "172.23.4.5", "vna-tv-902": "10.10.98.205", "vna-kkm-101": "10.1.1.1"},
+    )
+
+    assert client.post("/api/v1/computers/discover", headers={"Authorization": f"Bearer {user_token}"}).status_code == 403
+
+    response = client.post("/api/v1/computers/discover", headers={"Authorization": f"Bearer {admin_token}"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["added"] == ["VNA-TV-1301", "VNA-TV-902"]
+    listed = client.get("/api/v1/computers/?limit=50", headers={"Authorization": f"Bearer {admin_token}"}).json()
+    states = {row["hostname"]: row["is_online"] for row in listed["data"]}
+    assert states == {"VNA-TV-1301": True, "VNA-TV-902": False}

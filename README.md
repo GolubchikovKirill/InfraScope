@@ -255,6 +255,16 @@ docker run --rm -v <old_postgres_volume>:/from -v infrascope_postgres_data:/to a
   - `FIRST_SUPERUSER_*`
 - Переезд устройства:
   - `SCAN_SUBNET` (подсети, которые перебираются в поиске по MAC)
+  - `HOST_ARP_TABLE` (по умолчанию `/host-proc/net/arp`: ARP-таблица хоста, которую
+    `docker-compose.yml` монтирует в `backend`/`worker` из `/proc/1/net/arp`; без неё
+    поиск по MAC изнутри контейнера ничего не находит)
+  - медиаплееры-неттопы сначала ищутся по DNS-имени (`DNS_SERVER`, `DNS_SEARCH_SUFFIXES`),
+    потом по MAC
+- Обнаружение в сети (зона AD DNS, AXFR с `DNS_SERVER`):
+  - `DNS_DISCOVERY_ENABLED` (по умолчанию `true`, раз в час)
+  - `DNS_DISCOVERY_ZONE` (по умолчанию первый из `DNS_SEARCH_SUFFIXES`)
+  - `DNS_DISCOVERY_ROLES` (по умолчанию `TV`: машины `<SITE>-TV-*` добавляются в
+    компьютеры и попадают в экраны и удалённый доступ)
 - Poll resilience:
   - `POLL_JITTER_MAX_MS`
   - `POLL_OFFLINE_CONFIRMATIONS`

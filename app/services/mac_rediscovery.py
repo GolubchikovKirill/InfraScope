@@ -53,10 +53,15 @@ async def resolve_devices_by_mac(
     session: Session | None = None,
 ) -> list[MacRediscoveryMatch]:
     mac_to_targets: dict[str, list[MacRediscoveryTarget]] = defaultdict(list)
+    # The address each MAC is on record at: an ARP entry there is the stale
+    # one the device left behind, not where it is now.
+    current_ips: dict[str, str] = {}
     for target in targets:
         normalized = normalize_mac(target.mac_address)
         if normalized:
             mac_to_targets[normalized].append(target)
+            if target.current_ip:
+                current_ips[normalized] = target.current_ip
 
     if not mac_to_targets:
         return []
@@ -77,12 +82,16 @@ async def resolve_devices_by_mac(
             switch_map = {}
         for mac in list(remaining):
             ip = switch_map.get(mac)
-            if ip:
+            if ip and ip != current_ips.get(mac):
                 normalized_found[mac] = ip
                 remaining.remove(mac)
 
     if remaining:
-        found = await find_devices_by_macs(remaining, subnets=subnets)
+        found = await find_devices_by_macs(
+            remaining,
+            subnets=subnets,
+            current_ips={mac: current_ips[mac] for mac in remaining if mac in current_ips},
+        )
         for mac, ip in found.items():
             normalized = normalize_mac(mac)
             if normalized and ip:

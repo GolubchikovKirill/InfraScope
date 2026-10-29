@@ -313,6 +313,13 @@ class Settings(BaseSettings):
     DOMAIN: str = "infrascope.local"
     DNS_SERVER: str = ""
     DNS_SEARCH_SUFFIXES: str = ""
+    # Machines found in the AD DNS zone (a zone transfer from DNS_SERVER) and
+    # added to the computer inventory when their role token is listed here -
+    # VNA-TV-1301 has role "TV". The store screens used to appear only once
+    # someone added them by hand. The zone defaults to the first search suffix.
+    DNS_DISCOVERY_ENABLED: bool = True
+    DNS_DISCOVERY_ZONE: str = ""
+    DNS_DISCOVERY_ROLES: str = "TV"
     QR_SQL_LOGIN: str = ""
     QR_SQL_PASSWORD: str = ""
     QR_SQL_DUTY_FREE_SERVER: str = "10.10.94.228"

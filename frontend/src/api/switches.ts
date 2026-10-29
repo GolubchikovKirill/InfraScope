@@ -60,6 +60,8 @@ export interface CameraPort {
   description: string | null;
   poe_power: string | null;
   poe_status: string | null;
+  /** no link and no PoE draw: nothing plugged in (a hung camera still draws power) */
+  empty?: boolean;
 }
 
 export interface SwitchPort {
@@ -151,11 +153,41 @@ export async function rebootCameraPort(id: string, port: string) {
   return data;
 }
 
-export async function rebootAllCameraPorts(id: string) {
-  const { data } = await api.post<{ status: string; rebooted_count: number; back_online_count?: number }>(
-    `/switches/${id}/camera-ports/reboot-all`,
-  );
-  return data;
+export interface CameraSweepResult {
+  status: "done" | "failed" | "busy" | "unreachable" | "no_cameras" | "no_camera_vlans" | string;
+  rebooted_count?: number;
+  failed_count?: number;
+  back_online_count?: number;
+  skipped_empty?: number;
+  failed_ports?: string[];
+  not_back_ports?: string[];
+}
+
+interface TaskStatus {
+  state: string;
+  ready: boolean;
+  successful: boolean | null;
+  result: CameraSweepResult | null;
+  error: string | null;
+}
+
+/** Queue the store-wide camera sweep and wait for the worker to finish it.
+ *  It takes minutes (one camera at a time, then a link check), so the request
+ *  only queues it and this follows the task until it is done. */
+export async function rebootAllCameraPorts(
+  id: string,
+  { pollMs = 5_000, maxWaitMs = 60 * 60_000 }: { pollMs?: number; maxWaitMs?: number } = {},
+): Promise<CameraSweepResult> {
+  const { data } = await api.post<{ status: string; task_id: string }>(`/switches/${id}/camera-ports/reboot-all`);
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    const { data: task } = await api.get<TaskStatus>(`/tasks/${data.task_id}`);
+    if (!task.ready) continue;
+    if (!task.successful) throw new Error(task.error || "Перезагрузка камер завершилась с ошибкой");
+    return task.result ?? { status: "failed" };
+  }
+  throw new Error("Перезагрузка камер всё ещё идёт — результат появится в журнале событий");
 }
 
 export async function rebootAP(switchId: string, iface: string, macAddress?: string, method: string = "poe") {

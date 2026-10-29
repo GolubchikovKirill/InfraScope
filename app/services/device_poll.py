@@ -556,23 +556,39 @@ async def find_device_by_mac(mac: str, subnets: list[str] | None = None) -> str 
     return results.get(mac.lower().strip())
 
 
-def _arp_table_mac_to_ip() -> dict[str, str]:
-    """Build MAC->IP map from ARP/neigh tables."""
-    import subprocess
+#: The host's own ARP table, bind-mounted read-only into the containers from
+#: /proc/1/net/arp (see docker-compose.yml). Inside a bridge-networked
+#: container /proc/net/arp only ever lists the Docker gateway, so without it
+#: every MAC lookup came back empty and a media player or printer that got a
+#: new DHCP lease was never found again. The host shares the stores' /23, so
+#: the ping sweep below fills this table the same way it would on bare metal.
+_HOST_ARP_TABLE = os.environ.get("HOST_ARP_TABLE", "/host-proc/net/arp")
 
-    out: dict[str, str] = {}
+
+def _read_proc_arp(path: str) -> list[tuple[str, str]]:
+    entries: list[tuple[str, str]] = []
     try:
-        with open("/proc/net/arp") as f:
+        with open(path) as f:
             for line in f.readlines()[1:]:
                 parts = line.split()
                 if len(parts) >= 4:
-                    ip = parts[0]
                     mac = parts[3].lower()
                     if mac != "00:00:00:00:00:00" and len(mac) == 17:
-                        out[mac] = ip
-    except (FileNotFoundError, PermissionError):
+                        entries.append((parts[0], mac))
+    except (FileNotFoundError, PermissionError, IsADirectoryError):
         pass
+    return entries
 
+
+def _arp_table_entries() -> list[tuple[str, str]]:
+    """(ip, mac) pairs from the host's ARP table, this namespace's own and `ip neigh`.
+
+    A MAC can show up more than once: the lease it just left lingers as a
+    stale entry next to the new one.
+    """
+    import subprocess
+
+    entries = _read_proc_arp(_HOST_ARP_TABLE) + _read_proc_arp("/proc/net/arp")
     try:
         neigh = subprocess.run(
             ["ip", "neigh"],
@@ -584,31 +600,59 @@ def _arp_table_mac_to_ip() -> dict[str, str]:
         for line in neigh.strip().split("\n"):
             parts = line.split()
             if "lladdr" in parts:
-                ip = parts[0]
                 idx = parts.index("lladdr")
                 if idx + 1 < len(parts):
                     mac = parts[idx + 1].lower()
                     if len(mac) == 17:
-                        out[mac] = ip
+                        entries.append((parts[0], mac))
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
+    return entries
+
+
+def _arp_table_mac_to_ip(skip: dict[str, str] | None = None) -> dict[str, str]:
+    """MAC->IP map from the ARP tables. `skip` maps a MAC to an IP that does not
+    count as finding it - the address the device was last known at, whose stale
+    entry would otherwise answer every lookup for a device that has moved."""
+    out: dict[str, str] = {}
+    for ip, mac in _arp_table_entries():
+        if skip and skip.get(mac) == ip:
+            continue
+        out[mac] = ip
     return out
 
 
-async def find_devices_by_macs(macs: list[str], subnets: list[str] | None = None) -> dict[str, str]:
+def arp_mac_for_ip(ip_address: str) -> str | None:
+    """The MAC the ARP tables hold for an IP, if any (e.g. right after a poll reached it)."""
+    for ip, mac in _arp_table_entries():
+        if ip == ip_address:
+            return mac
+    return None
+
+
+async def find_devices_by_macs(
+    macs: list[str],
+    subnets: list[str] | None = None,
+    *,
+    current_ips: dict[str, str] | None = None,
+) -> dict[str, str]:
     """Find a device's current IP by its MAC address.
 
     Optimized for batch lookups:
     1. Checks ARP table once for all MACs.
     2. If unresolved, does bounded ping sweep once, rechecking ARP in batches.
+
+    `current_ips` (MAC -> the IP on record) keeps a stale entry at the old
+    address from ending the search before the sweep has found the new one.
     """
     targets = {m.lower().strip() for m in macs if m and m.strip()}
     if not targets:
         return {}
+    skip = {mac.lower().strip(): ip for mac, ip in (current_ips or {}).items() if ip}
     found: dict[str, str] = {}
 
     # Quick check — maybe targets are already in ARP.
-    arp_map = await asyncio.to_thread(_arp_table_mac_to_ip)
+    arp_map = await asyncio.to_thread(_arp_table_mac_to_ip, skip)
     for mac in targets:
         ip = arp_map.get(mac)
         if ip:
@@ -638,7 +682,7 @@ async def find_devices_by_macs(macs: list[str], subnets: list[str] | None = None
     for i in range(0, len(hosts), batch_size):
         batch = hosts[i : i + batch_size]
         await asyncio.gather(*[_async_ping(h) for h in batch])
-        arp_map = await asyncio.to_thread(_arp_table_mac_to_ip)
+        arp_map = await asyncio.to_thread(_arp_table_mac_to_ip, skip)
         for mac in targets - found.keys():
             ip = arp_map.get(mac)
             if ip:

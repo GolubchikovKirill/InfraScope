@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera, ChevronDown, ChevronUp, Loader2, Power, RefreshCw, Search } from "lucide-react";
 import { useAuth } from "../auth";
-import { getSwitches, getSwitchCameraPorts, rebootAllCameraPorts } from "../client";
+import { getSwitches, getSwitchCameraPorts, rebootAllCameraPorts, type CameraSweepResult } from "../client";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useQueryParamState } from "../hooks/useQueryParamState";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -99,34 +99,34 @@ function CameraSwitchCard({
   const rebootAllMut = useMutation({
     mutationFn: () => rebootAllCameraPorts(switchId),
     onSuccess: (result) => {
-      const backOnline = result.back_online_count;
-      const message =
-        backOnline === undefined
-          ? `${switchName}: перезагружено камер — ${result.rebooted_count}`
-          : backOnline === result.rebooted_count
-            ? `${switchName}: перезагружено и вернулось онлайн — ${backOnline} из ${result.rebooted_count}`
-            : `${switchName}: вернулось онлайн ${backOnline} из ${result.rebooted_count} — проверьте остальные на месте`;
-      showToast(message, backOnline !== undefined && backOnline < result.rebooted_count ? "error" : "success");
+      const [message, ok] = sweepMessage(switchName, result);
+      showToast(message, ok ? "success" : "error");
       queryClient.invalidateQueries({ queryKey: ["switch-camera-ports", switchId] });
     },
     onError: (error) => showToast(apiErrorMessage(error, "Не удалось перезагрузить камеры"), "error"),
   });
 
+  // a port with no link and no PoE draw has nothing plugged in: not a camera
+  const cameras = cameraPorts?.filter((cam) => !cam.empty) ?? [];
+  const emptyCount = (cameraPorts?.length ?? 0) - cameras.length;
+  const downCount = cameras.filter((cam) => cam.oper_status !== "connected").length;
+
   const handleRebootAll = async () => {
-    const count = cameraPorts?.length ?? 0;
+    const count = cameras.length;
+    // ~15 s per camera (SSH + stagger), then up to 4 min waiting for links
+    const minutes = Math.max(1, Math.ceil((count * 15 + 240) / 60));
     if (
       await confirm(
         `Перезагрузить все камеры в магазине «${switchName}»?${count ? ` (${count} шт.)` : ""}\n\n` +
           "Камеры перезагружаются по одной, а не все сразу — покрытие видео никогда не пропадает целиком. " +
-          "Из-за этого процесс может занять несколько минут.",
+          `Из-за этого процесс займёт около ${minutes} мин. Держать страницу открытой не обязательно — итог попадёт в журнал событий.`,
         { danger: true, confirmText: "Перезагрузить все" },
       )
     ) {
+      showToast(`${switchName}: перезагрузка камер запущена`, "success");
       rebootAllMut.mutate();
     }
   };
-
-  const downCount = cameraPorts?.filter((cam) => cam.oper_status !== "connected").length ?? 0;
 
   return (
     <div className="app-panel overflow-hidden">
@@ -143,7 +143,9 @@ function CameraSwitchCard({
             <div className="font-medium text-sm text-gray-900 truncate">{switchName}</div>
             {isExpanded && cameraPorts && (
               <div className="text-xs text-gray-500">
-                {cameraPorts.length} камер{downCount > 0 && <span className="text-[var(--danger-fg)]"> · {downCount} без связи</span>}
+                {cameras.length} камер
+                {downCount > 0 && <span className="text-[var(--danger-fg)]"> · {downCount} без связи</span>}
+                {emptyCount > 0 && <span> · {emptyCount} пустых портов</span>}
               </div>
             )}
           </div>
@@ -158,11 +160,11 @@ function CameraSwitchCard({
               <button
                 type="button"
                 onClick={handleRebootAll}
-                disabled={rebootAllMut.isPending || isLoading || !cameraPorts?.length}
+                disabled={rebootAllMut.isPending || isLoading || !cameras.length}
                 className="app-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs disabled:opacity-40"
               >
                 {rebootAllMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
-                Перезагрузить все камеры
+                {rebootAllMut.isPending ? "Камеры перезагружаются…" : "Перезагрузить все камеры"}
               </button>
             </div>
           )}
@@ -184,4 +186,35 @@ function CameraSwitchCard({
       )}
     </div>
   );
+}
+
+function sweepMessage(switchName: string, result: CameraSweepResult): [string, boolean] {
+  switch (result.status) {
+    case "busy":
+      return [`${switchName}: на свитче уже идёт другая операция — попробуйте позже`, false];
+    case "unreachable":
+      return [`${switchName}: свитч не ответил по SSH, камеры не перезагружены`, false];
+    case "no_cameras":
+      return [`${switchName}: камер для перезагрузки нет`, true];
+    case "done":
+    case "failed": {
+      const rebooted = result.rebooted_count ?? 0;
+      const back = result.back_online_count ?? 0;
+      const failedPorts = result.failed_ports ?? [];
+      const notBack = result.not_back_ports ?? [];
+      if (rebooted > 0 && back === rebooted && failedPorts.length === 0) {
+        return [`${switchName}: перезагружено и вернулось онлайн — ${back} из ${rebooted}`, true];
+      }
+      const details = [
+        notBack.length ? `не вернулись: ${notBack.join(", ")}` : "",
+        failedPorts.length ? `не удалось перезагрузить: ${failedPorts.join(", ")}` : "",
+      ].filter(Boolean);
+      return [
+        `${switchName}: вернулось онлайн ${back} из ${rebooted}${details.length ? ` (${details.join("; ")})` : ""} — проверьте остальные на месте`,
+        false,
+      ];
+    }
+    default:
+      return [`${switchName}: перезагрузка камер не выполнена (${result.status})`, false];
+  }
 }

@@ -3,9 +3,10 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 import type { RemoteDevice } from "../client";
 
-const api = vi.hoisted(() => ({ getRemoteDevices: vi.fn(), getCashRegisters: vi.fn() }));
+const api = vi.hoisted(() => ({ getRemoteDevices: vi.fn(), getCashRegisters: vi.fn(), discoverComputers: vi.fn() }));
 vi.mock("../client", () => api);
 vi.mock("../auth", () => ({ useAuth: () => ({ user: { is_superuser: true } }) }));
+vi.mock("../lib/toastBus", () => ({ showToast: vi.fn() }));
 vi.mock("../components/RemoteAccessButtons", () => ({
   default: ({ hostname }: { hostname: string }) => <button type="button">Подключиться к {hostname}</button>,
 }));
@@ -115,5 +116,32 @@ describe("ScreensPage", () => {
     renderPage();
 
     expect(await screen.findByText(/Экранов нет: в удалённом доступе нет устройств с TV/)).toBeInTheDocument();
+  });
+
+  it("keeps a screen taken out of remote access while it is up, and drops a retired one", async () => {
+    api.getRemoteDevices.mockResolvedValue({
+      data: [
+        dev("VNA-TV-601TMP", { managed: false, online: null, host_online: true }),
+        dev("VNA-TV-A9N11", { managed: false, online: null, host_online: false }),
+      ],
+      count: 2,
+    });
+    renderPage();
+
+    expect(await screen.findByTestId("screen-VNA-TV-601TMP")).toBeInTheDocument();
+    expect(api.getRemoteDevices).toHaveBeenCalledWith({ include_unmanaged: true });
+    fireEvent.click(screen.getByLabelText(/Только активные/));
+    expect(screen.queryByTestId("screen-VNA-TV-A9N11")).not.toBeInTheDocument();
+  });
+
+  it("looks for new screens in DNS on request", async () => {
+    const { showToast } = await import("../lib/toastBus");
+    api.discoverComputers.mockResolvedValue({ zone: "regstaer-m.local", seen: 288, matched: 18, added: ["VNA-TV-1301"] });
+    renderPage();
+    await screen.findByTestId("screen-VNA-TV-401");
+
+    fireEvent.click(screen.getByRole("button", { name: /Найти в сети/ }));
+
+    await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith("Найдено в сети и добавлено: VNA-TV-1301", "success"));
   });
 });

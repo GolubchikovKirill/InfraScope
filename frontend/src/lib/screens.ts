@@ -8,6 +8,13 @@ export function isScreen(device: Pick<RemoteDevice, "type_tag">): boolean {
   return (device.type_tag ?? "").toUpperCase() === "TV";
 }
 
+/** Whether a TV machine belongs on the screens page. Entries taken out of remote-access management
+ *  used to vanish from it even while the machine was up in the store (VNA-TV-601TMP); one that is
+ *  out of management and not answering either was retired on purpose and stays hidden. */
+export function isListedScreen(device: Pick<RemoteDevice, "type_tag" | "managed" | "host_online">): boolean {
+  return isScreen(device) && (device.managed !== false || device.host_online === true);
+}
+
 /** online: the RustDesk client is connected. reachable: the machine answers a ping but the client
  *  is not connected (connect will not work yet). offline: neither. unknown: never polled. */
 export type ScreenState = "online" | "reachable" | "offline" | "unknown";

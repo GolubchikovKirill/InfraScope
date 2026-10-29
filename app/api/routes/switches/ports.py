@@ -148,11 +148,14 @@ async def _run_port_write(
     safe_port = _validate_switch_port(port)
     switch = _get_switch_or_404(session, switch_id)
     lock_key = await _acquire_switch_write_lock(switch_id)
-    if operation in {"admin_state", "vlan", "poe", "mode"}:
-        await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation=operation)
-    provider = resolve_switch_provider(switch)
-    vendor = switch.vendor
     try:
+        # Everything after the acquire sits inside the try: a 429 raised
+        # before it once left the lease renewing itself, locking the switch
+        # until the backend restarted.
+        if operation in {"admin_state", "vlan", "poe", "mode"}:
+            await _enforce_switch_cooldown(switch_id=switch_id, port=safe_port, operation=operation)
+        provider = resolve_switch_provider(switch)
+        vendor = switch.vendor
         with switch_port_op_duration_seconds.labels(vendor=vendor, operation=operation).time():
             try:
                 await asyncio.to_thread(callback, switch, provider, safe_port)

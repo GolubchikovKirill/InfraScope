@@ -1,5 +1,7 @@
+import asyncio
 from dataclasses import dataclass
 from time import monotonic
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,7 +10,7 @@ from app.api.routes.switches import _shared as switch_shared
 from app.api.routes.switches import access_points as switch_access_points
 from app.api.routes.switches import ports as switch_ports
 from app.core.config import settings
-from app.domains.inventory import switch_polling
+from app.domains.inventory import camera_reboot, switch_polling, switch_write_lock
 from app.services.cisco_ssh import CameraPortInfo
 from app.services.switches.base import SwitchPollInfo, SwitchPortState
 
@@ -48,6 +50,9 @@ class _FakeRedis:
             self._values.pop(key, None)
         return len(keys)
 
+    async def exists(self, key: str) -> int:
+        return 0 if self._is_expired(key) else 1
+
     async def eval(self, script: str, _keys: int, key: str, owner: str, *args) -> int:
         if self._is_expired(key) or self._values.get(key, (None, None))[0] != owner:
             return 0
@@ -68,7 +73,9 @@ def _switch_write_redis(monkeypatch):
     async def _get_redis():
         return redis
 
+    # the cooldown lives in the route helpers, the write lease in the domain
     monkeypatch.setattr(switch_shared, "get_redis", _get_redis)
+    monkeypatch.setattr(switch_write_lock, "get_redis", _get_redis)
 
 
 def test_create_and_poll_switch(client: TestClient, admin_token: str, monkeypatch):
@@ -271,6 +278,7 @@ def test_switch_write_rejects_unsafe_port_identifier(client: TestClient, admin_t
 
     monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
     monkeypatch.setattr(switch_shared, "get_redis", _fake_get_redis)
+    monkeypatch.setattr(switch_write_lock, "get_redis", _fake_get_redis)
 
     created = client.post(
         "/api/v1/switches/",
@@ -322,6 +330,7 @@ def test_switch_poe_cycle_is_rate_limited_by_cooldown(client: TestClient, admin_
     monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda *_args, **_kwargs: _Provider())
     monkeypatch.setattr(settings, "SWITCH_SAFETY_COOLDOWN_SECONDS", 60)
     monkeypatch.setattr(switch_shared, "get_redis", _fake_get_redis)
+    monkeypatch.setattr(switch_write_lock, "get_redis", _fake_get_redis)
 
     created = client.post(
         "/api/v1/switches/",
@@ -386,30 +395,12 @@ def test_reboot_all_cameras_requires_superuser(client: TestClient, admin_token: 
     assert response.status_code == 403
 
 
-def test_reboot_all_cameras_cycles_one_camera_at_a_time(client: TestClient, admin_token: str, monkeypatch):
-    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS", 1)
-    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS", 1)
-    monkeypatch.setattr(settings, "CAMERA_REBOOT_STAGGER_SECONDS", 0)
-    calls: list[list[str]] = []
-
-    def _fake_get_camera_ports(*_args, **_kwargs):
-        return [
-            CameraPortInfo(port="Gi0/10", vlan=241, oper_status="connected"),
-            CameraPortInfo(port="Gi0/11", vlan=241, oper_status="notconnect"),
-        ]
-
-    def _fake_poe_cycle_bulk(_ip, _user, _pw, _enable, _port, interfaces):
-        calls.append(list(interfaces))
-        return True
-
-    monkeypatch.setattr(switch_access_points, "get_camera_ports", _fake_get_camera_ports)
-    monkeypatch.setattr(switch_access_points, "poe_cycle_ports_bulk", _fake_poe_cycle_bulk)
-
+def _create_camera_switch(client: TestClient, admin_token: str, name: str, ip: str) -> str:
     created = client.post(
         "/api/v1/switches/",
         json={
-            "name": "SW-Cameras",
-            "ip_address": "10.10.10.61",
+            "name": name,
+            "ip_address": ip,
             "ssh_username": "admin",
             "ssh_password": "admin",
             "enable_password": "",
@@ -423,74 +414,59 @@ def test_reboot_all_cameras_cycles_one_camera_at_a_time(client: TestClient, admi
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert created.status_code == 200
-    switch_id = created.json()["id"]
+    return created.json()["id"]
+
+
+def test_reboot_all_cameras_is_queued_for_the_worker(client: TestClient, admin_token: str, monkeypatch):
+    """A store's sweep runs for minutes (20-90 cameras, one at a time) - far past
+    the proxy timeout - so the request only queues it and hands back the task."""
+    enqueued: list[list[str]] = []
+
+    def _fake_apply_async(args, **_kw):
+        enqueued.append(args)
+        return SimpleNamespace(id="task-123")
+
+    def _must_not_touch_switch(*_a, **_kw):
+        raise AssertionError("the request itself must not power-cycle anything")
+
+    monkeypatch.setattr(
+        switch_access_points, "camera_reboot_all_task", SimpleNamespace(apply_async=_fake_apply_async)
+    )
+    monkeypatch.setattr(camera_reboot, "poe_cycle_ports_bulk", _must_not_touch_switch)
+    switch_id = _create_camera_switch(client, admin_token, "SW-Cameras", "10.10.10.61")
 
     response = client.post(
         f"/api/v1/switches/{switch_id}/camera-ports/reboot-all",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
+
     assert response.status_code == 200
-    # Gi0/10 is already "connected" in the fake, so verification finds it
-    # back online; Gi0/11 stays "notconnect" and never resolves.
-    assert response.json() == {
-        "status": "rebooting",
-        "rebooted_count": 2,
-        "failed_count": 0,
-        "back_online_count": 1,
-    }
-    # Each camera is cycled in its own call, one port at a time - never a
-    # single call powering multiple cameras off together.
-    assert calls == [["Gi0/10"], ["Gi0/11"]]
+    assert response.json() == {"status": "queued", "task_id": "task-123"}
+    assert enqueued == [[switch_id]]
 
 
-def test_reboot_all_cameras_continues_past_a_single_port_failure(client: TestClient, admin_token: str, monkeypatch):
-    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_MAX_WAIT_SECONDS", 1)
-    monkeypatch.setattr(settings, "AUTO_REBOOT_AP_VERIFY_POLL_INTERVAL_SECONDS", 1)
-    monkeypatch.setattr(settings, "CAMERA_REBOOT_STAGGER_SECONDS", 0)
-
-    def _fake_get_camera_ports(*_args, **_kwargs):
-        return [
-            CameraPortInfo(port="Gi0/20", vlan=241, oper_status="connected"),
-            CameraPortInfo(port="Gi0/21", vlan=241, oper_status="connected"),
-        ]
-
-    def _fake_poe_cycle_bulk(_ip, _user, _pw, _enable, _port, interfaces):
-        return interfaces != ["Gi0/20"]
-
-    monkeypatch.setattr(switch_access_points, "get_camera_ports", _fake_get_camera_ports)
-    monkeypatch.setattr(switch_access_points, "poe_cycle_ports_bulk", _fake_poe_cycle_bulk)
-
-    created = client.post(
-        "/api/v1/switches/",
-        json={
-            "name": "SW-Cameras-Partial",
-            "ip_address": "10.10.10.64",
-            "ssh_username": "admin",
-            "ssh_password": "admin",
-            "enable_password": "",
-            "ssh_port": 22,
-            "ap_vlan": 20,
-            "vendor": "cisco",
-            "management_protocol": "snmp+ssh",
-            "snmp_version": "2c",
-            "snmp_community_ro": "public",
-        },
-        headers={"Authorization": f"Bearer {admin_token}"},
+def test_reboot_all_cameras_refuses_while_the_switch_is_busy(client: TestClient, admin_token: str, monkeypatch):
+    enqueued: list = []
+    monkeypatch.setattr(
+        switch_access_points,
+        "camera_reboot_all_task",
+        SimpleNamespace(apply_async=lambda args, **_kw: enqueued.append(args)),
     )
-    assert created.status_code == 200
-    switch_id = created.json()["id"]
+    switch_id = _create_camera_switch(client, admin_token, "SW-Cameras-Busy", "10.10.10.64")
+
+    async def _hold():
+        r = await switch_write_lock.get_redis()
+        await r.set(f"lock:switch-write:{switch_id}", "someone-else", ex=60)
+
+    asyncio.run(_hold())
 
     response = client.post(
         f"/api/v1/switches/{switch_id}/camera-ports/reboot-all",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
-    assert response.status_code == 200
-    assert response.json() == {
-        "status": "rebooting",
-        "rebooted_count": 1,
-        "failed_count": 1,
-        "back_online_count": 1,
-    }
+
+    assert response.status_code == 409
+    assert enqueued == []
 
 
 def test_reboot_camera_port_reports_back_online_status(client: TestClient, admin_token: str, monkeypatch):
@@ -505,7 +481,7 @@ def test_reboot_camera_port_reports_back_online_status(client: TestClient, admin
         calls.append(list(interfaces))
         return True
 
-    monkeypatch.setattr(switch_access_points, "get_camera_ports", _fake_get_camera_ports)
+    monkeypatch.setattr(camera_reboot, "get_camera_ports", _fake_get_camera_ports)
     monkeypatch.setattr(switch_access_points, "poe_cycle_ports_bulk", _fake_poe_cycle_bulk)
 
     created = client.post(
@@ -776,6 +752,7 @@ def test_port_write_fails_closed_when_the_safety_lock_cannot_be_taken(client: Te
     monkeypatch.setattr(switch_ports, "resolve_switch_provider", lambda _switch: _Provider())
     switch_id = _create_dlink_switch(client, admin_token, "10.10.10.63")
     monkeypatch.setattr(_shared, "get_redis", _no_redis)
+    monkeypatch.setattr(switch_write_lock, "get_redis", _no_redis)
 
     response = client.post(
         f"/api/v1/switches/{switch_id}/ports/Gi0%2F1/vlan",

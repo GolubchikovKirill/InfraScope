@@ -78,3 +78,17 @@ export async function pollAllComputers() {
   const { data } = await api.post<ComputersResponse>("/computers/poll-all");
   return data;
 }
+
+export interface DnsDiscoveryResult {
+  zone: string;
+  /** A records in the zone / of those, names with a discovered role (TV) */
+  seen: number;
+  matched: number;
+  added: string[];
+}
+
+/** Add the screens DNS knows and the inventory does not (the worker also does this hourly). */
+export async function discoverComputers() {
+  const { data } = await api.post<DnsDiscoveryResult>("/computers/discover");
+  return data;
+}

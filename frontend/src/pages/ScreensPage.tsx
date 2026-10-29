@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { RefreshCw, Search, Tv } from "lucide-react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Radar, RefreshCw, Search, Tv } from "lucide-react";
 import { useAuth } from "../auth";
-import { getCashRegisters, getRemoteDevices, type RemoteDevice } from "../client";
+import { discoverComputers, getCashRegisters, getRemoteDevices, type RemoteDevice } from "../client";
 import RemoteAccessButtons from "../components/RemoteAccessButtons";
-import { filterScreenZones, groupScreens, isActiveScreen, isScreen, screenState, type ScreenState } from "../lib/screens";
+import { filterScreenZones, groupScreens, isActiveScreen, isListedScreen, screenState, type ScreenState } from "../lib/screens";
 import { relTime } from "../lib/relTime";
+import { showToast } from "../lib/toastBus";
+import { apiErrorMessage } from "../lib/apiError";
 
 const DOT: Record<ScreenState, string> = {
   online: "bg-teal-500",
@@ -61,15 +63,32 @@ export default function ScreensPage() {
   const [query, setQuery] = useState("");
   const [onlyActive, setOnlyActive] = useState(true);
 
+  const queryClient = useQueryClient();
   const devices = useQuery({
     queryKey: ["remote-devices", "screens"],
-    queryFn: () => getRemoteDevices({}),
+    // with the entries out of management: a screen that is up still belongs here (see isListedScreen)
+    queryFn: () => getRemoteDevices({ include_unmanaged: true }),
     placeholderData: keepPreviousData,
     refetchInterval: 20_000,
   });
   const cash = useQuery({ queryKey: ["cash-registers", undefined], queryFn: () => getCashRegisters(), staleTime: 60_000, retry: false });
+  const discover = useMutation({
+    mutationFn: discoverComputers,
+    onSuccess: (result) => {
+      showToast(
+        result.added.length
+          ? `Найдено в сети и добавлено: ${result.added.join(", ")}`
+          : result.seen
+            ? `Новых экранов в сети нет (в DNS ${result.matched} экранов, все уже в списке)`
+            : `DNS-зона ${result.zone || "(не задана)"} не прочиталась — новых экранов не найти`,
+        result.seen ? "success" : "error",
+      );
+      queryClient.invalidateQueries({ queryKey: ["remote-devices"] });
+    },
+    onError: (error) => showToast(apiErrorMessage(error, "Не удалось поискать экраны в сети"), "error"),
+  });
 
-  const all = useMemo(() => (devices.data?.data ?? []).filter(isScreen), [devices.data]);
+  const all = useMemo(() => (devices.data?.data ?? []).filter(isListedScreen), [devices.data]);
   const active = all.filter(isActiveScreen);
   const zones = useMemo(() => {
     const shown = all.filter((s) => !onlyActive || isActiveScreen(s));
@@ -98,6 +117,18 @@ export default function ScreensPage() {
             Только активные
             {onlyActive && hidden > 0 && <span className="text-xs text-slate-400">(скрыто {hidden})</span>}
           </label>
+          {isSuperuser && (
+            <button
+              type="button"
+              onClick={() => discover.mutate()}
+              disabled={discover.isPending}
+              className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-50"
+              title="Добавить TV-машины, которые есть в DNS домена, но ещё не в списке (это же делается автоматически раз в час)"
+            >
+              <Radar className={`h-4 w-4 ${discover.isPending ? "animate-pulse" : ""}`} />
+              Найти в сети
+            </button>
+          )}
           <button type="button" onClick={() => void devices.refetch()} className="app-btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm">
             <RefreshCw className={`h-4 w-4 ${devices.isFetching ? "animate-spin" : ""}`} />
             Обновить
@@ -113,7 +144,7 @@ export default function ScreensPage() {
         <div className="app-panel flex flex-col items-center gap-2 p-10 text-center text-sm text-slate-500">
           <Tv className="h-8 w-8 text-slate-300" />
           {all.length === 0
-            ? "Экранов нет: в удалённом доступе нет устройств с TV в имени."
+            ? "Экранов нет: в удалённом доступе нет устройств с TV в имени. «Найти в сети» поищет их в DNS домена."
             : onlyActive && !query
               ? "Активных экранов нет. Снимите «Только активные», чтобы увидеть остальные."
               : "По этому запросу экранов нет."}
