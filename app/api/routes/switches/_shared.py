@@ -80,6 +80,17 @@ def _validate_switch_port(port: str) -> str:
 
 
 async def _acquire_switch_write_lock(switch_id: uuid.UUID) -> _SwitchWriteLease:
+    # Every write to a switch (port up/down, PoE cycle, AP reboot, DHCP clear)
+    # takes this lease first, which makes it the one place to refuse them on
+    # an instance that must not touch real equipment (ALLOW_HARDWARE_WRITES).
+    if not settings.hardware_writes_allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Switch writes are disabled on this instance "
+                f"(ENVIRONMENT={settings.ENVIRONMENT}; set ALLOW_HARDWARE_WRITES=true to allow them)"
+            ),
+        )
     lock_key = f"lock:switch-write:{switch_id}"
     try:
         r = await asyncio.wait_for(get_redis(), timeout=0.2)

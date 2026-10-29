@@ -6,10 +6,15 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
+    // In docker-compose.local.yml the API is another container (backend:8000),
+    // and file events from a Windows bind mount only arrive by polling.
+    watch: process.env.VITE_USE_POLLING ? { usePolling: true, interval: 300 } : undefined,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: process.env.VITE_PROXY_TARGET ?? "http://localhost:8000",
         changeOrigin: true,
+        // the realtime channel (/api/v1/realtime/ws) is a WebSocket
+        ws: true,
       },
     },
   },

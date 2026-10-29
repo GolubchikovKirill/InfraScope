@@ -22,6 +22,7 @@ from app.core.io_pool import install_io_executor
 from app.core.limiter import limiter
 from app.core.readiness import build_readiness_response, check_database, check_redis
 from app.core.redis import close_redis, get_redis
+from app.core.safety import log_hardware_write_guard
 from app.observability.loop_lag import start_loop_lag_monitor, stop_loop_lag_monitor
 from app.observability.tracing import setup_tracing
 from app.services.event_log import write_event_log
@@ -36,6 +37,7 @@ _recent_unhandled_exceptions: dict[str, float] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     install_io_executor()
+    log_hardware_write_guard(logger, "backend")
 
     def _init_db_sync():
         with Session(engine) as session:
