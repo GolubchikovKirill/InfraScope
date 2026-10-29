@@ -327,6 +327,12 @@ class Settings(BaseSettings):
     HONEST_SIGN_TIMEOUT_SECONDS: float = 10.0
     HONEST_SIGN_STATUS_WAIT_SECONDS: float = 15.0
     HONEST_SIGN_MAX_CONCURRENCY: int = 32
+    # Scheduled Local Module status check (Celery Beat). A register that is not
+    # "ready" for HONEST_SIGN_ALERT_AFTER_FAILURES checks in a row is logged to
+    # the event log once; a recovery is logged once too. Never initializes.
+    HONEST_SIGN_AUTO_CHECK_ENABLED: bool = True
+    HONEST_SIGN_AUTO_CHECK_INTERVAL_MINUTES: int = 15
+    HONEST_SIGN_ALERT_AFTER_FAILURES: int = 2
     # A PoE reboot can spend four minutes only waiting for an access point to
     # return. The lease is renewed during a request; this floor also prevents
     # a brief Redis outage from exposing a live hardware operation.

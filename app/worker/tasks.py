@@ -46,6 +46,7 @@ from app.observability.metrics import (
     worker_tasks_enqueued_total,
     worker_tasks_in_progress,
 )
+from app.services import honest_sign as _honest_sign
 from app.services.polling_orchestrator import (
     poll_all_cash_registers_local,
     poll_all_computers_local,
@@ -334,6 +335,25 @@ def poll_all_cash_registers_task(self) -> dict:
         _run_async(poll_all_cash_registers_local(session=session))
         registers = session.exec(select(CashRegister)).all()
     return {"total": len(registers), "online": sum(1 for r in registers if r.is_online)}
+
+
+@_task("honest_sign_check_cycle", retries=2)
+def honest_sign_check_cycle_task(self) -> dict:
+    """Ask every register's Honest Sign Local Module for its status and store it.
+
+    Read-only: it never sends /init (activation stays a superuser's decision in
+    the UI). State changes reach the event log via record_check_results."""
+    if not settings.HONEST_SIGN_AUTO_CHECK_ENABLED or not _honest_sign.status_configuration_ready():
+        return _Skipped({"status": "skipped"})
+    with Session(engine) as session:
+        rows = _run_async(_honest_sign.check_all_honest_sign_targets(session=session))
+        _honest_sign.record_check_results(session, rows)
+    return {
+        "total": len(rows),
+        "ready": sum(1 for row in rows if row.ready),
+        "unreachable": sum(1 for row in rows if not row.reachable),
+        "not_ready": sum(1 for row in rows if row.reachable and not row.ready),
+    }
 
 
 @_task("ap_auto_reboot_cycle", soft_time_limit=300, time_limit=600)
