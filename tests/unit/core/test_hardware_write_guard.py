@@ -28,7 +28,11 @@ def _no_env_override(monkeypatch):
 
 def test_outside_production_the_automations_are_switched_off() -> None:
     s = Settings(
-        ENVIRONMENT="development", AUTO_REBOOT_AP_ENABLED=True, DHCP_CLEAR_ENABLED=True, REMOTE_ACCESS_ENABLED=True
+        _env_file=None,
+        ENVIRONMENT="development",
+        AUTO_REBOOT_AP_ENABLED=True,
+        DHCP_CLEAR_ENABLED=True,
+        REMOTE_ACCESS_ENABLED=True,
     )
 
     assert s.hardware_writes_allowed is False
@@ -37,7 +41,7 @@ def test_outside_production_the_automations_are_switched_off() -> None:
 
 
 def test_production_keeps_them_as_configured() -> None:
-    s = Settings(**PROD, AUTO_REBOOT_AP_ENABLED=True, DHCP_CLEAR_ENABLED=True)
+    s = Settings(_env_file=None, **PROD, AUTO_REBOOT_AP_ENABLED=True, DHCP_CLEAR_ENABLED=True)
 
     assert s.hardware_writes_allowed is True
     assert s.AUTO_REBOOT_AP_ENABLED is True and s.DHCP_CLEAR_ENABLED is True
@@ -79,7 +83,7 @@ def test_the_startup_log_names_what_was_switched_off(monkeypatch, caplog) -> Non
 
 
 def test_production_logs_nothing(monkeypatch, caplog) -> None:
-    monkeypatch.setattr(safety, "settings", Settings(**PROD))
+    monkeypatch.setattr(safety, "settings", Settings(_env_file=None, **PROD))
 
     with caplog.at_level(logging.WARNING):
         safety.log_hardware_write_guard(logging.getLogger("test"), "worker")
