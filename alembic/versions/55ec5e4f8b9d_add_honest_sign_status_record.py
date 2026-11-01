@@ -11,6 +11,7 @@ check (tasks.honest_sign_check_cycle). See app/services/honest_sign.py.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.

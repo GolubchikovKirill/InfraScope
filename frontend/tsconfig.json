@@ -9,6 +9,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": false,
     "moduleDetection": "force",
+    "types": ["vitest/globals"],
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,

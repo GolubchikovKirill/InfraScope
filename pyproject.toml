@@ -5,26 +5,26 @@ description = "IT infrastructure monitoring and administration platform"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "alembic>=1.14",
+    "alembic==1.20.1",
     "argon2-cffi>=25.1.0",
     # alembic/env.py runs migrations on an async engine (postgresql+asyncpg, which
     # also needs greenlet): nothing in app/ imports them, but every deploy does
-    "asyncpg>=0.30",
+    "asyncpg==0.32.0",
     "bcrypt>=4.2",
     # zone transfer of the AD DNS zone for network discovery (app/services/dns_zone)
     "dnspython>=2.6",
-    "fastapi>=0.129.0",
+    "fastapi==0.162.0",
     "httpx>=0.28",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.7",
     "pydantic[email]>=2.10",
     "pyjwt[crypto]>=2.10",
     "pysnmp>=7.1.27",
-    "python-multipart>=0.0.18",
-    "redis>=5.0",
+    "python-multipart==0.0.33",
+    "redis==8.1.0",
     "slowapi>=0.1.9",
-    "sqlmodel>=0.0.22",
-    "uvicorn[standard]>=0.34",
+    "sqlmodel==0.0.48",
+    "uvicorn[standard]==0.54.0",
     "paramiko>=3.5",
     "prometheus-fastapi-instrumentator>=7.1.0",
     "celery>=5.6.2",
@@ -37,8 +37,9 @@ dependencies = [
     "python-docx>=1.2.0",
     "qrcode[pil]>=8.2",
     "python-tds>=1.16.1",
-    "greenlet>=3.3.1",
+    "greenlet==3.5.6",
     "pywinrm>=0.4",
+    "sqlalchemy==2.1.6",
 ]
 
 [dependency-groups]
@@ -47,11 +48,11 @@ dev = [
     # imported by the app, so kept out of the production image
     "pyrefly>=0.45.0",
     "jsonschema>=4.25.1",
-    "ruff>=0.9",
+    "ruff==0.17.3",
     "pytest>=8.0",
-    "pytest-cov>=4.1.0",
-    "pytest-asyncio>=1.3.0",
-    "fakeredis>=2.26",
+    "pytest-cov==7.1.0",
+    "pytest-asyncio==1.4.1",
+    "fakeredis==2.40.0",
     "pyright>=1.1.414",
 ]
 
