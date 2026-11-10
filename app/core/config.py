@@ -252,6 +252,8 @@ class Settings(BaseSettings):
     WINRM_ADMIN_USERNAME: str = ""
     WINRM_ADMIN_PASSWORD: str = ""
     WINRM_PORT: int = 5985
+    WINRM_AUTO_ENABLE: bool = True
+    WINRM_BOOTSTRAP_SOURCE_IP: str = "10.10.99.24"
     WINRM_USE_SSL: bool = False
     WINRM_TRANSPORT: str = "ntlm"  # ntlm | kerberos | credssp
     # Per-poll wait inside one WinRM call; pywinrm loops Receive requests until the

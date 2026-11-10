@@ -26,8 +26,10 @@ from typing import overload
 from sqlalchemy import update
 from sqlmodel import Session, col, select
 
+from app.core.config import settings
 from app.domains.remote_access import deploy_script, service, winrm_exec
 from app.domains.remote_access.models import PUSH_JOB_ACTIVE, RemoteAccessDevice, RemoteAccessPushJob
+from app.domains.remote_access.winrm_bootstrap import ensure_winrm
 
 logger = logging.getLogger(__name__)
 
@@ -181,17 +183,32 @@ def execute_push_job(session: Session, job: RemoteAccessPushJob) -> RemoteAccess
             # adoption uses for the identical reason.
             service.apply_deploy_profile(session, dev, job.profile)
             service.mark_deploy_requested(session, dev)
+            ensure_winrm(job.hostname)
             result = winrm_exec.run_powershell(job.hostname, deploy_script.winrm_bootstrap())
-    except winrm_exec.WinRMNotConfiguredError as exc:
+    except Exception as exc:
         job.state = "failed"
-        job.detail = str(exc)
+        detail = str(exc)
+        for secret in (settings.WINRM_ADMIN_PASSWORD, settings.RUSTDESK_DEPLOY_TOKEN):
+            if secret:
+                detail = detail.replace(secret, "[REDACTED]")
+        job.detail = ("Подготовка или запуск не выполнены: " + detail)[:1024]
         job.finished_at = _now()
         session.add(job)
+        if not job.dry_run:
+            dev.deploy_state = "failed"
+            dev.deploy_detail = job.detail[:512]
+            dev.deploy_reported_at = _now()
+            session.add(dev)
         session.commit()
         session.refresh(job)
         return job
 
     job.state = "succeeded" if result.ok else "failed"
+    if not result.ok and not job.dry_run:
+        dev.deploy_state = "failed"
+        dev.deploy_detail = result.detail[:512] if result.detail else "Развёртывание не завершилось."
+        dev.deploy_reported_at = _now()
+        session.add(dev)
     job.detail = result.detail[:1024] if result.detail else None
     job.finished_at = _now()
     session.add(job)

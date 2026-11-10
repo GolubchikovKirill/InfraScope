@@ -108,7 +108,7 @@ def run_powershell(hostname: str, script: str) -> WinRMResult:
 
 # Dry-run probe: reach the machine, say what is already on it, install nothing.
 _PROBE_SCRIPT = (
-    "$os = Get-CimInstance Win32_OperatingSystem; "
+    "$os = Get-WmiObject Win32_OperatingSystem; "
     "$svc = Get-Service RustDesk -ErrorAction SilentlyContinue; "
     "Write-Output ($os.Caption + ' (' + $os.Version + ') | RustDesk service: ' + "
     "$(if ($svc) { $svc.Status } else { 'absent' }))"

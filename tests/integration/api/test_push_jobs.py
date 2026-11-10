@@ -17,6 +17,7 @@ from app.domains.remote_access.models import RemoteAccessDevice, RemoteAccessPus
 
 @pytest.fixture(autouse=True)
 def _winrm_configured(monkeypatch, tmp_path):
+    monkeypatch.setattr(push_jobs, "ensure_winrm", lambda _host: None)
     monkeypatch.setattr(settings, "WINRM_ADMIN_USERNAME", "svc-infrascope")
     monkeypatch.setattr(settings, "WINRM_ADMIN_PASSWORD", "winrm-secret-for-tests")
     installer = tmp_path / "installer.msi"
