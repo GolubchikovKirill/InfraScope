@@ -198,6 +198,13 @@ backup_db() {
   fi
 }
 
+if [ "$MODE" != "reset-volumes" ] && [ "$SKIP_BACKUP" -ne 1 ]; then
+  backup_db || {
+    echo "Deploy stopped because the PostgreSQL backup failed."
+    exit 1
+  }
+fi
+
 if [ "$MODE" = "reset-volumes" ]; then
   if [ "${CONFIRM_RESET_VOLUMES:-}" != "YES" ]; then
     echo "Refusing to remove volumes without confirmation."

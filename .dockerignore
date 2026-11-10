@@ -12,3 +12,4 @@ frontend/
 *.md
 .gitignore
 docker-compose*.yml
+backups/
