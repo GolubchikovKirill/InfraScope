@@ -26,6 +26,7 @@ import winrm
 from winrm.exceptions import WinRMError
 
 from app.core.config import settings
+from app.services.hostname_resolver import resolve_hostname
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,14 @@ def _session(hostname: str) -> winrm.Session:
     if not settings.WINRM_ADMIN_USERNAME or not settings.WINRM_ADMIN_PASSWORD:
         raise WinRMNotConfiguredError("WINRM_ADMIN_USERNAME / WINRM_ADMIN_PASSWORD are not set")
     scheme = "https" if settings.WINRM_USE_SSL else "http"
-    endpoint = f"{scheme}://{hostname}:{settings.WINRM_PORT}/wsman"
+    address = hostname
+    # NTLM over HTTP can address an IP. Preserve hostnames for TLS validation
+    # and Kerberos SPNs, which depend on the original server name.
+    if not settings.WINRM_USE_SSL and settings.WINRM_TRANSPORT == "ntlm":
+        address = resolve_hostname(
+            hostname, dns_search_suffixes=settings.DNS_SEARCH_SUFFIXES, dns_server=settings.DNS_SERVER
+        ) or hostname
+    endpoint = f"{scheme}://{address}:{settings.WINRM_PORT}/wsman"
     return winrm.Session(
         endpoint,
         auth=(settings.WINRM_ADMIN_USERNAME, settings.WINRM_ADMIN_PASSWORD),
