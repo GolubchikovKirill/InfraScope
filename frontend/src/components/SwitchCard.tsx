@@ -218,7 +218,7 @@ export default function SwitchCard({ sw, onPoll, onEdit, onDelete, onOpenPorts, 
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <OnlineStatusBadge isOnline={sw.is_online} />
+            <OnlineStatusBadge isOnline={sw.is_online} lastPolledAt={sw.last_polled_at} />
             <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium bg-[var(--brand-soft)] text-[var(--brand)]">
               VLAN {sw.ap_vlan}
             </span>

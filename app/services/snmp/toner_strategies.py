@@ -107,9 +107,9 @@ async def _get_standard_toners(
             max_val = 0
 
         try:
-            cur_val = int(level_map.get(key, 0))
+            cur_val = int(level_map.get(key, -2))
         except (ValueError, TypeError):
-            cur_val = 0
+            cur_val = -2
 
         if cur_val == -3:
             pct = -3

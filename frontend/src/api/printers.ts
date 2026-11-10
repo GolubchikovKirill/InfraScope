@@ -25,6 +25,7 @@ export interface Printer {
   toner_magenta_name: string | null;
   toner_yellow_name: string | null;
   toner_updated_at: string | null;
+  toner_observed_at?: Partial<Record<"black" | "cyan" | "magenta" | "yellow", string>>;
   /** lifetime pages (SNMP prtMarkerLifeCount); absent where unsupported */
   page_count?: number | null;
   page_count_updated_at?: string | null;

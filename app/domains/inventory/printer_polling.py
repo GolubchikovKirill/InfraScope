@@ -508,15 +508,24 @@ def _apply_full_printer_result(
     # nothing to explain - clear a reason that may be left over from before
     # this printer recovered.
     printer.reachability_reason = None
-    printer.toner_black = result.toner_black
-    printer.toner_cyan = result.toner_cyan
-    printer.toner_magenta = result.toner_magenta
-    printer.toner_yellow = result.toner_yellow
-    printer.toner_updated_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    observed = dict(printer.toner_observed_at or {})
+    for color in ("black", "cyan", "magenta", "yellow"):
+        level = getattr(result, f"toner_{color}", None)
+        # Unknown/sentinel values do not refresh the last quantitative reading.
+        if isinstance(level, int) and 0 <= level <= 100:
+            setattr(printer, f"toner_{color}", level)
+            observed[color] = now.isoformat()
+    printer.toner_observed_at = observed
+    measured_times = [observed.get(color) for color in ("black", "cyan", "magenta", "yellow")
+                      if getattr(printer, f"toner_{color}") is not None]
+    # Keep the compatibility timestamp conservative on partial responses.
+    if measured_times and all(measured_times):
+        printer.toner_updated_at = min(datetime.fromisoformat(value) for value in measured_times if value)
     page_count = getattr(result, "page_count", None)
     if page_count is not None:
         printer.page_count = page_count
-        printer.page_count_updated_at = printer.toner_updated_at
+        printer.page_count_updated_at = now
     printer.mac_status = verify_printer_mac(printer, current_mac)
     if session is not None:
         swaps = detect_swaps(levels_before, toner_levels(printer))

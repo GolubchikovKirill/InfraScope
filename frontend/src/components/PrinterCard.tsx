@@ -1,4 +1,5 @@
 import { memo, useCallback, useRef, useState } from "react";
+import { useObservationTime } from "../hooks/useObservationTime";
 import {
   RefreshCw,
   Pencil,
@@ -101,7 +102,13 @@ function PrinterCard({
   const isOffline = printer.is_online === false;
   const hasTonerData =
     printer.toner_black !== null || printer.toner_cyan !== null || printer.toner_magenta !== null || printer.toner_yellow !== null;
-  const isTonerStale = isOffline && hasTonerData;
+  const now = useObservationTime();
+  const staleColors = (["black", "cyan", "magenta", "yellow"] as const).filter((color) => {
+    if (printer[`toner_${color}`] === null) return false;
+    const measuredAt = Date.parse(printer.toner_observed_at?.[color] ?? "");
+    return !Number.isFinite(measuredAt) || now - measuredAt > 10 * 60_000;
+  });
+  const isTonerStale = hasTonerData && (isOffline || staleColors.length > 0);
   const tonerUpdatedAt = printer.toner_updated_at
     ? new Date(printer.toner_updated_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
@@ -111,7 +118,8 @@ function PrinterCard({
     { key: "C", level: printer.toner_cyan, name: printer.toner_cyan_name },
     { key: "M", level: printer.toner_magenta, name: printer.toner_magenta_name },
     { key: "Y", level: printer.toner_yellow, name: printer.toner_yellow_name },
-  ] as const).filter((item) => item.level !== null && item.level <= 15);
+  ] as const).filter((item) => item.level !== null && item.level >= 0 && item.level <= 15 &&
+    !isOffline && !staleColors.includes(({ K: "black", C: "cyan", M: "magenta", Y: "yellow" } as const)[item.key]));
   const tonerModels: Array<{ key: TonerKey; name: string | null }> = ([
     { key: "K", name: printer.toner_black_name },
     { key: "C", name: printer.toner_cyan_name },
@@ -120,6 +128,7 @@ function PrinterCard({
   ] as const).filter((item) => Boolean(item.name));
   const mlPredictionEntries = (["black", "cyan", "magenta", "yellow"] as const)
     .map((key) => {
+      if (isOffline || staleColors.includes(key)) return null;
       const days = tonerPredictionDays?.[key];
       if (days == null) return null;
       const value = Math.max(Math.round(days), 0);
@@ -158,7 +167,7 @@ function PrinterCard({
             <h3 className="app-card-store min-w-0" title={printer.store_name}>
               {printer.store_name}
             </h3>
-            <div className="shrink-0 pt-0.5"><OnlineStatusBadge isOnline={printer.is_online} /></div>
+            <div className="shrink-0 pt-0.5"><OnlineStatusBadge isOnline={printer.is_online} lastPolledAt={printer.last_polled_at} /></div>
           </div>
           <div className="mt-1 flex min-w-0 items-center gap-1.5 app-card-subtitle" title={printer.model}>
             <span className="text-[var(--brand)]"><PrinterIcon className="h-3.5 w-3.5 shrink-0" /></span>
@@ -241,7 +250,9 @@ function PrinterCard({
         </div>
         {isTonerStale && (
           <div className="text-[11px] text-[var(--warn-fg)]">
-            {tonerUpdatedAt ? `Данные картриджей от ${tonerUpdatedAt} (принтер сейчас оффлайн)` : "Принтер оффлайн — данные картриджей могут быть устаревшими"}
+            {tonerUpdatedAt ? `Данные картриджей от ${tonerUpdatedAt}. ` : ""}
+            {isOffline ? "Принтер оффлайн. " : ""}
+            {staleColors.length > 0 ? `Нет свежих измерений: ${staleColors.map((color) => ({black: "K", cyan: "C", magenta: "M", yellow: "Y"})[color]).join(", ")}` : "Данные могут быть устаревшими"}
           </div>
         )}
         {tonerModels.length > 0 && (

@@ -291,7 +291,7 @@ export default function MediaPlayerCard({
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
-            <OnlineStatusBadge isOnline={player.is_online} />
+            <OnlineStatusBadge isOnline={player.is_online} lastPolledAt={player.last_polled_at} />
             <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${style.bg} ${style.iconColor}`}>
               {deviceLabel}
             </span>

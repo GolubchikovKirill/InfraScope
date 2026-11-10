@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlmodel import select
+
 from app.domains.inventory.models import MediaPlayer, NetworkSwitch, Printer
 from app.domains.ml.models import MLFeatureSnapshot
 
@@ -43,11 +45,22 @@ def write_printer_snapshots(session, printer: Printer, *, source: str = "poll") 
         ("magenta", printer.toner_magenta, printer.toner_magenta_name),
         ("yellow", printer.toner_yellow, printer.toner_yellow_name),
     ):
-        if level is None:
+        observed_at = (printer.toner_observed_at or {}).get(color)
+        if level is None or not observed_at or not 0 <= level <= 100:
             continue
+        measured_at = datetime.fromisoformat(observed_at)
+        existing = session.exec(select(MLFeatureSnapshot.id).where(
+            MLFeatureSnapshot.device_id == printer.id,
+            MLFeatureSnapshot.device_kind == "printer",
+            MLFeatureSnapshot.toner_color == color,
+            MLFeatureSnapshot.captured_at == measured_at,
+        ).limit(1)).first()
+        if existing is not None:
+            continue
+        toner_base = {**base, "captured_at": measured_at}
         session.add(
             MLFeatureSnapshot(
-                **base,
+                **toner_base,
                 source=source,
                 toner_color=color,
                 toner_level=level,

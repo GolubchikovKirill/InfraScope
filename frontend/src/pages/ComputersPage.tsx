@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CircleCheck, CircleX, KeyRound, Eraser } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, KeyRound, Eraser } from "lucide-react";
+import OnlineStatusBadge from "../components/OnlineStatusBadge";
 import { useAuth } from "../auth";
 import {
   createComputer,
@@ -248,24 +249,7 @@ export default function ComputersPage() {
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="min-w-0 break-all text-base font-semibold text-slate-900">{row.hostname}</div>
-                    <span
-                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        row.is_online === true
-                          ? "bg-emerald-100 text-emerald-700"
-                          : row.is_online === false
-                            ? "bg-[var(--danger-bg)] text-[var(--danger-fg)]"
-                            : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {row.is_online === true ? (
-                        <CircleCheck className="h-3.5 w-3.5" />
-                      ) : row.is_online === false ? (
-                        <CircleX className="h-3.5 w-3.5" />
-                      ) : (
-                        <div className="h-3.5 w-3.5 rounded-full border border-slate-400" />
-                      )}
-                      {row.is_online === true ? "online" : row.is_online === false ? "offline" : "не опрошен"}
-                    </span>
+                    <OnlineStatusBadge isOnline={row.is_online} lastPolledAt={row.last_polled_at} />
                   </div>
                   <div className="space-y-0.5 text-xs">
                     <div><span className="text-slate-400">Локация: </span><span className="text-slate-700">{row.location || "—"}</span></div>

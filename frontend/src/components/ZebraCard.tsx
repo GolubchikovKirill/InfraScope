@@ -21,7 +21,7 @@ function statusBadge(printer: Printer) {
       </span>
     );
   }
-  return <OnlineStatusBadge isOnline={printer.is_online} />;
+  return <OnlineStatusBadge isOnline={printer.is_online} lastPolledAt={printer.last_polled_at} />;
 }
 
 function ZebraCard({ printer, onPoll, onEdit, onDelete, isPolling, isSuperuser }: Props) {

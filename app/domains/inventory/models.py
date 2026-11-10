@@ -42,6 +42,7 @@ class Printer(SQLModel, table=True):
     toner_magenta_name: str | None = Field(default=None, max_length=128)
     toner_yellow_name: str | None = Field(default=None, max_length=128)
     toner_updated_at: datetime | None = Field(default=None)
+    toner_observed_at: dict[str, str] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False, default=dict))
     # Lifetime pages from SNMP prtMarkerLifeCount; None where unsupported
     page_count: int | None = Field(default=None)
     page_count_updated_at: datetime | None = Field(default=None)

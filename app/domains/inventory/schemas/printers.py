@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .common import _normalize_mac, _validate_ip
 
@@ -211,6 +211,7 @@ class PrinterPublic(BaseModel):
     toner_magenta_name: str | None = None
     toner_yellow_name: str | None = None
     toner_updated_at: datetime | None = None
+    toner_observed_at: dict[str, str] = Field(default_factory=dict)
     page_count: int | None = None
     page_count_updated_at: datetime | None = None
     last_polled_at: datetime | None = None
