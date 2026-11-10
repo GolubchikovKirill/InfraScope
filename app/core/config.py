@@ -1,4 +1,4 @@
-from pydantic import PostgresDsn, PrivateAttr, computed_field, model_validator
+from pydantic import Field, PostgresDsn, PrivateAttr, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PLACEHOLDERS = {"changethis", "change_me", "change-me", "change me"}
@@ -108,6 +108,8 @@ class Settings(BaseSettings):
     # Backend-driven scheduled polling (Celery Beat), staggered per entity type
     # so the frontend no longer needs to trigger real device polls on a timer.
     AUTO_POLL_ENABLED: bool = True
+    AUTO_POLL_INTERVAL_SECONDS: int = Field(default=60, ge=30)
+    PRINTER_TELEMETRY_INTERVAL_SECONDS: int = Field(default=300, ge=60)
     # Scheduled Wi-Fi AP reboot (VLAN 20 only, twice daily). Global kill switch
     # plus a store allowlist: a switch's own auto_reboot_aps_enabled toggle is
     # necessary but not sufficient - the store name must ALSO be listed here.

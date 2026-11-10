@@ -25,7 +25,7 @@ scrape_configs:
   - job_name: infrascope-worker
     metrics_path: /
     static_configs:
-      - targets: ["worker:9108"]
+      - targets: ["worker:9108", "polling-worker:9108"]
 
   - job_name: infrascope-media-service
     metrics_path: /metrics

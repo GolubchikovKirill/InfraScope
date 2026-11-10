@@ -25,7 +25,7 @@ $ErrorActionPreference = "Stop"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
 $Compose = @("compose", "-p", "infrascope-local", "-f", "docker-compose.yml", "-f", "docker-compose.local.yml")
-$Services = @("db", "redis", "backend", "worker", "beat", "frontend-dev")
+$Services = @("db", "redis", "backend", "worker", "polling-worker", "beat", "frontend-dev")
 
 function Invoke-Compose([string[]]$Arguments) {
     & docker @Compose @Arguments
@@ -90,11 +90,11 @@ if ($FromProdBackup) {
     $dump = "backups\local\prod-latest.dump"
     & scp "infrascope-server:$latest" $dump
     if ($LASTEXITCODE -ne 0) { throw "scp of $latest failed" }
-    Invoke-Compose @("stop", "backend", "worker", "beat")
+    Invoke-Compose @("stop", "backend", "worker", "polling-worker", "beat")
     Invoke-Compose @("cp", $dump, "db:/tmp/prod.dump")
     # --no-owner: the dump's roles may not exist here; -c --if-exists: replace what migrations created
     & docker @Compose exec -T db sh -c "pg_restore -U postgres -d infrascope -c --if-exists --no-owner /tmp/prod.dump; rm -f /tmp/prod.dump"
-    Invoke-Compose @("start", "backend", "worker", "beat")
+    Invoke-Compose @("start", "backend", "worker", "polling-worker", "beat")
     Write-Host "Restored $latest. Switch and vault passwords stay encrypted with the prod key and are unreadable here, by design."
     Write-Host "Prod user accounts came with the dump: log in with your prod login."
 }

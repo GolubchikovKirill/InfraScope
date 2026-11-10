@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 COMPOSE=(docker compose -p infrascope-local -f docker-compose.yml -f docker-compose.local.yml)
-SERVICES=(db redis backend worker beat frontend-dev)
+SERVICES=(db redis backend worker polling-worker beat frontend-dev)
 
 docker info >/dev/null 2>&1 || { echo "Docker is not running." >&2; exit 1; }
 
@@ -48,10 +48,10 @@ if [ "${1:-}" = "--from-prod-backup" ]; then
   [ -n "$latest" ] || { echo "No backup found on the server." >&2; exit 1; }
   mkdir -p backups/local
   scp "infrascope-server:$latest" backups/local/prod-latest.dump
-  "${COMPOSE[@]}" stop backend worker beat
+  "${COMPOSE[@]}" stop backend worker polling-worker beat
   "${COMPOSE[@]}" cp backups/local/prod-latest.dump db:/tmp/prod.dump
   "${COMPOSE[@]}" exec -T db sh -c "pg_restore -U postgres -d infrascope -c --if-exists --no-owner /tmp/prod.dump; rm -f /tmp/prod.dump"
-  "${COMPOSE[@]}" start backend worker beat
+  "${COMPOSE[@]}" start backend worker polling-worker beat
   echo "Restored $latest. Encrypted passwords stay unreadable here, by design; log in with your prod login."
 fi
 

@@ -440,7 +440,7 @@ function CashRow({ item, isSuperuser, isPolling, remote, credCount, honestSign, 
 function StatusBadge({ item }: { item: CashRegister }) {
   const now = useObservationTime();
   const checkedAt = Date.parse(item.last_polled_at ?? "");
-  if (item.is_online !== null && (!Number.isFinite(checkedAt) || now - checkedAt > 30 * 60_000)) {
+  if (item.is_online !== null && (!Number.isFinite(checkedAt) || now - checkedAt > 2 * 60_000)) {
     return <Badge>Данные устарели</Badge>;
   }
   if (item.is_online === true) return <Badge tone="green"><CircleCheck className="h-3.5 w-3.5" />online</Badge>;

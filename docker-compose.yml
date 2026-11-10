@@ -110,7 +110,7 @@ services:
     networks:
       - internal
 
-  worker:
+  worker: &worker_base
     build:
       context: .
       dockerfile: Dockerfile
@@ -152,6 +152,13 @@ services:
         hard: 65536
     networks:
       - internal
+
+  polling-worker:
+    <<: *worker_base
+    command:
+      - sh
+      - -c
+      - celery -A app.worker.celery_app.celery_app worker --hostname=polling@%h --loglevel=INFO --pool=threads --concurrency=${POLLING_WORKER_CONCURRENCY:-3} --queues=polling
 
   beat:
     build:

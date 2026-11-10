@@ -286,9 +286,9 @@ def _task(
 
 
 @_task("poll_all_printers", retries=2)
-def poll_all_printers_task(self, printer_type: str = "laser") -> dict:
+def poll_all_printers_task(self, printer_type: str = "laser", full: bool | None = None) -> dict:
     with Session(engine) as session:
-        _run_async(poll_all_printers_local(session=session, printer_type=printer_type))
+        _run_async(poll_all_printers_local(session=session, printer_type=printer_type, full=full))
         printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
     return {"printer_type": printer_type, "total": len(printers), "online": sum(1 for p in printers if p.is_online)}
 

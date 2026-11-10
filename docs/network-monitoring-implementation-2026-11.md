@@ -47,6 +47,29 @@ establishes each slot's measurement time.
 
 ## Outstanding implementation
 
+### Second package
+
+Availability ticks now default to 60 seconds and laser telemetry to 300 seconds.
+Both intervals are validated settings. Scheduled laser availability forces the
+light path; telemetry forces the full path, independent of the legacy manual
+bulk cycle heuristic. Beat ticks expire after their interval.
+
+The `polling` queue has its own three-thread Compose worker; default tasks and
+hardware operations keep their existing worker. Production/local launch scripts
+and Prometheus targets include the new service. UI availability expiry now uses
+two minutes, matching two default ticks. Configurable expiry in API policy is
+still outstanding for installations using custom intervals.
+
+Printer bulk leases use owner tokens and release even when a newer owner has
+replaced the key. Empty/USB-only inventories return before taking a lease.
+The lease lifetime is 600 seconds; renewal and per-device locking remain open.
+
+Observed production cycle durations before rollout were roughly 5–8 seconds
+for computers, 5 seconds for registers, 23 seconds for media players,
+37 seconds for switches and 34 seconds for laser-printer light polling.
+The second package passed 63 worker/polling regression tests and both production
+and local Compose configuration validation.
+
 1. Verify running-image source hashes and database migration revision, measure
    queue lag and full-cycle p95, and inspect stale computers by failure reason.
 2. Decouple availability cadence (target 60 seconds) and full telemetry cadence

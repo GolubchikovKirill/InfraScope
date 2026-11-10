@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.redis import REDIS_ERRORS, get_redis
+from app.core.redis_lock import acquire_redis_lock, release_redis_lock
 from app.domains.inventory.cartridge_journal import detect_swaps, record_swaps, toner_levels
 from app.domains.inventory.models import Printer
 from app.domains.inventory.reachability import ReachabilityResult, probe_tcp_endpoint_async
@@ -328,18 +329,25 @@ async def poll_single_printer_local(*, session: Session, printer_id: uuid.UUID) 
     return printer
 
 
-async def poll_all_printers_local(*, session: Session, printer_type: str = "laser") -> PrintersPublic:
+async def poll_all_printers_local(
+    *, session: Session, printer_type: str = "laser", full: bool | None = None
+) -> PrintersPublic:
+    all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
+    printers = [printer for printer in all_printers if printer.connection_type != "usb" and printer.ip_address]
+    if not printers:
+        return PrintersPublic(data=cast(list[PrinterPublic], all_printers), count=len(all_printers))
     lock_key = f"lock:poll-all:printers:{printer_type}"
     lock_acquired = True
+    lock_owner = None
     try:
         redis = await get_redis()
-        lock_acquired = bool(await redis.set(lock_key, "1", ex=320, nx=True))
+        lock_owner = await acquire_redis_lock(redis, lock_key, ttl_seconds=600)
+        lock_acquired = lock_owner is not None
     except REDIS_ERRORS as exc:
         # Fail open: a Redis outage must not stop polling; the worst case is a duplicate poll.
         logger.warning("Poll lock %s unavailable, polling without it: %s", lock_key, exc)
         lock_acquired = True
 
-    all_printers = session.exec(select(Printer).where(Printer.printer_type == printer_type)).all()
     set_device_counts(
         kind="printer",
         total=len(all_printers),
@@ -348,13 +356,6 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
     if not lock_acquired:
         logger.info("Skipping duplicate poll-all request for printers (%s): lock busy", printer_type)
         return PrintersPublic(data=cast(list[PrinterPublic], all_printers), count=len(all_printers))
-    if not all_printers:
-        return PrintersPublic(data=[], count=0)
-
-    printers = [printer for printer in all_printers if printer.connection_type != "usb" and printer.ip_address]
-    if not printers:
-        return PrintersPublic(data=cast(list[PrinterPublic], all_printers), count=len(all_printers))
-
     poll_targets: list[Printer] = []
     for printer in printers:
         if await is_circuit_open("printer", str(printer.id)):
@@ -362,7 +363,7 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
             continue
         poll_targets.append(printer)
 
-    full = is_full_poll_cycle()
+    full = is_full_poll_cycle() if full is None else full
     printer_map = {printer.ip_address: printer for printer in poll_targets}
     try:
         poll_results = await poll_printer_batch(poll_targets, full=full) if poll_targets else {}
@@ -487,10 +488,10 @@ async def poll_all_printers_local(*, session: Session, printer_type: str = "lase
         await invalidate_printer_cache()
         return PrintersPublic(data=cast(list[PrinterPublic], result_printers), count=len(result_printers))
     finally:
-        if lock_acquired:
+        if lock_owner is not None:
             try:
                 redis = await get_redis()
-                await redis.delete(lock_key)
+                await release_redis_lock(redis, lock_key, lock_owner)
             except REDIS_ERRORS as exc:
                 # The lock expires on its own (ex=320); nothing else to do.
                 logger.debug("Could not release poll lock %s: %s", lock_key, exc)

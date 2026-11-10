@@ -52,6 +52,7 @@ done
 APP_SERVICES=(
   backend
   worker
+  polling-worker
   beat
   frontend
   media-service

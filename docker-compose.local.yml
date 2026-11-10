@@ -43,6 +43,11 @@ services:
     volumes:
       - ./app:/app/app
 
+  polling-worker:
+    environment: *local-app-env
+    volumes:
+      - ./app:/app/app
+
   beat:
     environment: *local-app-env
 

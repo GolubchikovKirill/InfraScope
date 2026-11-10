@@ -3,7 +3,7 @@ import { useObservationTime } from "../hooks/useObservationTime";
 export default function OnlineStatusBadge({ isOnline, lastPolledAt }: { isOnline: boolean | null; lastPolledAt?: string | null }) {
   const now = useObservationTime();
   const measuredAt = Date.parse(lastPolledAt ?? "");
-  if (lastPolledAt !== undefined && isOnline !== null && (!Number.isFinite(measuredAt) || now - measuredAt > 30 * 60_000)) {
+  if (lastPolledAt !== undefined && isOnline !== null && (!Number.isFinite(measuredAt) || now - measuredAt > 2 * 60_000)) {
     return <span className="app-status app-status-unknown" title={lastPolledAt ?? "Время проверки неизвестно"}><span className="mark" />Данные устарели</span>;
   }
   if (isOnline === null) {

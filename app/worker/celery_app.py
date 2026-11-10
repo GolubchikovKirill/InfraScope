@@ -12,6 +12,7 @@ from app.core.safety import log_hardware_write_guard
 from app.worker import metrics_bootstrap  # noqa: F401
 
 DEFAULT_QUEUE = "infrascope"
+POLLING_QUEUE = "polling"
 
 celery_app = Celery(
     "infrascope_worker",
@@ -22,6 +23,10 @@ celery_app = Celery(
 
 celery_app.conf.update(
     task_default_queue=DEFAULT_QUEUE,
+    task_routes={
+        f"tasks.poll_all_{kind}": {"queue": POLLING_QUEUE}
+        for kind in ("printers", "media_players", "switches", "computers", "cash_registers")
+    },
     task_track_started=True,
     task_serializer="json",
     result_serializer="json",
@@ -39,43 +44,50 @@ celery_app.conf.update(
 
 _beat_schedule: dict = {}
 
-# Backend-driven scheduled polling: replaces the old pattern of every open
-# browser tab triggering a real device poll on its own timer. Each entity
-# type runs every 15 minutes, offset from the others by a couple of minutes,
-# so the network never sees a single all-at-once burst across every device
-# type at :00. Toggle off entirely with AUTO_POLL_ENABLED=false.
+# Scheduled read-only polling has dedicated worker capacity. Expiry discards
+# old ticks after a broker/worker outage instead of replaying a polling burst.
 if settings.AUTO_POLL_ENABLED:
     _beat_schedule.update(
         {
             "poll-printers-laser": {
                 "task": "tasks.poll_all_printers",
-                "schedule": crontab(minute="0,15,30,45"),
+                "schedule": timedelta(seconds=settings.AUTO_POLL_INTERVAL_SECONDS),
                 "args": ("laser",),
+                "kwargs": {"full": False},
             },
             "poll-printers-label": {
                 "task": "tasks.poll_all_printers",
-                "schedule": crontab(minute="2,17,32,47"),
+                "schedule": timedelta(seconds=settings.AUTO_POLL_INTERVAL_SECONDS),
                 "args": ("label",),
             },
             "poll-media-players": {
                 "task": "tasks.poll_all_media_players",
-                "schedule": crontab(minute="4,19,34,49"),
+                "schedule": timedelta(seconds=settings.AUTO_POLL_INTERVAL_SECONDS),
                 "args": (None,),
             },
             "poll-switches": {
                 "task": "tasks.poll_all_switches",
-                "schedule": crontab(minute="6,21,36,51"),
+                "schedule": timedelta(seconds=settings.AUTO_POLL_INTERVAL_SECONDS),
             },
             "poll-computers": {
                 "task": "tasks.poll_all_computers",
-                "schedule": crontab(minute="8,23,38,53"),
+                "schedule": timedelta(seconds=settings.AUTO_POLL_INTERVAL_SECONDS),
             },
             "poll-cash-registers": {
                 "task": "tasks.poll_all_cash_registers",
-                "schedule": crontab(minute="10,25,40,55"),
+                "schedule": timedelta(seconds=settings.AUTO_POLL_INTERVAL_SECONDS),
             },
         }
     )
+    for entry in _beat_schedule.values():
+        entry["options"] = {"expires": settings.AUTO_POLL_INTERVAL_SECONDS, "queue": POLLING_QUEUE}
+    _beat_schedule["poll-printer-telemetry"] = {
+        "task": "tasks.poll_all_printers",
+        "schedule": timedelta(seconds=settings.PRINTER_TELEMETRY_INTERVAL_SECONDS),
+        "args": ("laser",),
+        "kwargs": {"full": True},
+        "options": {"expires": settings.PRINTER_TELEMETRY_INTERVAL_SECONDS, "queue": POLLING_QUEUE},
+    }
 
 if settings.HONEST_SIGN_AUTO_CHECK_ENABLED:
     # Read-only /api/v2/status of every register's Honest Sign Local Module.

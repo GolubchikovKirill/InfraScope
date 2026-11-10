@@ -23,8 +23,10 @@ from app.domains.operations.schemas import CashRegisterPublic, CashRegistersPubl
 from app.domains.shared.schemas import Message
 
 
-async def poll_all_printers_local(*, session: SessionDep, printer_type: str = "laser") -> PrintersPublic:
-    return await poll_all_printers_domain(session=session, printer_type=printer_type)
+async def poll_all_printers_local(
+    *, session: SessionDep, printer_type: str = "laser", full: bool | None = None
+) -> PrintersPublic:
+    return await poll_all_printers_domain(session=session, printer_type=printer_type, full=full)
 
 
 async def poll_all_media_players_local(

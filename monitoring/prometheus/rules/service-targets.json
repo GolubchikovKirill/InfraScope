@@ -21,7 +21,8 @@
   },
   {
     "targets": [
-      "worker:9108"
+      "worker:9108",
+      "polling-worker:9108"
     ],
     "labels": {
       "job": "infrascope-worker",
