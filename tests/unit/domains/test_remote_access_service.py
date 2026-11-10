@@ -870,7 +870,7 @@ def test_bootstrap_script_self_reports_the_windows_edition(monkeypatch) -> None:
     # EditionID (locale-independent) is what block_outgoing's AppLocker step
     # needs; the report carries it on every state, not just success
     assert "EditionID" in script
-    assert "os_edition = $OsEdition" in script and "os_caption = $OsCaption" in script
+    assert "os_edition = [string]$OsEdition" in script and "os_caption = [string]$OsCaption" in script
 
 
 # --------------------------------------------------------------------------- #
