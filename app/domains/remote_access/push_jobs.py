@@ -133,6 +133,13 @@ def reap_stale_push_jobs(session: Session) -> int:
         job.detail = "воркер не отчитался за 10 минут (перезапущен или упал)"
         job.finished_at = _now()
         session.add(job)
+        if not job.dry_run and job.device_id:
+            dev = session.get(RemoteAccessDevice, job.device_id)
+            if dev is not None:
+                dev.deploy_state = "failed"
+                dev.deploy_detail = job.detail
+                dev.deploy_reported_at = _now()
+                session.add(dev)
         reaped += 1
     if reaped:
         session.commit()

@@ -295,3 +295,4 @@ def test_a_job_stuck_running_past_the_timeout_is_reaped_as_failed(db_session):
     assert reaped == 1
     db_session.expire_all()
     assert db_session.get(RemoteAccessPushJob, job.id).state == "failed"
+    assert db_session.get(RemoteAccessDevice, _dev.id).deploy_state == "failed"
