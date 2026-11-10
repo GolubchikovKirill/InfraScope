@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useObservationTime } from "../hooks/useObservationTime";
+import { parseApiTimestamp } from "../lib/apiTimestamp";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -439,7 +440,7 @@ function CashRow({ item, isSuperuser, isPolling, remote, credCount, honestSign, 
 
 function StatusBadge({ item }: { item: CashRegister }) {
   const now = useObservationTime();
-  const checkedAt = Date.parse(item.last_polled_at ?? "");
+  const checkedAt = parseApiTimestamp(item.last_polled_at);
   if (item.is_online !== null && (!Number.isFinite(checkedAt) || now - checkedAt > 2 * 60_000)) {
     return <Badge>Данные устарели</Badge>;
   }

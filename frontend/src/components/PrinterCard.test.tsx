@@ -36,6 +36,24 @@ describe("PrinterCard", () => {
     vi.useRealTimers();
   });
 
+  it("shows a fresh printer card when the API returns UTC without an offset", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-10T08:15:00Z"));
+    render(<PrinterCard printer={{ ...printer,
+      last_polled_at: "2026-11-10T08:14:50.816173",
+      toner_updated_at: "2026-11-10T08:12:56.512215",
+      toner_observed_at: {
+        black: "2026-11-10T08:12:56.512215+00:00",
+        cyan: "2026-11-10T08:12:56.512215+00:00",
+        magenta: "2026-11-10T08:12:56.512215+00:00",
+        yellow: "2026-11-10T08:12:56.512215+00:00",
+      },
+    }} onPoll={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} isPolling={false} isSuperuser={false} />);
+    expect(screen.getByText("Онлайн")).toBeInTheDocument();
+    expect(screen.queryByText(/устарели|Нет свежих измерений/i)).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it("copies cartridge model from toner models list", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

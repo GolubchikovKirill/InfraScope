@@ -1,5 +1,6 @@
 import { memo, useCallback, useRef, useState } from "react";
 import { useObservationTime } from "../hooks/useObservationTime";
+import { parseApiTimestamp } from "../lib/apiTimestamp";
 import {
   RefreshCw,
   Pencil,
@@ -97,7 +98,7 @@ function PrinterCard({
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const [copiedToner, setCopiedToner] = useState<string | null>(null);
   const polledAt = printer.last_polled_at
-    ? new Date(printer.last_polled_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
+    ? new Date(parseApiTimestamp(printer.last_polled_at)).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
   const isOffline = printer.is_online === false;
   const hasTonerData =
@@ -105,12 +106,12 @@ function PrinterCard({
   const now = useObservationTime();
   const staleColors = (["black", "cyan", "magenta", "yellow"] as const).filter((color) => {
     if (printer[`toner_${color}`] === null) return false;
-    const measuredAt = Date.parse(printer.toner_observed_at?.[color] ?? "");
+    const measuredAt = parseApiTimestamp(printer.toner_observed_at?.[color]);
     return !Number.isFinite(measuredAt) || now - measuredAt > 10 * 60_000;
   });
   const isTonerStale = hasTonerData && (isOffline || staleColors.length > 0);
   const tonerUpdatedAt = printer.toner_updated_at
-    ? new Date(printer.toner_updated_at).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
+    ? new Date(parseApiTimestamp(printer.toner_updated_at)).toLocaleString("ru-RU", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
     : null;
   const isFlapping = printer.offline_count_24h >= 3;
   const lowTonerItems: Array<{ key: TonerKey; level: number | null; name: string | null }> = ([

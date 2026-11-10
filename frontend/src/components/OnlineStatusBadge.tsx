@@ -1,8 +1,9 @@
 import { useObservationTime } from "../hooks/useObservationTime";
+import { parseApiTimestamp } from "../lib/apiTimestamp";
 
 export default function OnlineStatusBadge({ isOnline, lastPolledAt }: { isOnline: boolean | null; lastPolledAt?: string | null }) {
   const now = useObservationTime();
-  const measuredAt = Date.parse(lastPolledAt ?? "");
+  const measuredAt = parseApiTimestamp(lastPolledAt);
   if (lastPolledAt !== undefined && isOnline !== null && (!Number.isFinite(measuredAt) || now - measuredAt > 2 * 60_000)) {
     return <span className="app-status app-status-unknown" title={lastPolledAt ?? "Время проверки неизвестно"}><span className="mark" />Данные устарели</span>;
   }
