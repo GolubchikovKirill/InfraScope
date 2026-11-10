@@ -133,7 +133,7 @@ def apply_deploy_profile(session: Session, dev: RemoteAccessDevice, profile: str
 _APPLOCKER_UNSUPPORTED_EDITION_PREFIXES = ("Core",)  # Core, CoreN, CoreSingleLanguage, CoreCountrySpecific
 
 
-def classify_applocker_support(edition_id: str | None) -> bool | None:
+def classify_applocker_support(edition_id: str | None, os_caption: str | None = None) -> bool | None:
     """Whether AppLocker enforcement works on a machine, from its self-reported
     registry EditionID. None means we don't know yet (machine hasn't reported)."""
     if not edition_id:
@@ -141,6 +141,8 @@ def classify_applocker_support(edition_id: str | None) -> bool | None:
     edition_id = edition_id.strip()
     if not edition_id:
         return None
+    if os_caption and any(name in os_caption.lower() for name in ("windows 7", "windows 8")):
+        return any(name in edition_id.lower() for name in ("enterprise", "ultimate", "education", "server"))
     return not edition_id.startswith(_APPLOCKER_UNSUPPORTED_EDITION_PREFIXES)
 
 

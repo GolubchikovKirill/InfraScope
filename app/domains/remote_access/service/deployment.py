@@ -151,7 +151,7 @@ def apply_deploy_report(
         dev.installed_version = version
     if os_edition:
         dev.os_edition = os_edition
-        dev.applocker_supported = classify_applocker_support(os_edition)
+        dev.applocker_supported = classify_applocker_support(os_edition, os_caption or dev.os_caption)
     if os_caption:
         dev.os_caption = os_caption
     dev.updated_at = _now()

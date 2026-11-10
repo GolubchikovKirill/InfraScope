@@ -248,12 +248,14 @@ $OsCaption = try { (Get-WmiObject Win32_OperatingSystem -EA Stop).Caption } catc
 function Report($state, $detail) {
     try {
         $reportId = $null
-        if ($Rid) { $reportId = $Rid }
+        if ($Rid) { $reportId = [string]$Rid }
         $text = [string]$detail
         if ($text.Length -gt 512) { $text = $text.Substring(0,512) }
-        $body = @{ hostname = $Host_; rustdesk_id = $reportId; version = $Version;
-                   state = $state; detail = $text; os_edition = $OsEdition;
-                   os_caption = $OsCaption }
+        # Cast adapted WMI/FileVersionInfo properties to primitive strings:
+        # PS2 otherwise hands JavaScriptSerializer a circular PSObject graph.
+        $body = @{ hostname = [string]$Host_; rustdesk_id = $reportId; version = [string]$Version;
+                   state = [string]$state; detail = [string]$text; os_edition = [string]$OsEdition;
+                   os_caption = [string]$OsCaption }
         # UTF-8 bytes, not the string: Windows PowerShell 5.1 encodes a string body as
         # ISO-8859-1, so a localized error text ("Отказано в доступе") reached the server
         # as "????????" and the failure could not be read.
@@ -314,11 +316,11 @@ try {
             $msiLog = Join-Path $LogDir 'rustdesk-msi.log'
             $msiArgs = @('/i', "`"$pkg`"", '/qn', '/norestart', 'CREATESTARTMENUSHORTCUTS=N',
                       'CREATEDESKTOPSHORTCUTS=N', 'INSTALLPRINTER=N', '/l*v', "`"$msiLog`"")
-            $p = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+            $p = Start-Process msiexec.exe -ArgumentList $msiArgs -WindowStyle Hidden -Wait -PassThru
             if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "msiexec exit $($p.ExitCode), see $msiLog" }
         } else {
             # legacy .exe path: --silent-install never returns, so no -Wait
-            Start-Process $pkg -ArgumentList '--silent-install' | Out-Null
+            Start-Process $pkg -ArgumentList '--silent-install' -WindowStyle Hidden | Out-Null
             $deadline = (Get-Date).AddMinutes(5)
             $exe = Find-Exe
             while (-not $exe -and (Get-Date) -lt $deadline) { Start-Sleep 5; $exe = Find-Exe }
@@ -336,7 +338,7 @@ try {
 
     # ---- 3. service --------------------------------------------------------
     if (-not (Get-Service RustDesk -EA SilentlyContinue)) {
-        Start-Process $exe -ArgumentList '--install-service' -Wait
+        Start-Process $exe -ArgumentList '--install-service' -WindowStyle Hidden -Wait
         Start-Sleep 5
     }
     function Stop-RD {
@@ -437,7 +439,12 @@ try {
         Log 'shortcuts removed'
     }
 
-    if ($cfg.block_outgoing) {
+    $canApplyAppLocker = ($OsEdition -notmatch '^Core') -and (
+        [Environment]::OSVersion.Version.Major -ge 10 -or $OsEdition -match 'Enterprise|Ultimate|Education|Server')
+    if ($cfg.block_outgoing -and -not $canApplyAppLocker) {
+        Log 'AppLocker unavailable on this Windows edition; outgoing block not applied'
+    }
+    if ($cfg.block_outgoing -and $canApplyAppLocker) {
         # AppLocker: non-admins cannot start rustdesk.exe interactively. The
         # SYSTEM service instance is unaffected, so incoming sessions still work.
         # Rule Id must be a real GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, hex

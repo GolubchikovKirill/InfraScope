@@ -35,3 +35,14 @@ def test_online_bootstrap_is_powershell2_compatible_and_reports_failures():
     assert "legacy = [bool]$Legacy" in code
     assert "'/norestart'" in code
     assert "Write-Output $msg" in code
+    assert "os_caption = [string]$OsCaption" in code
+    assert "version = [string]$Version" in code
+    assert "$cfg.block_outgoing -and $canApplyAppLocker" in code
+    assert "-WindowStyle Hidden" in code
+
+
+def test_old_professional_is_not_reported_as_applocker_supported():
+    from app.domains.remote_access.service.devices import classify_applocker_support
+    assert classify_applocker_support("Professional", "Microsoft Windows 7 Professional") is False
+    assert classify_applocker_support("Enterprise", "Microsoft Windows 7 Enterprise") is True
+    assert classify_applocker_support("Professional", "Windows 10 Pro") is True
