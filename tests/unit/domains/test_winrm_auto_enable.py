@@ -6,6 +6,12 @@ import pytest
 
 from app.core.config import settings
 from app.domains.remote_access import winrm_bootstrap as bootstrap
+from app.domains.remote_access.push_jobs import _safe_detail
+
+
+def test_wrapped_secrets_are_removed_before_saving_details(monkeypatch):
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "secret-deploy-token")
+    assert _safe_detail("header='secret-deploy-\r\ntoken'") == "header='[REDACTED]'"
 
 
 def test_existing_listener_is_never_reconfigured(monkeypatch):

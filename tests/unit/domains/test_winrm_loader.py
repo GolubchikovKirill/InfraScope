@@ -12,3 +12,5 @@ def test_loader_fits_windows_command_limit_and_preserves_powershell_variables(mo
     assert "Invoke-Expression $script" in script
     assert "'test-$value-''quoted'''" in script
     assert len(base64.b64encode(script.encode("utf-16-le"))) < 8000
+    assert "Write-Error $_" not in script
+    assert "TLS 1.2 is unavailable" in script

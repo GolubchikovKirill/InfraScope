@@ -20,6 +20,7 @@ claim "I'm configured", regardless of what the backend's own WinRM call returned
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from typing import overload
 
@@ -42,6 +43,14 @@ MAX_JOBS_PER_REQUEST = 200
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _safe_detail(value: str) -> str:
+    # PowerShell can wrap the echoed source line in the middle of a secret.
+    for secret in (settings.WINRM_ADMIN_PASSWORD, settings.RUSTDESK_DEPLOY_TOKEN):
+        if secret:
+            value = re.sub(r"\s*".join(re.escape(c) for c in secret), "[REDACTED]", value)
+    return value
 
 
 @overload
@@ -194,10 +203,7 @@ def execute_push_job(session: Session, job: RemoteAccessPushJob) -> RemoteAccess
             result = winrm_exec.run_powershell(job.hostname, deploy_script.winrm_bootstrap())
     except Exception as exc:
         job.state = "failed"
-        detail = str(exc)
-        for secret in (settings.WINRM_ADMIN_PASSWORD, settings.RUSTDESK_DEPLOY_TOKEN):
-            if secret:
-                detail = detail.replace(secret, "[REDACTED]")
+        detail = _safe_detail(str(exc))
         job.detail = ("Подготовка или запуск не выполнены: " + detail)[:1024]
         job.finished_at = _now()
         session.add(job)
@@ -210,6 +216,7 @@ def execute_push_job(session: Session, job: RemoteAccessPushJob) -> RemoteAccess
         session.refresh(job)
         return job
 
+    result.detail = _safe_detail(result.detail or "")
     job.state = "succeeded" if result.ok else "failed"
     if not result.ok and not job.dry_run:
         dev.deploy_state = "failed"

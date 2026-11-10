@@ -166,6 +166,8 @@ def winrm_bootstrap(api_prefix: str = "/api/v1") -> str:
         return "'" + value.replace("'", "''") + "'"
 
     lines = ["$ErrorActionPreference='Stop'", "try {",
+             "if(-not [Enum]::IsDefined([Net.SecurityProtocolType], 'Tls12')) {"
+             "throw 'TLS 1.2 is unavailable in this .NET runtime. Use the offline Windows deployment kit.'}",
              "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12"]
     if settings.RUSTDESK_TLS_FINGERPRINT:
         lines.append("[Net.ServicePointManager]::ServerCertificateValidationCallback={param($s,$c,$ch,$e) "
@@ -174,7 +176,7 @@ def winrm_bootstrap(api_prefix: str = "/api/v1") -> str:
         "$client=New-Object Net.WebClient",
         "$client.Headers.Add('X-InfraScope-Deploy-Token'," + quote(settings.RUSTDESK_DEPLOY_TOKEN) + ")",
         "$script=$client.DownloadString(" + quote(f"{public_url()}{api_prefix}/remote-access/deploy/bootstrap.ps1") + ")",
-        "Invoke-Expression $script", "} catch { Write-Error $_; exit 1 }",
+        "Invoke-Expression $script", "} catch { Write-Output $_.Exception.Message; exit 1 }",
     ])
     return "\n".join(lines)
 
