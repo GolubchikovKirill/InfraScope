@@ -160,6 +160,25 @@ def render_bootstrap(api_prefix: str = "/api/v1") -> str:
             .replace("@@PIN@@", settings.RUSTDESK_TLS_FINGERPRINT))
 
 
+def winrm_bootstrap(api_prefix: str = "/api/v1") -> str:
+    """Short in-process loader avoids nested quoting and Windows argv limits."""
+    def quote(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    lines = ["$ErrorActionPreference='Stop'", "try {",
+             "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12"]
+    if settings.RUSTDESK_TLS_FINGERPRINT:
+        lines.append("[Net.ServicePointManager]::ServerCertificateValidationCallback={param($s,$c,$ch,$e) "
+                     "$c.GetCertHashString() -eq " + quote(settings.RUSTDESK_TLS_FINGERPRINT) + "}")
+    lines.extend([
+        "$client=New-Object Net.WebClient",
+        "$client.Headers.Add('X-InfraScope-Deploy-Token'," + quote(settings.RUSTDESK_DEPLOY_TOKEN) + ")",
+        "$script=$client.DownloadString(" + quote(f"{public_url()}{api_prefix}/remote-access/deploy/bootstrap.ps1") + ")",
+        "Invoke-Expression $script", "} catch { Write-Error $_; exit 1 }",
+    ])
+    return "\n".join(lines)
+
+
 # `@@BASE@@` / `@@TOKEN@@` rather than str.format: the script is full of braces.
 _TEMPLATE = r"""
 # InfraScope - silent RustDesk rollout. Runs as SYSTEM on the endpoint.
@@ -237,7 +256,9 @@ try {
 
     $needsInstall = -not (Test-Path $exe) -or -not $installed
     if ($installed -and (Test-Path $exe)) {
-        $needsInstall = ([version]$installed -lt [version]$cfg.installer_version)
+        $installedCore = [regex]::Match($installed, '^\d+\.\d+\.\d+(?:\.\d+)?').Value
+        if (-not $installedCore) { throw "Unrecognized installed RustDesk version: $installed" }
+        $needsInstall = ([version]$installedCore -lt [version]$cfg.installer_version)
     }
     if ($needsInstall) {
         $pkg = Join-Path $env:TEMP $cfg.installer_filename

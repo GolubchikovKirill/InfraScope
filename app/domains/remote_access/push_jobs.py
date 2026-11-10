@@ -181,7 +181,7 @@ def execute_push_job(session: Session, job: RemoteAccessPushJob) -> RemoteAccess
             # adoption uses for the identical reason.
             service.apply_deploy_profile(session, dev, job.profile)
             service.mark_deploy_requested(session, dev)
-            result = winrm_exec.run_powershell(job.hostname, deploy_script.deploy_command())
+            result = winrm_exec.run_powershell(job.hostname, deploy_script.winrm_bootstrap())
     except winrm_exec.WinRMNotConfiguredError as exc:
         job.state = "failed"
         job.detail = str(exc)
