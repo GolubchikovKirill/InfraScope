@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from kombu.exceptions import OperationalError
 from sqlmodel import col, select
 
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -28,7 +29,7 @@ from app.domains.remote_access.schemas import (
     PushSkipped,
 )
 from app.domains.shared.schemas import Message
-from app.worker.tasks import remote_access_push_job_task
+from app.worker.celery_app import celery_app
 
 router = APIRouter(tags=["remote-access-push"], dependencies=[Depends(get_current_active_superuser)])
 
@@ -39,9 +40,17 @@ def push_readiness() -> dict:
     return {"ready": all(checks.values()), "checks": checks}
 
 
-def _dispatch(jobs: list[RemoteAccessPushJob]) -> None:
-    for job in jobs:
-        remote_access_push_job_task.apply_async(args=[str(job.id)])
+def _dispatch(jobs: list[RemoteAccessPushJob], session: SessionDep) -> None:
+    for index, job in enumerate(jobs):
+        try:
+            celery_app.send_task("tasks.remote_access_push_job", args=[str(job.id)])
+        except (OperationalError, OSError):
+            for unsent in jobs[index:]:
+                unsent.state = "failed"
+                unsent.detail = "Очередь недоступна. Повторите развёртывание."
+                session.add(unsent)
+            session.commit()
+            raise HTTPException(status_code=503, detail="Очередь развёртывания недоступна. Повторите попытку.") from None
 
 
 @router.post("/push", response_model=PushEnqueueResult)
@@ -65,7 +74,7 @@ def enqueue_push(payload: PushRequest, session: SessionDep, current_user: Curren
         dry_run=payload.dry_run,
         requested_by=current_user.email,
     )
-    _dispatch(queued)
+    _dispatch(queued, session)
     return PushEnqueueResult(
         queued=[PushJobPublic.model_validate(j) for j in queued],
         skipped=[PushSkipped(**s) for s in skipped],

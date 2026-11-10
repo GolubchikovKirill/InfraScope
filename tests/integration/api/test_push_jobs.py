@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from kombu.exceptions import OperationalError
 from sqlmodel import select
 
 from app.api.routes import remote_access_push
@@ -35,8 +36,8 @@ def _no_real_dispatch(monkeypatch):
     enqueued: list[str] = []
     monkeypatch.setattr(
         remote_access_push,
-        "remote_access_push_job_task",
-        SimpleNamespace(apply_async=lambda args, **_kw: enqueued.append(args[0])),
+        "celery_app",
+        SimpleNamespace(send_task=lambda _name, args, **_kw: enqueued.append(args[0])),
     )
     return enqueued
 
@@ -77,6 +78,20 @@ def test_missing_installer_blocks_install_but_not_dry_run(client, admin_token, d
     assert result.status_code == 503
     assert "installer_present" in result.json()["detail"]
     assert _enqueue(client, admin_token, [dev], dry_run=True).status_code == 200
+
+
+def test_failed_broker_publish_is_retryable_not_stuck_queued(client, admin_token, db_session, monkeypatch):
+    dev = _device(db_session, "VNA-TV-902")
+
+    def unavailable(*_args, **_kwargs):
+        raise OperationalError("test broker unavailable")
+
+    monkeypatch.setattr(remote_access_push.celery_app, "send_task", unavailable)
+    response = _enqueue(client, admin_token, [dev])
+    assert response.status_code == 503
+    jobs = db_session.exec(select(RemoteAccessPushJob).where(RemoteAccessPushJob.device_id == dev.id)).all()
+    assert len(jobs) == 1
+    assert jobs[0].state == "failed"
 
 
 def test_queueing_is_503_when_winrm_is_not_configured(client, admin_token, db_session, monkeypatch):
