@@ -5,6 +5,7 @@ import base64
 import ipaddress
 import socket
 import time
+import uuid
 
 from app.core.config import settings
 from app.services.hostname_resolver import resolve_hostname
@@ -40,12 +41,12 @@ def ensure_winrm(hostname: str) -> None:
         domain, username = "", account
     # COM firewall API and Enable-PSRemoting are available on Windows 7/PS2.
     script = (
-        "$ErrorActionPreference='Stop'; Enable-PSRemoting -Force; "
+        "$ErrorActionPreference='Stop'; try { Enable-PSRemoting -Force } finally { "
         "$fw=New-Object -ComObject HNetCfg.FwPolicy2; "
         "foreach($rule in $fw.Rules) { if($rule.Direction -eq 1 -and "
         "($rule.LocalPorts -eq '5985') -and $rule.Enabled) {"
         f"$rule.RemoteAddresses='{source}'"
-        "} }"
+        "} } }"
     )
     command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "
     command += base64.b64encode(script.encode("utf-16-le")).decode()
@@ -58,11 +59,39 @@ def ensure_winrm(hostname: str) -> None:
     raise RuntimeError("WinRM не открыл порт после настройки. Проверьте GPO и firewall на машине.")
 
 
+def _scheduled_command(command: str) -> str:
+    # Windows 7 rejects local WSMan configuration from a network logon even
+    # with an elevated administrator token. Run a short-lived SYSTEM task.
+    # Use the Scheduler COM API: schtasks /TR is limited to 261 characters.
+    task_name = "InfraScope-WinRM-" + uuid.uuid4().hex
+    cleanup = (
+        "$s=New-Object -ComObject Schedule.Service;$s.Connect();"
+        f"$s.GetFolder('\\').DeleteTask('{task_name}',0)"
+    )
+    original = base64.b64decode(command.rsplit(" ", 1)[1]).decode("utf-16-le")
+    action = "try {" + original + "} finally {" + cleanup + "}"
+    arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "
+    arguments += base64.b64encode(action.encode("utf-16-le")).decode()
+    register = (
+        "$ErrorActionPreference='Stop';$s=New-Object -ComObject Schedule.Service;$s.Connect();"
+        "$t=$s.NewTask(0);$t.Principal.UserId='SYSTEM';$t.Principal.LogonType=5;"
+        "$t.Principal.RunLevel=1;$t.Settings.ExecutionTimeLimit='PT2M';"
+        "$t.Settings.DisallowStartIfOnBatteries=$false;$t.Settings.StopIfGoingOnBatteries=$false;"
+        "$a=$t.Actions.Create(0);$a.Path='powershell.exe';"
+        f"$a.Arguments='{arguments}';"
+        f"$s.GetFolder('\\').RegisterTaskDefinition('{task_name}',$t,6,'SYSTEM',$null,5).Run($null)"
+    )
+    command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "
+    command += base64.b64encode(register.encode("utf-16-le")).decode()
+    return command
+
+
 def _start_bootstrap(address: str, username: str, domain: str, command: str) -> None:
     from impacket.dcerpc.v5.dcom import wmi
     from impacket.dcerpc.v5.dcomrt import DCOMConnection
     from impacket.dcerpc.v5.dtypes import NULL
 
+    command = _scheduled_command(command)
     connection = DCOMConnection(address, username, settings.WINRM_ADMIN_PASSWORD, domain, oxidResolver=True)
     try:
         interface = connection.CoCreateInstanceEx(wmi.CLSID_WbemLevel1Login, wmi.IID_IWbemLevel1Login)
