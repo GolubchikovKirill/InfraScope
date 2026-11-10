@@ -409,7 +409,8 @@ def test_sync_from_console_prefers_the_canonical_peer_over_a_numeric_duplicate(d
     d = _dev(db_session, "VNA-MGR-1504")
     # the numeric leftover appeared first and last-wins would have latched it;
     # the peer whose id is the hostname-derived rid is the one running our config
-    assert d.rustdesk_id == "VNA_MGR_1504"
+    assert d.rustdesk_id == "1332940773"
+    assert d.observed_rustdesk_id == "VNA_MGR_1504"
     assert d.online is True
 
 

@@ -63,6 +63,7 @@ class DevicePublic(BaseModel):
     cash_register_id: uuid.UUID | None = None
     rustdesk_id: str | None = None
     has_password: bool = False  # InfraScope holds the password the rollout will apply
+    observed_rustdesk_id: str | None = None
     password_rotated_at: datetime | None = None
     deploy_profile: str = "client"  # "client" | "admin" - see service.DEPLOY_PROFILES
     desired_hidden: bool

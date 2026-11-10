@@ -93,7 +93,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
     retry: false,
   });
 
-  const rustId = device?.rustdesk_id ?? null;
+  const rustId = device?.observed_rustdesk_id ?? device?.rustdesk_id ?? null;
   // an entry that was removed from management: the ID still connects, but nothing is pushed to the
   // address book and there is no rollout state to show until it is taken back
   const unmanaged = device?.managed === false;
@@ -106,7 +106,7 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
   }`;
 
   const openDialog = () => {
-    setRid(rustId ?? hostnameToRid(hostname));
+    setRid(device?.rustdesk_id ?? hostnameToRid(hostname));
     setPw("");
     setDlgOpen(true);
   };

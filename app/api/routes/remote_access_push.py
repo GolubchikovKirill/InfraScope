@@ -18,6 +18,7 @@ from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes._service_errors import not_found
 from app.core.config import settings
 from app.domains.remote_access import push_jobs
+from app.domains.remote_access.deploy_readiness import installation_checks
 from app.domains.remote_access.models import RemoteAccessDevice, RemoteAccessPushJob
 from app.domains.remote_access.schemas import (
     PushEnqueueResult,
@@ -32,6 +33,12 @@ from app.worker.tasks import remote_access_push_job_task
 router = APIRouter(tags=["remote-access-push"], dependencies=[Depends(get_current_active_superuser)])
 
 
+@router.get("/push/readiness")
+def push_readiness() -> dict:
+    checks = installation_checks()
+    return {"ready": all(checks.values()), "checks": checks}
+
+
 def _dispatch(jobs: list[RemoteAccessPushJob]) -> None:
     for job in jobs:
         remote_access_push_job_task.apply_async(args=[str(job.id)])
@@ -42,6 +49,10 @@ def enqueue_push(payload: PushRequest, session: SessionDep, current_user: Curren
     """Queue RustDesk pushes and dispatch each to the worker right away."""
     if not settings.WINRM_ADMIN_USERNAME or not settings.WINRM_ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="network push is not configured (WINRM_ADMIN_USERNAME/WINRM_ADMIN_PASSWORD)")
+    if not payload.dry_run:
+        failed = [name for name, ok in installation_checks().items() if not ok]
+        if failed:
+            raise HTTPException(status_code=503, detail="Деплой не готов: " + ", ".join(failed))
     devices = list(session.exec(select(RemoteAccessDevice).where(col(RemoteAccessDevice.id).in_(payload.device_ids))).all())
     found = {d.id for d in devices}
     unknown = [str(i) for i in payload.device_ids if i not in found]

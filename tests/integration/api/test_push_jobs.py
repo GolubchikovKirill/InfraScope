@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -14,9 +15,17 @@ from app.domains.remote_access.models import RemoteAccessDevice, RemoteAccessPus
 
 
 @pytest.fixture(autouse=True)
-def _winrm_configured(monkeypatch):
+def _winrm_configured(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "WINRM_ADMIN_USERNAME", "svc-infrascope")
     monkeypatch.setattr(settings, "WINRM_ADMIN_PASSWORD", "winrm-secret-for-tests")
+    installer = tmp_path / "installer.msi"
+    installer.write_bytes(b"test installer")
+    monkeypatch.setattr(settings, "RUSTDESK_PACKAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "RUSTDESK_INSTALLER_FILENAME", installer.name)
+    monkeypatch.setattr(settings, "RUSTDESK_INSTALLER_SHA256", hashlib.sha256(installer.read_bytes()).hexdigest())
+    monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "test-deploy-token")
+    monkeypatch.setattr(settings, "RUSTDESK_PUBLIC_URL", "https://infrascope.test")
+    monkeypatch.setattr(settings, "RUSTDESK_KEY", "test-public-key")
 
 
 @pytest.fixture(autouse=True)
@@ -59,6 +68,15 @@ def test_queueing_a_push_requires_a_superuser(client, user_token, db_session):
     assert client.post("/api/v1/remote-access/push", json={"device_ids": [str(dev.id)]}).status_code == 401
     assert client.post("/api/v1/remote-access/push", json={"device_ids": [str(dev.id)]}, headers=_auth(user_token)).status_code == 403
     assert client.get("/api/v1/remote-access/push/jobs", headers=_auth(user_token)).status_code == 403
+
+
+def test_missing_installer_blocks_install_but_not_dry_run(client, admin_token, db_session, monkeypatch):
+    dev = _device(db_session, "VNA-TV-1101")
+    monkeypatch.setattr(settings, "RUSTDESK_INSTALLER_FILENAME", "missing.msi")
+    result = _enqueue(client, admin_token, [dev])
+    assert result.status_code == 503
+    assert "installer_present" in result.json()["detail"]
+    assert _enqueue(client, admin_token, [dev], dry_run=True).status_code == 200
 
 
 def test_queueing_is_503_when_winrm_is_not_configured(client, admin_token, db_session, monkeypatch):

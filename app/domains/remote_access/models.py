@@ -41,6 +41,7 @@ class RemoteAccessDevice(SQLModel, table=True):
 
     # --- desired config the offline package / push kit should carry ---
     rustdesk_id: str | None = Field(default=None, max_length=32, index=True)
+    observed_rustdesk_id: str | None = Field(default=None, max_length=32)
     # the permanent password baked into the package for this machine; encrypted at rest
     permanent_password: str = Field(
         default="", sa_column=Column(EncryptedString(512), nullable=False, server_default="")

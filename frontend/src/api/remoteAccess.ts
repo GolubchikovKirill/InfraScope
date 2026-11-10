@@ -37,6 +37,7 @@ export interface RemoteDevice {
   cash_register_id: string | null;
   rustdesk_id: string | null;
   has_password: boolean;
+  observed_rustdesk_id?: string | null;
   password_rotated_at: string | null;
   /** "client" (store kiosk - hidden, AppLocker-blocked) or "admin" (an
    *  engineer's own workstation - full normal RustDesk). Sets the three

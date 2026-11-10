@@ -109,7 +109,9 @@ async def sync_from_console(session: Session) -> dict[str, int]:
         if not group:
             continue
         _link_inventory(session, dev, computers=computers, registers=registers, nettops=nettops)
-        canonical = _hostname_to_rid(dev.hostname)
+        canonical = dev.rustdesk_id or _hostname_to_rid(dev.hostname)
+        if canonical.isdigit():
+            canonical = _hostname_to_rid(dev.hostname)
         # the peer running our config wins; failing that, the freshest one
         preferred = next(
             (p for p in group if str(p.get("id") or "").strip().lower() == canonical.lower()),
@@ -117,9 +119,9 @@ async def sync_from_console(session: Session) -> dict[str, int]:
         )
         rid = str(preferred.get("id") or "").strip()
         if rid:
-            dev.rustdesk_id = rid
+            dev.observed_rustdesk_id = rid
             status[rid] = _peer_online(preferred, now)
-            if rid.lower() == canonical.lower() and status[rid]:
+            if rid == dev.rustdesk_id and status[rid]:
                 healthy_canonical.add(dev.hostname.lower())
         dev.installed_version = (preferred.get("version") or None) or dev.installed_version
         dev.logged_in_user = (preferred.get("username") or None) or dev.logged_in_user
@@ -129,7 +131,7 @@ async def sync_from_console(session: Session) -> dict[str, int]:
     # one pass over every tracked device: online == exactly what the console says,
     # None for anything the console has never registered (no client yet)
     for dev in session.exec(select(RemoteAccessDevice)):
-        want = status.get(dev.rustdesk_id or "")  # True / False / None
+        want = status.get(dev.observed_rustdesk_id or "")  # True / False / None
         changed = dev.online != want
         if want:
             dev.last_seen_at = now

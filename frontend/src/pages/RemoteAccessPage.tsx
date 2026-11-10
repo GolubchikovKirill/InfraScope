@@ -256,7 +256,7 @@ export default function RemoteAccessPage() {
     }
     const what = dryRun
       ? `Пробный прогон (ничего не ставится) для ${targets.length} устройств?`
-      : `Развернуть RustDesk по сети на ${targets.length} устройств? Сервер только поставит задания в очередь, ставить будет раннер на машине админа, каждой машине по её профилю. Перезагрузок нет.`;
+      : `Развернуть RustDesk по сети на ${targets.length} устройств? Сервер выполнит установку через WinRM по профилю каждой машины. Служба RustDesk будет перезапущена.`;
     if (!window.confirm(what)) return;
     pushMut.mutate({ ids: targets.map((r) => r.id), dryRun });
   };
@@ -509,6 +509,9 @@ export default function RemoteAccessPage() {
                       <td>
                         <div className="flex items-center gap-1.5">
                           <span className="app-mono text-xs">{d.rustdesk_id ?? "—"}</span>
+                          {d.observed_rustdesk_id && d.observed_rustdesk_id !== d.rustdesk_id && (
+                            <div className="text-xs text-amber-700">На клиенте: {d.observed_rustdesk_id}. Ожидает смены ID.</div>
+                          )}
                           {d.rustdesk_id && (
                             <button
                               onClick={() => copyId(d.rustdesk_id!)}
@@ -601,7 +604,7 @@ export default function RemoteAccessPage() {
                       </td>
                       <td>
                         <div className="flex justify-end gap-1">
-                          <a href={rustdeskLink(d.rustdesk_id ?? d.hostname)}>
+                          <a href={rustdeskLink(d.observed_rustdesk_id ?? d.rustdesk_id ?? d.hostname)}>
                             <Button variant="secondary" size="sm" className="!px-2.5 !text-xs">
                               <MonitorSmartphone className="mr-1 h-3.5 w-3.5" />
                               Подключиться

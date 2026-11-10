@@ -142,7 +142,10 @@ def apply_deploy_report(
     dev.deploy_detail = (detail or None) and detail[:512]
     dev.deploy_reported_at = _now()
     if rustdesk_id:
-        dev.rustdesk_id = rustdesk_id
+        dev.observed_rustdesk_id = rustdesk_id
+        if state == "configured" and rustdesk_id != dev.rustdesk_id:
+            dev.deploy_state = "failed"
+            dev.deploy_detail = "Клиент сообщил ID, отличный от заданного. Проверьте профиль службы RustDesk."
     if version:
         dev.installed_version = version
     if os_edition:
