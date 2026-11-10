@@ -26,7 +26,7 @@ def ensure_winrm(hostname: str) -> None:
                                dns_server=settings.DNS_SERVER) or hostname
     if _listening(address):
         return
-    if not settings.ALLOW_HARDWARE_WRITES:
+    if not settings.hardware_writes_allowed:
         raise RuntimeError("Изменения Windows отключены настройками этого экземпляра InfraScope.")
     if settings.WINRM_USE_SSL or settings.WINRM_PORT != 5985:
         raise RuntimeError("Автоподготовка поддерживает HTTP WinRM 5985; HTTPS требует готового сертификата.")

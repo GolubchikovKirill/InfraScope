@@ -16,7 +16,8 @@ def test_existing_listener_is_never_reconfigured(monkeypatch):
 
 def test_refused_listener_is_prepared_and_rechecked(monkeypatch):
     monkeypatch.setattr(settings, "WINRM_AUTO_ENABLE", True)
-    monkeypatch.setattr(settings, "ALLOW_HARDWARE_WRITES", True)
+    monkeypatch.setattr(settings, "ALLOW_HARDWARE_WRITES", None)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
     monkeypatch.setattr(settings, "WINRM_USE_SSL", False)
     monkeypatch.setattr(settings, "WINRM_PORT", 5985)
     monkeypatch.setattr(settings, "WINRM_ADMIN_USERNAME", "DOMAIN\\svc")

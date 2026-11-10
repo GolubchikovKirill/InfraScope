@@ -207,6 +207,8 @@ def test_a_failed_push_fails_the_job_with_the_detail(db_session, monkeypatch):
     result = push_jobs.execute_push_job(db_session, job)
 
     assert result.state == "failed" and result.detail == "Access is denied"
+    db_session.expire_all()
+    assert db_session.get(RemoteAccessDevice, _dev.id).deploy_state == "failed"
 
 
 def test_winrm_not_configured_fails_the_job_without_raising(db_session, monkeypatch):
