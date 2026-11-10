@@ -72,9 +72,8 @@ and local Compose configuration validation.
 
 1. Verify running-image source hashes and database migration revision, measure
    queue lag and full-cycle p95, and inspect stale computers by failure reason.
-2. Decouple availability cadence (target 60 seconds) and full telemetry cadence
-   (target five minutes). First measure cycle duration and queue capacity.
-   The ten-minute toner expiry currently exposes the hourly collection gap.
+2. Validate the new 60-second availability and five-minute telemetry schedules
+   over the pilot window, including queue capacity during network outages.
 3. Add shared API freshness/service-health representation and apply it to list
    filters, dashboard totals, alerts and forecasts, including per-color history
    consumers. Current changes cover card presentation and history producers.
@@ -86,8 +85,8 @@ and local Compose configuration validation.
 6. Collect freshness/queue metrics and alerts. Add recorded protocol fixtures
    and failure scenarios for interrupted routes, worker loss, DHCP identity
    changes, partial MIB data and unsupported equipment.
-7. Run the migration and release to one pilot site after verification. Observe
-   48 hours and evaluate the agreed freshness targets before wider rollout.
+7. Observe the production release for 48 hours and evaluate the agreed freshness
+   targets. Current scheduling changes apply to the existing fleet.
 8. Benchmark a Go read-only collector only if measured collection CPU/RSS or
    throughput remains the limiting factor after the polling changes.
 
@@ -98,9 +97,38 @@ resilience and reachability passed (61 tests). Additional toner/parser/forecast
 tests passed (22 tests, overlapping the new regression file). Ruff and TypeScript
 passed. The affected frontend suites passed (17 tests), and production frontend
 build passed. Alembic generated the expected PostgreSQL ALTER TABLE offline.
-Production migration and deployment have not been performed.
+Production migration and deployment completed on 10 November 2026. See the
+deployment verification below.
 
 Vite cannot reliably resolve paths containing `#`. Frontend validation uses a
 temporary source copy without that character and the existing installed node
 dependencies. Running an entire frontend suite in the asynchronous terminal
 did not return a completion result; only the targeted suites are confirmed.
+
+## Production deployment verification
+
+The user explicitly approved production deployment. Released source SHA is
+`ffc2ac0`, on `codex/network-freshness-20261110`. The polling implementation's
+SHA-256 matched between checkout and running backend container.
+
+- Pre-migration custom-format backup was created and its archive index checked:
+  `backups/pre-network-20261110-0744.dump`.
+- The ordinary deploy path previously skipped backups. It now requires one by
+  default; the final run produced `backups/postgres-20261110-074624.sql.gz`.
+- Backup files are excluded from Docker build context. Confirmed `/app/backups`
+  absent in the final running backend image.
+- Alembic reports `20261110_toner (head)`.
+- `/ready` reports database and Redis healthy. Backend, workers and media-service
+  report healthy. Other expected containers are running.
+- Initial Docker ARP bind-mount startup failure recovered on retry.
+- A legacy printer lease left by the previous worker was removed only with an
+  atomic owner comparison against its old literal `1` token. New UUID leases
+  were preserved. The subsequent full telemetry job succeeded in 42 seconds.
+- Control job `6f28b4f4-88a6-4ac9-befa-bbb6dc19a6ae` persisted 102 fresh color
+  observations across 28 laser printers. This does not establish availability
+  of unsupported or nonresponding printers.
+- Beat logs confirm one-minute ticks for all scheduled device classes.
+- Polling queue depth reached zero. Prometheus reports polling worker targets up.
+
+The deploy script removed dangling images and old build cache, reclaiming
+approximately 9.3 GB. Database backups remain available separately.
