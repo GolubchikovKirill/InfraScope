@@ -12,8 +12,8 @@ const api = vi.hoisted(() => ({
   getRemoteDevices: vi.fn(),
   getPushJobs: vi.fn(),
   cancelPushJob: vi.fn(),
-  pushDevices: vi.fn(),
   requestDeploy: vi.fn(),
+  pushDevices: vi.fn().mockResolvedValue({ queued: [{ hostname: "VNK-MGR-D1" }], skipped: [] }),
   rotateRemotePassword: vi.fn(),
   rustdeskLink: vi.fn((id: string) => `rustdesk://connection/new/${id}`),
   syncAddressBook: vi.fn(),
@@ -256,8 +256,8 @@ describe("RemoteAccessPage", () => {
     await screen.findByText("VNK-MGR-D1");
 
     fireEvent.click(screen.getByTitle("Развернуть тихо через InfraScope"));
-    await waitFor(() => expect(api.requestDeploy).toHaveBeenCalledWith("dev-1"));
-    expect(await screen.findByText(/powershell.exe/)).toBeInTheDocument();
+    await waitFor(() => expect(api.pushDevices).toHaveBeenCalled());
+    expect(screen.queryByText(/powershell.exe/)).not.toBeInTheDocument();
   });
 
   it("opens the deploy command from the header without touching any device", async () => {
@@ -271,9 +271,8 @@ describe("RemoteAccessPage", () => {
     });
 
     renderPage();
-    fireEvent.click(await screen.findByText("Команда развёртывания"));
-
-    expect(await screen.findByText(/powershell.exe/)).toBeInTheDocument();
+    expect(screen.queryByText("Команда развёртывания")).not.toBeInTheDocument();
+    expect(screen.queryByText(/powershell.exe/)).not.toBeInTheDocument();
     expect(api.requestDeploy).not.toHaveBeenCalled();
   });
 

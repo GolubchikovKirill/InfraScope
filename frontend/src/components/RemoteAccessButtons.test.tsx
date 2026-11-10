@@ -94,18 +94,18 @@ describe("RemoteAccessButtons", () => {
       api.pushDevices.mockResolvedValue({ queued: [{ hostname: "VNK-MGR-D1" }], skipped: [] });
       renderButtons();
 
-      fireEvent.click(screen.getByRole("button", { name: /По сети/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Передеплоить/ }));
 
       await waitFor(() => expect(api.pushDevices).toHaveBeenCalledWith({ device_ids: ["dev-1"] }));
     });
 
     it("is not offered to someone who cannot manage, or for an entry out of management", () => {
       const { unmount } = renderButtons({ canManage: false });
-      expect(screen.queryByRole("button", { name: /По сети/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Передеплоить/ })).not.toBeInTheDocument();
       unmount();
 
       renderButtons({ device: { ...device, managed: false } });
-      expect(screen.queryByRole("button", { name: /По сети/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Передеплоить/ })).not.toBeInTheDocument();
     });
   });
 
@@ -147,7 +147,7 @@ describe("RemoteAccessButtons", () => {
     });
   });
 
-  it("requests a rollout and opens the command modal", async () => {
+  it("queues installation directly without a command modal", async () => {
     api.requestDeploy.mockResolvedValue({ ...device, deploy_state: "pending" });
     api.getDeployCommand.mockResolvedValue({
       command: 'powershell.exe -Command "iex ..."',
@@ -161,8 +161,8 @@ describe("RemoteAccessButtons", () => {
     // the fixture is readiness: "ready" - already configured once, so the
     // button reads "Передеплоить" (it reapplies everything, not just the diff)
     fireEvent.click(screen.getByText("Передеплоить"));
-    await waitFor(() => expect(api.requestDeploy).toHaveBeenCalledWith("dev-1"));
-    expect(await screen.findByText(/powershell.exe/)).toBeInTheDocument();
+    await waitFor(() => expect(api.pushDevices).toHaveBeenCalledWith({ device_ids: ["dev-1"] }));
+    expect(screen.queryByText(/powershell.exe/)).not.toBeInTheDocument();
   });
 
   it("labels the button Развернуть for a device that has never been deployed", () => {

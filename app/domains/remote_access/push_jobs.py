@@ -23,6 +23,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import overload
 
+from sqlalchemy import update
 from sqlmodel import Session, col, select
 
 from app.domains.remote_access import deploy_script, service, winrm_exec
@@ -69,6 +70,10 @@ def enqueue_push_jobs(
     """
     if profile is not None and profile not in service.DEPLOY_PROFILES:
         raise ValueError(f"unknown deploy profile {profile!r}")
+    # Serialize enqueue decisions for overlapping device sets on PostgreSQL.
+    session.exec(select(RemoteAccessDevice).where(
+        col(RemoteAccessDevice.id).in_([d.id for d in devices])
+    ).order_by(RemoteAccessDevice.id).with_for_update()).all()
     busy = {
         job.device_id
         for job in session.exec(select(RemoteAccessPushJob).where(col(RemoteAccessPushJob.state).in_(PUSH_JOB_ACTIVE))).all()
@@ -101,14 +106,12 @@ def enqueue_push_jobs(
 
 def cancel_push_job(session: Session, job: RemoteAccessPushJob) -> bool:
     """Only a job nobody has started on can be cancelled; a running push cannot be recalled."""
-    if job.state != "queued":
-        return False
-    job.state = "cancelled"
-    job.detail = "отменено оператором"
-    job.finished_at = _now()
-    session.add(job)
+    result = session.execute(update(RemoteAccessPushJob).where(
+        RemoteAccessPushJob.id == job.id, RemoteAccessPushJob.state == "queued"
+    ).values(state="cancelled", detail="отменено оператором", finished_at=_now()))
     session.commit()
-    return True
+    session.refresh(job)
+    return result.rowcount == 1
 
 
 def reap_stale_push_jobs(session: Session) -> int:
@@ -149,13 +152,13 @@ def execute_push_job(session: Session, job: RemoteAccessPushJob) -> RemoteAccess
     right after `enqueue_push_jobs` commits - see the module docstring for what
     this does and does not change on the device.
     """
-    if job.state != "queued":
-        return job  # raced with a cancel, or already picked up
-    job.state = "running"
-    job.started_at = _now()
-    session.add(job)
+    claim = session.execute(update(RemoteAccessPushJob).where(
+        RemoteAccessPushJob.id == job.id, RemoteAccessPushJob.state == "queued"
+    ).values(state="running", started_at=_now()))
     session.commit()
     session.refresh(job)
+    if claim.rowcount != 1:
+        return job
 
     dev = session.get(RemoteAccessDevice, job.device_id) if job.device_id else None
     if dev is None or not dev.managed:

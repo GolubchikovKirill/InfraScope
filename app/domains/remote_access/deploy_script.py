@@ -156,7 +156,8 @@ def render_bootstrap(api_prefix: str = "/api/v1") -> str:
     """Render the endpoint script. Values are baked in; the per-machine config is
     fetched at run time so a password rotation needs no new script."""
     base = f"{public_url()}{api_prefix}/remote-access/deploy"
-    return _TEMPLATE.replace("@@BASE@@", base).replace("@@TOKEN@@", settings.RUSTDESK_DEPLOY_TOKEN)
+    return (_TEMPLATE.replace("@@BASE@@", base).replace("@@TOKEN@@", settings.RUSTDESK_DEPLOY_TOKEN)
+            .replace("@@PIN@@", settings.RUSTDESK_TLS_FINGERPRINT))
 
 
 # `@@BASE@@` / `@@TOKEN@@` rather than str.format: the script is full of braces.
@@ -170,7 +171,12 @@ $ProgressPreference = 'SilentlyContinue'
 # it) - the deploy-command wrapper already sets this same bypass before
 # fetching this file, so this line is only load-bearing if the script is
 # ever run standalone (saved to disk, invoked without that wrapper).
-[Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+if ('@@PIN@@') {
+    [Net.ServicePointManager]::ServerCertificateValidationCallback = {
+        param($sender,$certificate,$chain,$errors)
+        $certificate.GetCertHashString() -eq '@@PIN@@'
+    }
+}
 
 $Base    = '@@BASE@@'
 $Token   = '@@TOKEN@@'
@@ -221,10 +227,19 @@ try {
 
     # ---- 2. install (skip when the wanted version is already there) --------
     $installed = $null
-    try { $installed = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\RustDesk\' -EA Stop).Version } catch { }
+    try {
+        $registration = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\RustDesk\' -EA Stop
+        $installed = $registration.DisplayVersion
+        if (-not $installed) { $installed = $registration.Version }
+    } catch { }
+    if (-not $installed -and (Test-Path $exe)) { $installed = (Get-Item $exe).VersionInfo.ProductVersion }
     if ($installed) { $Version = $installed }
 
-    if (-not (Test-Path $exe) -or ($installed -ne $cfg.installer_version)) {
+    $needsInstall = -not (Test-Path $exe) -or -not $installed
+    if ($installed -and (Test-Path $exe)) {
+        $needsInstall = ([version]$installed -lt [version]$cfg.installer_version)
+    }
+    if ($needsInstall) {
         $pkg = Join-Path $env:TEMP $cfg.installer_filename
         Log "downloading $($cfg.installer_filename) (have '$installed', want '$($cfg.installer_version)')"
         Invoke-WebRequest -Uri "$Base/installer" -Headers $Headers -OutFile $pkg -UseBasicParsing -TimeoutSec 900

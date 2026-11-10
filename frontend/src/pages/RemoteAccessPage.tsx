@@ -25,7 +25,6 @@ import {
   getConsoleConnections,
   getRemoteDevices,
   pushDevices,
-  requestDeploy,
   rotateRemotePassword,
   rustdeskLink,
   setDeviceProfile,
@@ -42,7 +41,6 @@ import { showToast } from "../lib/toastBus";
 import { relTime } from "../lib/relTime";
 import { Button } from "../components/ui/Button";
 import { AppLockerMismatchBadge, READINESS_META, ReadinessChip, deviceReadinessDetail } from "../components/RemoteAccessStatus";
-import DeployCommandModal from "../components/DeployCommandModal";
 import ConsoleAccountsPanel from "../components/ConsoleAccountsPanel";
 import PushJobsPanel from "../components/PushJobsPanel";
 import UnlistedConsolePeersPanel from "../components/UnlistedConsolePeersPanel";
@@ -98,7 +96,6 @@ export default function RemoteAccessPage() {
   const [typeTag, setTypeTag] = useState("");
   const [showScreens, setShowScreens] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"" | Readiness>("");
-  const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addHostname, setAddHostname] = useState("");
 
@@ -213,15 +210,6 @@ export default function RemoteAccessPage() {
       invalidate();
     },
     onError: () => showToast("Не удалось сменить профиль", "error"),
-  });
-  const deployMut = useMutation({
-    mutationFn: (id: string) => requestDeploy(id),
-    onSuccess: (dev) => {
-      showToast(`${dev.hostname}: ждёт запуска скрипта на машине`, "success");
-      invalidate();
-      setDeployModalOpen(true);
-    },
-    onError: () => showToast("Не удалось запросить развёртывание", "error"),
   });
 
   // queue a network push for everything the list currently shows (managed devices only);
@@ -452,12 +440,6 @@ export default function RemoteAccessPage() {
                   </Button>
                 )}
                 {isSuperuser && (
-                  <Button variant="secondary" onClick={() => setDeployModalOpen(true)}>
-                    <Terminal className="mr-1 h-4 w-4" />
-                    Команда развёртывания
-                  </Button>
-                )}
-                {isSuperuser && (
                   <Button variant="secondary" onClick={() => bulkPush(true)} disabled={pushMut.isPending} title="Дотянуться до каждой машины и сообщить, что было бы сделано; ничего не устанавливается">
                     Пробный прогон
                   </Button>
@@ -621,8 +603,8 @@ export default function RemoteAccessPage() {
                                     ? "Передеплоить: заново применить текущие ID, пароль и настройки скрытности/блокировки"
                                     : "Развернуть тихо через InfraScope"
                                 }
-                                disabled={deployMut.isPending}
-                                onClick={() => deployMut.mutate(d.id)}
+                                disabled={pushMut.isPending}
+                                onClick={() => pushMut.mutate({ ids: [d.id], dryRun: false })}
                               >
                                 <Rocket className="h-3.5 w-3.5" />
                               </Button>
@@ -736,7 +718,6 @@ export default function RemoteAccessPage() {
         </div>
       )}
 
-      <DeployCommandModal open={deployModalOpen} onClose={() => setDeployModalOpen(false)} />
 
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">

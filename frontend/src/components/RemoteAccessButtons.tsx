@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MonitorSmartphone, Settings2, Copy, X, FileCog, Rocket, RotateCcw, Send } from "lucide-react";
+import { MonitorSmartphone, Settings2, Copy, X, FileCog, RotateCcw, Send } from "lucide-react";
 import {
   ensureRustDeskDevice,
   getDevicePackage,
+  getPushJobs,
   hostnameToRid,
   pushDevices,
-  requestDeploy,
   rustdeskLink,
   setDeviceProfile,
   type DeployProfile,
@@ -14,7 +14,6 @@ import {
 } from "../client";
 import { showToast } from "../lib/toastBus";
 import { AppLockerMismatchBadge, ReadinessChip, deviceReadinessDetail } from "./RemoteAccessStatus";
-import DeployCommandModal from "./DeployCommandModal";
 
 type Props = {
   hostname: string;
@@ -34,9 +33,18 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
   const qc = useQueryClient();
   const [dlgOpen, setDlgOpen] = useState(false);
   const [pkgOpen, setPkgOpen] = useState(false);
-  const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [rid, setRid] = useState("");
   const [pw, setPw] = useState("");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const jobs = useQuery({
+    queryKey: ["remote-push-jobs"],
+    queryFn: () => getPushJobs(40),
+    enabled: canManage && !!jobId,
+    retry: false,
+    refetchInterval: (query) => query.state.data?.data.some((job) => job.id === jobId && ["queued", "running"].includes(job.state)) ? 4000 : false,
+  });
+  const activeJob = jobs.data?.data.find((job) => job.id === jobId);
+  const deploying = activeJob?.state === "queued" || activeJob?.state === "running";
 
   const ensureMut = useMutation({
     // wrapped (not point-free): a bare `mutationFn: ensureRustDeskDevice` would
@@ -51,20 +59,12 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
     onError: () => showToast("Не удалось сохранить конфиг", "error"),
   });
 
-  const deployMut = useMutation({
-    mutationFn: (id: string) => requestDeploy(id),
-    onSuccess: () => {
-      showToast(`${hostname}: ждёт запуска скрипта на машине`, "success");
-      qc.invalidateQueries({ queryKey: ["remote-devices"] });
-      setDeployModalOpen(true);
-    },
-    onError: () => showToast("Не удалось запросить развёртывание", "error"),
-  });
 
   // queue a network push: the backend runs it itself over WinRM, right away
   const pushMut = useMutation({
     mutationFn: (id: string) => pushDevices({ device_ids: [id] }),
     onSuccess: (r) => {
+      setJobId(r.queued[0]?.id ?? null);
       if (r.queued.length) showToast(`${hostname}: поставлено в очередь`, "success");
       else showToast(`${hostname}: ${r.skipped[0]?.reason ?? "не поставлено"}`, "info");
       qc.invalidateQueries({ queryKey: ["remote-push-jobs"] });
@@ -185,27 +185,12 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
             {device && !unmanaged && (
               <button
                 onClick={() => pushMut.mutate(device.id)}
-                disabled={pushMut.isPending}
+                disabled={pushMut.isPending || deploying}
                 className={`${btn} app-btn-secondary disabled:opacity-50`}
-                title="Поставить в очередь раскатки по сети: её выполняет раннер на Windows-машине админа (Windows 7 и 10, без перезагрузки)"
+                title="Установить и настроить RustDesk через сервер InfraScope"
               >
                 <Send className="h-4 w-4" />
-                По сети
-              </button>
-            )}
-            {device && !unmanaged && (
-              <button
-                onClick={() => deployMut.mutate(device.id)}
-                disabled={deployMut.isPending}
-                className={`${btn} app-btn-secondary disabled:opacity-50`}
-                title={
-                  redeploy
-                    ? "Передеплоить: заново применить текущие ID, пароль и настройки скрытности/блокировки"
-                    : "Тихо развернуть через InfraScope"
-                }
-              >
-                <Rocket className="h-4 w-4" />
-                {redeploy ? "Передеплоить" : "Развернуть"}
+                {pushMut.isPending ? "Постановка…" : activeJob?.state === "running" ? "Установка…" : activeJob?.state === "queued" ? "В очереди" : redeploy ? "Передеплоить" : "Развернуть"}
               </button>
             )}
             {device && !unmanaged && (
@@ -221,6 +206,9 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
         )}
       </div>
 
+      {activeJob && !deploying && <div role="status" className="text-xs text-slate-600">
+        {activeJob.state === "succeeded" ? "Скрипт установки завершён" : activeJob.detail ?? activeJob.state}
+      </div>}
       {dlgOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="app-panel w-full max-w-md space-y-4 p-5">
@@ -343,7 +331,6 @@ export default function RemoteAccessButtons({ hostname, device, canManage, compa
         </div>
       )}
 
-      <DeployCommandModal open={deployModalOpen} onClose={() => setDeployModalOpen(false)} />
     </>
   );
 }

@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.domains.remote_access import deploy_script
 from app.domains.remote_access.models import RemoteAccessDevice
+from app.services.hostname_resolver import resolve_hostname
 
 from .devices import DEPLOY_STATES, _hostname_to_rid, _now, classify_applocker_support, default_password
 
@@ -45,7 +46,7 @@ def _resolve_hostname_ip(hostname: str) -> str | None:
     try:
         return socket.gethostbyname(hostname)
     except OSError:
-        return None
+        return resolve_hostname(hostname, dns_search_suffixes=settings.DNS_SEARCH_SUFFIXES, dns_server=settings.DNS_SERVER)
 
 
 def verify_deploy_source(dev: RemoteAccessDevice, client_ip: str | None) -> bool:
