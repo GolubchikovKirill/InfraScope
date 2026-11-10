@@ -204,6 +204,37 @@ $Headers = @{ 'X-InfraScope-Deploy-Token' = $Token }
 $Host_   = $env:COMPUTERNAME
 $Rid     = ''
 $Version = ''
+Add-Type -AssemblyName System.Web.Extensions
+$Json = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+$Legacy = ([Environment]::OSVersion.Version.Major -lt 10) -or (-not ${env:ProgramFiles(x86)})
+function New-Client {
+    $c = New-Object Net.WebClient
+    $c.Encoding = [Text.Encoding]::UTF8
+    $c.Headers.Add('X-InfraScope-Deploy-Token', $Token)
+    return $c
+}
+function Post-Json($url, $data) {
+    $c = New-Client
+    try {
+        $c.Headers.Add('Content-Type','application/json; charset=utf-8')
+        $text = $c.UploadString($url, 'POST', $Json.Serialize($data))
+        return ,$Json.DeserializeObject($text)
+    } finally { $c.Dispose() }
+}
+function Find-Exe {
+    $svc = Get-WmiObject Win32_Service -Filter "Name='RustDesk'" -EA SilentlyContinue
+    if ($svc) {
+        $path = $svc.PathName -replace '^"([^"]+)".*$', '$1'
+        if (Test-Path $path) { return $path }
+    }
+    foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if ($root) {
+            $path = Join-Path $root 'RustDesk\rustdesk.exe'
+            if (Test-Path $path) { return $path }
+        }
+    }
+    return $null
+}
 
 # Registry EditionID is locale-independent ("Professional", "Enterprise",
 # "Core" for Home, ...) - the OS Caption is only for display and can be
@@ -212,33 +243,36 @@ $Version = ''
 # surface, which is exactly what this pull-based rollout was built to avoid.
 $edKey = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -EA SilentlyContinue
 $OsEdition = if ($edKey) { "$($edKey.EditionID)" } else { '' }
-$OsCaption = try { (Get-CimInstance Win32_OperatingSystem -EA Stop).Caption } catch { if ($edKey) { "$($edKey.ProductName)" } else { '' } }
+$OsCaption = try { (Get-WmiObject Win32_OperatingSystem -EA Stop).Caption } catch { if ($edKey) { "$($edKey.ProductName)" } else { '' } }
 
 function Report($state, $detail) {
     try {
-        $body = @{ hostname = $Host_; rustdesk_id = $Rid; version = $Version;
-                   state = $state; detail = "$detail"; os_edition = $OsEdition;
-                   os_caption = $OsCaption } | ConvertTo-Json -Compress
+        $reportId = $null
+        if ($Rid) { $reportId = $Rid }
+        $text = [string]$detail
+        if ($text.Length -gt 512) { $text = $text.Substring(0,512) }
+        $body = @{ hostname = $Host_; rustdesk_id = $reportId; version = $Version;
+                   state = $state; detail = $text; os_edition = $OsEdition;
+                   os_caption = $OsCaption }
         # UTF-8 bytes, not the string: Windows PowerShell 5.1 encodes a string body as
         # ISO-8859-1, so a localized error text ("Отказано в доступе") reached the server
         # as "????????" and the failure could not be read.
-        Invoke-RestMethod -Uri "$Base/report" -Method Post -Headers $Headers `
-            -ContentType 'application/json; charset=utf-8' `
-            -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 | Out-Null
-    } catch { Log "report failed: $($_.Exception.Message)" }
+        Post-Json "$Base/report" $body | Out-Null
+    } catch {
+        Log "report failed: $($_.Exception.Message)"
+        if ($state -eq 'configured') { throw }
+    }
 }
 
 try {
     Log "=== deploy start on $Host_ (edition=$OsEdition) ==="
 
     # ---- 1. our own config -------------------------------------------------
-    $cfgBody = @{ hostname = $Host_ } | ConvertTo-Json -Compress
-    $cfg = Invoke-RestMethod -Uri "$Base/config" -Method Post -Headers $Headers `
-        -ContentType 'application/json' -Body $cfgBody -TimeoutSec 30
+    $cfg = Post-Json "$Base/config" @{ hostname = $Host_; legacy = [bool]$Legacy }
     $Rid = $cfg.rustdesk_id
     Log "config: id=$Rid server=$($cfg.id_server) installer=$($cfg.installer_filename)"
 
-    $exe = Join-Path $env:ProgramFiles 'RustDesk\rustdesk.exe'
+    $exe = Find-Exe
 
     # ---- 2. install (skip when the wanted version is already there) --------
     $installed = $null
@@ -247,11 +281,11 @@ try {
         $installed = $registration.DisplayVersion
         if (-not $installed) { $installed = $registration.Version }
     } catch { }
-    if (-not $installed -and (Test-Path $exe)) { $installed = (Get-Item $exe).VersionInfo.ProductVersion }
+    if (-not $installed -and $exe) { $installed = (Get-Item $exe).VersionInfo.ProductVersion }
     if ($installed) { $Version = $installed }
 
-    $needsInstall = -not (Test-Path $exe) -or -not $installed
-    if ($installed -and (Test-Path $exe)) {
+    $needsInstall = -not $exe -or -not $installed
+    if ($installed -and $exe) {
         $installedCore = [regex]::Match($installed, '^\d+\.\d+\.\d+(?:\.\d+)?').Value
         if (-not $installedCore) { throw "Unrecognized installed RustDesk version: $installed" }
         $needsInstall = ([version]$installedCore -lt [version]$cfg.installer_version)
@@ -259,10 +293,16 @@ try {
     if ($needsInstall) {
         $pkg = Join-Path $env:TEMP $cfg.installer_filename
         Log "downloading $($cfg.installer_filename) (have '$installed', want '$($cfg.installer_version)')"
-        Invoke-WebRequest -Uri "$Base/installer" -Headers $Headers -OutFile $pkg -UseBasicParsing -TimeoutSec 900
+        if (-not $cfg.installer_sha256) { throw 'Installer checksum is not configured on InfraScope' }
+        $c = New-Client
+        try { $c.DownloadFile("$Base/installer?legacy=$($Legacy.ToString().ToLower())", $pkg) }
+        finally { $c.Dispose() }
 
         if ($cfg.installer_sha256) {
-            $have = (Get-FileHash $pkg -Algorithm SHA256).Hash.ToLower()
+            $sha = [Security.Cryptography.SHA256]::Create()
+            $stream = [IO.File]::OpenRead($pkg)
+            try { $have = ([BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLower() }
+            finally { $stream.Close(); $sha.Dispose() }
             if ($have -ne $cfg.installer_sha256.ToLower()) {
                 throw "installer checksum mismatch: got $have, expected $($cfg.installer_sha256)"
             }
@@ -272,7 +312,7 @@ try {
             # /qn is genuinely silent and returns; the three properties keep the
             # Start Menu, the desktop and the printer list untouched.
             $msiLog = Join-Path $LogDir 'rustdesk-msi.log'
-            $msiArgs = @('/i', "`"$pkg`"", '/qn', 'CREATESTARTMENUSHORTCUTS=N',
+            $msiArgs = @('/i', "`"$pkg`"", '/qn', '/norestart', 'CREATESTARTMENUSHORTCUTS=N',
                       'CREATEDESKTOPSHORTCUTS=N', 'INSTALLPRINTER=N', '/l*v', "`"$msiLog`"")
             $p = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
             if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "msiexec exit $($p.ExitCode), see $msiLog" }
@@ -280,16 +320,18 @@ try {
             # legacy .exe path: --silent-install never returns, so no -Wait
             Start-Process $pkg -ArgumentList '--silent-install' | Out-Null
             $deadline = (Get-Date).AddMinutes(5)
-            while (-not (Test-Path $exe) -and (Get-Date) -lt $deadline) { Start-Sleep 5 }
-            if (-not (Test-Path $exe)) { throw 'silent install did not produce rustdesk.exe' }
+            $exe = Find-Exe
+            while (-not $exe -and (Get-Date) -lt $deadline) { Start-Sleep 5; $exe = Find-Exe }
+            if (-not $exe) { throw 'silent install did not produce rustdesk.exe' }
         }
         Remove-Item $pkg -Force -EA SilentlyContinue
-        try { $Version = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\RustDesk\' -EA Stop).Version } catch { }
+        $exe = Find-Exe
+        if ($exe) { $Version = (Get-Item $exe).VersionInfo.ProductVersion }
         Log "installed version=$Version"
     } else {
         Log "already at $installed - skipping install"
     }
-    if (-not (Test-Path $exe)) { throw "RustDesk not present at $exe after install" }
+    if (-not $exe -or -not (Test-Path $exe)) { throw 'RustDesk not present after install' }
     Report 'installed' ''
 
     # ---- 3. service --------------------------------------------------------
@@ -313,6 +355,9 @@ try {
         (Join-Path $env:WINDIR 'ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config'),
         (Join-Path $env:WINDIR 'System32\config\systemprofile\AppData\Roaming\RustDesk\config')
     )
+    if (Test-Path (Join-Path $env:WINDIR 'SysWOW64')) {
+        $cfgDirs += Join-Path $env:WINDIR 'SysWOW64\config\systemprofile\AppData\Roaming\RustDesk\config'
+    }
 
     function Write-Config([hashtable]$opts) {
         $lines = @("rendezvous_server = '$($cfg.id_server)'", 'nat_type = 1', 'serial = 0', '', '[options]')
@@ -334,8 +379,18 @@ try {
     }
 
     # ---- 4. first pass: working config, no write locks ---------------------
+    $backup = Join-Path $LogDir ('rustdesk-before-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $index = 0
+    foreach ($d in $cfgDirs) {
+        $index++
+        if (Test-Path $d) {
+            $destination = Join-Path $backup ([string]$index)
+            $null = New-Item -ItemType Directory -Force -Path $destination
+            Get-ChildItem $d -Filter '*.toml' | Copy-Item -Destination $destination
+        }
+    }
     $opts = @{}
-    foreach ($p in $cfg.options.PSObject.Properties) { $opts[$p.Name] = $p.Value }
+    foreach ($k in $cfg.options.Keys) { $opts[$k] = $cfg.options[$k] }
     Stop-RD
     Write-Config $opts
     try { Start-Service RustDesk } catch { & sc.exe start RustDesk | Out-Null }
@@ -364,7 +419,7 @@ try {
 
     # ---- 6. second pass: same config plus the write locks ------------------
     if ($cfg.lock_options) {
-        foreach ($p in $cfg.lock_options.PSObject.Properties) { $opts[$p.Name] = $p.Value }
+        foreach ($k in $cfg.lock_options.Keys) { $opts[$k] = $cfg.lock_options[$k] }
         Write-Config $opts
         try { Restart-Service RustDesk -EA Stop } catch { }
         Log 'config locked'
@@ -374,7 +429,7 @@ try {
     if ($cfg.hidden) {
         $links = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs\RustDesk.lnk",
                    "$env:PUBLIC\Desktop\RustDesk.lnk")
-        Get-ChildItem 'C:\Users' -Directory -EA SilentlyContinue | ForEach-Object {
+        Get-ChildItem 'C:\Users' -EA SilentlyContinue | Where-Object { $_.PSIsContainer } | ForEach-Object {
             $links += "$($_.FullName)\Desktop\RustDesk.lnk"
             $links += "$($_.FullName)\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\RustDesk.lnk"
         }
@@ -417,12 +472,15 @@ try {
         } catch { Log "AppLocker step skipped: $($_.Exception.Message)" }
     }
 
+    $service = Get-Service RustDesk -EA Stop
+    if ($service.Status -ne 'Running') { throw 'RustDesk service is not running after configuration' }
     Report 'configured' ''
     Log '=== deploy done ==='
 } catch {
     $msg = $_.Exception.Message
     Log "FAILED: $msg"
     Report 'failed' $msg
+    Write-Output $msg
     exit 1
 }
 """

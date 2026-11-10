@@ -74,7 +74,7 @@ def verify_deploy_source(dev: RemoteAccessDevice, client_ip: str | None) -> bool
     return bool(resolved and resolved == client_ip)
 
 
-def deployment_config(dev: RemoteAccessDevice) -> dict:
+def deployment_config(dev: RemoteAccessDevice, *, legacy: bool = False) -> dict:
     """What the endpoint script fetches for itself at run time.
 
     `options` is applied before the password is set; `lock_options` afterwards,
@@ -88,9 +88,9 @@ def deployment_config(dev: RemoteAccessDevice) -> dict:
         "api_server": settings.RUSTDESK_API_URL,
         "key": settings.RUSTDESK_KEY,
         "permanent_password": dev.permanent_password or default_password(),
-        "installer_filename": settings.RUSTDESK_INSTALLER_FILENAME,
+        "installer_filename": settings.RUSTDESK_LEGACY_INSTALLER_FILENAME if legacy else settings.RUSTDESK_INSTALLER_FILENAME,
         "installer_version": settings.RUSTDESK_INSTALLER_VERSION,
-        "installer_sha256": settings.RUSTDESK_INSTALLER_SHA256,
+        "installer_sha256": settings.RUSTDESK_LEGACY_INSTALLER_SHA256 if legacy else settings.RUSTDESK_INSTALLER_SHA256,
         "hidden": dev.desired_hidden,
         "block_outgoing": dev.desired_block_outgoing,
         "unattended": dev.desired_unattended,

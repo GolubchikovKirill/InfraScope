@@ -224,6 +224,8 @@ class Settings(BaseSettings):
     RUSTDESK_INSTALLER_KIND: str = "msi"  # msi | exe - msi is silent and returns
     RUSTDESK_INSTALLER_FILENAME: str = "rustdesk-1.4.9-x86_64.msi"
     RUSTDESK_INSTALLER_SHA256: str = ""  # endpoint refuses to run a mismatched file
+    RUSTDESK_LEGACY_INSTALLER_FILENAME: str = "rustdesk-1.4.9-x86-sciter.exe"
+    RUSTDESK_LEGACY_INSTALLER_SHA256: str = ""
     RUSTDESK_PACKAGE_DIR: str = "/var/lib/infrascope/rustdesk"
     # Shared secret the endpoint script presents (X-InfraScope-Deploy-Token).
     # Empty disables every /remote-access/deploy/* route.

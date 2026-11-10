@@ -3,6 +3,7 @@ no InfraScope session - go through `client` + the shared deploy token rather
 than `admin_token`/`user_token`) and the operator-facing /devices list."""
 
 import asyncio
+import hashlib
 
 from app.core.config import settings
 from app.domains.remote_access import service
@@ -42,6 +43,26 @@ def test_deploy_config_refused_when_the_caller_is_a_different_machine(client, db
     )
     assert resp.status_code == 404
     assert "permanent_password" not in resp.text
+
+
+def test_legacy_deploy_selects_verified_exe_and_serves_it(client, db_session, monkeypatch, tmp_path):
+    _configure_deploy(monkeypatch)
+    service.ensure_device(db_session, hostname="VNA-TV-LEGACY")
+    monkeypatch.setattr(service.deployment, "_resolve_hostname_ip", lambda h: "10.10.99.52")
+    monkeypatch.setattr(settings, "RUSTDESK_PACKAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "RUSTDESK_LEGACY_INSTALLER_FILENAME", "legacy.exe")
+    monkeypatch.setattr(settings, "RUSTDESK_LEGACY_INSTALLER_SHA256", hashlib.sha256(b"legacy").hexdigest())
+    (tmp_path / "legacy.exe").write_bytes(b"legacy")
+    headers = {"X-InfraScope-Deploy-Token": "s3cr3t", "X-Real-IP": "10.10.99.52"}
+    response = client.post("/api/v1/remote-access/deploy/config", json={"hostname": "VNA-TV-LEGACY", "legacy": True}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["installer_filename"] == "legacy.exe"
+    assert response.json()["installer_sha256"] == hashlib.sha256(b"legacy").hexdigest()
+    download = client.get("/api/v1/remote-access/deploy/installer?legacy=true", headers=headers)
+    assert download.status_code == 200 and download.content == b"legacy"
+    (tmp_path / "legacy.exe").write_bytes(b"tampered")
+    refused = client.post("/api/v1/remote-access/deploy/config", json={"hostname": "VNA-TV-LEGACY", "legacy": True}, headers=headers)
+    assert refused.status_code == 503
 
 
 def test_deploy_config_accepts_a_console_seen_ip_even_if_dns_disagrees(client, db_session, monkeypatch):

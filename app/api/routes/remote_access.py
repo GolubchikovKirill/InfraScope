@@ -29,6 +29,7 @@ from app.api.routes._service_errors import not_found
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.domains.remote_access import deploy_script, rustdesk_client, service
+from app.domains.remote_access.deploy_readiness import installation_checks
 from app.domains.remote_access.models import RemoteAccessConsoleAccount, RemoteAccessDevice
 from app.domains.remote_access.schemas import (
     AddressBookStatus,
@@ -532,15 +533,19 @@ def deploy_config(payload: DeployConfigRequest, session: SessionDep, request: Re
         )
         raise not_found("Device not found")
     logger.info("rustdesk deploy config served for %s to %s", dev.hostname, client_ip)
-    return DeploymentConfig(**service.deployment_config(dev))
+    if payload.legacy:
+        checks = installation_checks(legacy=True)
+        if not checks["installer_present"] or not checks["installer_checksum"]:
+            raise HTTPException(status_code=503, detail="Legacy installer is missing or its SHA256 is invalid")
+    return DeploymentConfig(**service.deployment_config(dev, legacy=payload.legacy))
 
 
 @router.get("/deploy/installer", dependencies=[Depends(require_deploy_token)])
 @limiter.limit("20/minute", key_func=_rate_limit_key)
-def deploy_installer(request: Request) -> FileResponse:
+def deploy_installer(request: Request, legacy: bool = False) -> FileResponse:
     """Serve the pinned installer from the server so endpoints need no internet."""
     _ = request  # required by the rate limiter decorator context
-    name = os.path.basename(settings.RUSTDESK_INSTALLER_FILENAME)
+    name = os.path.basename(settings.RUSTDESK_LEGACY_INSTALLER_FILENAME if legacy else settings.RUSTDESK_INSTALLER_FILENAME)
     path = os.path.join(settings.RUSTDESK_PACKAGE_DIR, name)
     if not os.path.isfile(path):
         raise HTTPException(

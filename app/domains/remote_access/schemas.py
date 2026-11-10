@@ -222,6 +222,7 @@ class PackageConfig(BaseModel):
 # --------------------------------------------------------------------------- #
 class DeployConfigRequest(BaseModel):
     hostname: str = Field(pattern=_HOSTNAME_RE)
+    legacy: bool = False
 
 
 class DeploymentConfig(PackageConfig):

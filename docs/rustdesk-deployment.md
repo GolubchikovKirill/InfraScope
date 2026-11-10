@@ -201,6 +201,15 @@ WINRM_AUTO_ENABLE=true
 WINRM_BOOTSTRAP_SOURCE_IP=10.10.99.24
 ```
 
+Windows 7/8 и 32-битные Windows автоматически получают Sciter EXE вместо x64 MSI.
+Положите официальный legacy-пакет в `RUSTDESK_PACKAGE_DIR` и настройте
+`RUSTDESK_LEGACY_INSTALLER_FILENAME` и `RUSTDESK_LEGACY_INSTALLER_SHA256`.
+Без проверенного пакета legacy-конфигурация возвращает 503, установка не запускается.
+Онлайн-сценарий совместим с PowerShell 2.0: JSON через JavaScriptSerializer,
+HTTPS через WebClient, SHA-256 через .NET. TLS 1.2 выбирается числом 3072,
+поэтому отсутствие имени Tls12 в старом .NET не блокирует поддерживаемый протокол.
+Установка не обновляет Windows/WMF и не перезагружает компьютер.
+
 Перезапустить `backend` и `worker`. Пока `WINRM_ADMIN_USERNAME` пуст,
 `POST /remote-access/push` отвечает `503`.
 

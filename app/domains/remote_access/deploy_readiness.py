@@ -7,13 +7,15 @@ from pathlib import Path
 from app.core.config import settings
 
 
-def installation_checks() -> dict[str, bool]:
-    package = Path(settings.RUSTDESK_PACKAGE_DIR) / Path(settings.RUSTDESK_INSTALLER_FILENAME).name
+def installation_checks(*, legacy: bool = False) -> dict[str, bool]:
+    filename = settings.RUSTDESK_LEGACY_INSTALLER_FILENAME if legacy else settings.RUSTDESK_INSTALLER_FILENAME
+    expected = settings.RUSTDESK_LEGACY_INSTALLER_SHA256 if legacy else settings.RUSTDESK_INSTALLER_SHA256
+    package = Path(settings.RUSTDESK_PACKAGE_DIR) / Path(filename).name
     checksum_matches = False
-    if package.is_file() and settings.RUSTDESK_INSTALLER_SHA256:
+    if package.is_file() and expected:
         try:
             with package.open("rb") as stream:
-                checksum_matches = hashlib.file_digest(stream, "sha256").hexdigest().lower() == settings.RUSTDESK_INSTALLER_SHA256.lower()
+                checksum_matches = hashlib.file_digest(stream, "sha256").hexdigest().lower() == expected.lower()
         except OSError:
             checksum_matches = False
     return {

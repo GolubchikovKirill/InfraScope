@@ -1129,7 +1129,8 @@ def test_bootstrap_script_reports_in_utf8_so_cyrillic_errors_survive(monkeypatch
     monkeypatch.setattr(settings, "RUSTDESK_DEPLOY_TOKEN", "tok")
     script = deploy_script.render_bootstrap()
     assert "charset=utf-8" in script
-    assert "[System.Text.Encoding]::UTF8.GetBytes($body)" in script
+    assert "$c.Encoding = [Text.Encoding]::UTF8" in script
+    assert "$c.UploadString($url, 'POST', $Json.Serialize($data))" in script
 
 
 # --------------------------------------------------------------------------- #
