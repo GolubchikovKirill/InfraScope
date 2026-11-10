@@ -302,7 +302,7 @@ try {
             $sha = [Security.Cryptography.SHA256]::Create()
             $stream = [IO.File]::OpenRead($pkg)
             try { $have = ([BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLower() }
-            finally { $stream.Close(); $sha.Dispose() }
+            finally { $stream.Close(); $sha.Clear() }
             if ($have -ne $cfg.installer_sha256.ToLower()) {
                 throw "installer checksum mismatch: got $have, expected $($cfg.installer_sha256)"
             }

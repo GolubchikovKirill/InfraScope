@@ -31,6 +31,7 @@ def test_online_bootstrap_is_powershell2_compatible_and_reports_failures():
                     r"Get-FileHash", r"Get-CimInstance", r"\[pscustomobject\]", r"\s-Directory\b"]:
         assert not re.search(pattern, code)
     assert "JavaScriptSerializer" in code and "ComputeHash" in code
+    assert "$sha.Clear()" in code and "$sha.Dispose()" not in code
     assert "legacy = [bool]$Legacy" in code
     assert "'/norestart'" in code
     assert "Write-Output $msg" in code
